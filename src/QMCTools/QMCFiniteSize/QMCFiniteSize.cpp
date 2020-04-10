@@ -1,6 +1,7 @@
 #include "QMCTools/QMCFiniteSize/QMCFiniteSize.h"
 #include "OhmmsData/AttributeSet.h"
 #include "QMCWaveFunctions/WaveFunctionComponentBuilder.h"
+#include "QMCWaveFunctions/Jastrow/JastrowBuilder.h"
 #include <iostream>
 #include <cmath>
 #include "Configuration.h"
@@ -13,7 +14,8 @@
 
 namespace qmcplusplus
 {
-QMCFiniteSize::QMCFiniteSize() : skparser(NULL), ptclPool(NULL), myRcut(0.0), myConst(0.0), P(NULL), h(0.0), sphericalgrid(0), myGrid(NULL)
+QMCFiniteSize::QMCFiniteSize()
+    : skparser(NULL), ptclPool(NULL), myRcut(0.0), myConst(0.0), P(NULL), h(0.0), sphericalgrid(0), myGrid(NULL)
 {
   IndexType mtheta = 80;
   IndexType mphi   = 80;
@@ -123,6 +125,22 @@ void QMCFiniteSize::wfnPut(xmlNodePtr cur)
       if (cname == WaveFunctionComponentBuilder::detset_tag || cname == "sposet_builder")
       {
         qp = ptclPool.createESParticleSet(tcur, target, qp);
+      }
+      else if (cname == "jastrow")
+      {
+        Communicate* c;
+        OHMMS::Controller->initialize(0, NULL);
+        c                                      = OHMMS::Controller;
+        ParticleSetPool::PoolType ptclPoolType = ptclPool.getPool();
+        ParticleSet* elec                      = ptclPool.getParticleSet("e");
+        JastrowBuilder jb(c, *elec, ptclPoolType);
+        WaveFunctionComponent* jas = jb.buildComponent(tcur);
+        kSpaceJastrow* tmpk        = dynamic_cast<kSpaceJastrow*>(jas);
+        J2Type* tmpj2              = dynamic_cast<J2Type*>(jas);
+        if (tmpk)
+          kJs.push_back(tmpk);
+        if (tmpj2)
+          J2s.push_back(tmpj2);
       }
       tcur = tcur->next;
     }

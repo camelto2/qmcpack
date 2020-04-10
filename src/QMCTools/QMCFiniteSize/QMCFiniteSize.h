@@ -7,6 +7,14 @@
 #include "LongRange/LRCoulombSingleton.h"
 #include "einspline/bspline_structs.h"
 #include "einspline/nubspline_structs.h"
+#ifdef ENABLE_SOA
+#include "QMCWaveFunctions/Jastrow/J2OrbitalSoA.h"
+#else
+#include "QMCWaveFunctions/Jastrow/TwoBodyJastrowOrbital.h"
+#endif
+#include "QMCWaveFunctions/Jastrow/kSpaceJastrow.h"
+#include "QMCWaveFunctions/Jastrow/BsplineFunctor.h"
+
 
 namespace qmcplusplus
 {
@@ -21,6 +29,11 @@ public:
   typedef QMCTraits::RealType RealType;
   typedef QMCTraits::FullPrecRealType FullPrecRealType;
   typedef QMCTraits::PosType PosType;
+#ifdef ENABLE_SOA
+  typedef J2OrbitalSoA<BsplineFunctor<RealType>> J2Type;
+#else
+  typedef TwoBodyJastrowOrbital<BsplineFunctor<RealType>> J2Type;
+#endif
   QMCFiniteSize();
   QMCFiniteSize(SkParserBase* skparser_i);
   ~QMCFiniteSize(){};
@@ -44,6 +57,8 @@ public:
   void summary();
   RealType calcPotentialDiscrete(vector<RealType> sk);
   RealType calcPotentialInt(vector<RealType> sk);
+  RealType calcKineticDiscrete(vector<RealType> sk) { return 0.0; }
+  RealType calcKineticInt(vector<RealType> sk) { return 0.0; }
 
 private:
   SkParserBase* skparser;
@@ -56,6 +71,8 @@ private:
   GridType* myGrid;
   LRHandlerType* AA;
   RadFunctorType* rVs;
+  std::vector<kSpaceJastrow*> kJs;
+  std::vector<J2Type*> J2s;
   bool processPWH(xmlNodePtr cur);
   void wfnPut(xmlNodePtr cur);
   void initBreakup();
