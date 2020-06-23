@@ -2,7 +2,7 @@
 // This file is distributed under the University of Illinois/NCSA Open Source License.
 // See LICENSE file in top directory for details.
 //
-// Copyright (c) 2016 Jeongnim Kim and QMCPACK developers.
+// Copyright (c) 2020 QMCPACK developers.
 //
 // File developed by: Jeremy McMinnis, jmcminis@gmail.com, University of Illinois at Urbana-Champaign
 //                    Jeongnim Kim, jeongnim.kim@gmail.com, University of Illinois at Urbana-Champaign
@@ -26,6 +26,9 @@
 #include "QMCTools/QMCFiniteSize/SkParserASCII.h"
 #include "QMCTools/QMCFiniteSize/SkParserScalarDat.h"
 #include "QMCTools/QMCFiniteSize/SkParserHDF5.h"
+#include "QMCTools/QMCFiniteSize/NkParserBase.h"
+#include "QMCTools/QMCFiniteSize/NkParserHDF5.h"
+#include "QMCTools/QMCFiniteSize/NkParserASCII.h"
 
 #include "Numerics/OneDimGridBase.h"
 
@@ -57,13 +60,14 @@ int main(int argc, char** argv)
   std::cout.precision(12);
 
   std::unique_ptr<SkParserBase> skparser(nullptr);
+  std::unique_ptr<NkParserBase> nkparser(nullptr);
   int iargc = 2;
 
   while (iargc + 1 < argc)
   {
     std::string a(argv[iargc]);
     std::string anxt(argv[iargc + 1]);
-    if (a == "--ascii")
+    if (a == "--SKascii")
     {
       skparser = std::make_unique<SkParserASCII>();
       skparser->parse(anxt);
@@ -73,10 +77,20 @@ int main(int argc, char** argv)
       skparser = std::make_unique<SkParserScalarDat>();
       skparser->parse(anxt);
     }
-    else if (a == "--hdf5")
+    else if (a == "--SKhdf5")
     {
       skparser = std::make_unique<SkParserHDF5>();
       skparser->parse(anxt);
+    }
+    else if (a == "--NKhdf5")
+    {
+      nkparser = std::make_unique<NkParserHDF5>();
+      nkparser->parse(anxt);
+    }
+    else if (a == "--NKascii")
+    {
+      nkparser = std::make_unique<NkParserASCII>();
+      nkparser->parse(anxt);
     }
     else if (a == "--help")
     {
@@ -90,12 +104,7 @@ int main(int argc, char** argv)
     iargc++;
   }
 
-  if (skparser == NULL)
-  {
-    APP_ABORT("qmcfinitesize:  skparser failed to initialize");
-  }
-
-  QMCFiniteSize qmcfs(skparser.get());
+  QMCFiniteSize qmcfs(skparser.get(), nkparser.get());
   qmcfs.parse(std::string(argv[1]));
   qmcfs.validateXML();
   qmcfs.execute();

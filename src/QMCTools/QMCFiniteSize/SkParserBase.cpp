@@ -37,7 +37,6 @@ void SkParserBase::compute_grid()
   ygrid.set(ly, ry, Ny);
   zgrid.set(lz, rz, Nz);
 
-
   isGridComputed = true;
 }
 

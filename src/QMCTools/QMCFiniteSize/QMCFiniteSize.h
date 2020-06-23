@@ -3,6 +3,7 @@
 
 #include "QMCApp/QMCAppBase.h"
 #include "QMCTools/QMCFiniteSize/SkParserBase.h"
+#include "QMCTools/QMCFiniteSize/NkParserBase.h"
 #include "Particle/ParticleSetPool.h"
 #include "LongRange/LRCoulombSingleton.h"
 #include "einspline/bspline_structs.h"
@@ -29,31 +30,40 @@ public:
   typedef QMCTraits::FullPrecRealType FullPrecRealType;
   typedef QMCTraits::PosType PosType;
   QMCFiniteSize();
-  QMCFiniteSize(SkParserBase* skparser_i);
+  QMCFiniteSize(SkParserBase* skparser_i, NkParserBase* nkparser_i);
   ~QMCFiniteSize(){};
 
 
   inline void setSkParser(SkParserBase* skparser_i) { skparser = skparser_i; };
+  inline void setNkParser(NkParserBase* nkparser_i) { nkparser = nkparser_i; };
   bool validateXML();
   bool execute();
 
   void build_spherical_grid(IndexType mtheta, IndexType mphi);
   void getSkInfo(UBspline_3d_d* spline, vector<RealType>& symmatelem);
   UBspline_3d_d* getSkSpline(vector<RealType> sk, RealType limit = 1.0);
+  UBspline_3d_d* getNkSpline(vector<RealType> nk);
   RealType sphericalAvgSk(UBspline_3d_d* spline, RealType k);
+  RealType sphericalAvgNk(UBspline_3d_d* spline, RealType k);
 
   RealType integrate_spline(NUBspline_1d_d* spline, RealType a, RealType b, IndexType N);
   NUBspline_1d_d* spline_clamped(vector<RealType>& grid, vector<RealType>& vals, RealType lVal, RealType rVal);
 
   void initialize();
   void calcPotentialCorrection();
+  void calcKineticCorrection();
   void calcLeadingOrderCorrections();
   void summary();
   RealType calcPotentialDiscrete(vector<RealType> sk);
+  RealType calcKineticDiscrete(vector<RealType> nk);
   RealType calcPotentialInt(vector<RealType> sk);
+  RealType calcKineticInt(vector<RealType> nk);
+  void executeSkCorrection();
+  void executeNkCorrection();
 
 private:
   SkParserBase* skparser;
+  NkParserBase* nkparser;
   ParticleSetPool ptclPool;
   RealType myRcut;
   RealType myConst;
@@ -71,17 +81,25 @@ private:
   Grid_t gridz;
   void printSkRawSphAvg(const vector<RealType>& sk);
   void printSkSplineSphAvg(UBspline_3d_d* spline);
+  void printNkRawSphAvg();
+  void printNkSplineSphAvg(UBspline_3d_d* spline);
   KContainer Klist;
   vector<TinyVector<int, OHMMS_DIM>> kpts;
   vector<RealType> SK_raw;
   vector<RealType> SKerr_raw;
   vector<RealType> SK;
   vector<RealType> SKerr;
+  vector<RealType> NK_raw;
+  vector<RealType> NKerr_raw;
+  vector<RealType> NK;
+  vector<RealType> NKerr;
+  vector<PosType> NKkpts;
+  vector<PosType> NKkpts_raw;
   IndexType mtheta;
   IndexType mphi;
   IndexType NumSamples;
   RealType Ne, Vol, rs, rho;
-  RealType tlo, tloerr, vlo, vloerr, Vfs, Vfserr;
+  RealType tlo, tloerr, vlo, vloerr, Vfs, Vfserr, Tfs, Tfserr;
 };
 } // namespace qmcplusplus
 

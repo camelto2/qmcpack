@@ -16,6 +16,7 @@
 #include "Configuration.h"
 #include "QMCTools/QMCFiniteSize/SkParserBase.h"
 #include "QMCTools/QMCFiniteSize/SkParserASCII.h"
+#include "QMCTools/QMCFiniteSize/NkParserBase.h"
 #include "QMCTools/QMCFiniteSize/QMCFiniteSize.h"
 #include "Particle/ParticleSet.h"
 #include "Particle/ParticleSetPool.h"
@@ -28,7 +29,7 @@ TEST_CASE("FS parse Sk file", "[tools]")
   typedef QMCTraits::RealType RealType;
   typedef QMCTraits::PosType PosType;
   std::unique_ptr<SkParserBase> skparser = std::make_unique<SkParserASCII>();
-  std::string filename   = "simple_Sk.dat";
+  std::string filename                   = "simple_Sk.dat";
   skparser->parse(filename);
   std::vector<RealType> sk    = skparser->get_sk_raw();
   std::vector<RealType> skerr = skparser->get_skerr_raw();
@@ -46,7 +47,6 @@ TEST_CASE("FS parse Sk file", "[tools]")
   REQUIRE(grid[last][2] == Approx(75.39822368615503));
   REQUIRE(sk[last] == Approx(0.9999947116274186));
   REQUIRE(skerr[last] == Approx(0.01));
-
 }
 
 TEST_CASE("FS evaluate", "[tools]")
@@ -55,10 +55,11 @@ TEST_CASE("FS evaluate", "[tools]")
   typedef QMCTraits::PosType PosType;
 
   std::unique_ptr<SkParserBase> skparser = std::make_unique<SkParserASCII>();
-  std::string filename   = "simple_Sk.dat";
+  std::unique_ptr<NkParserBase> nkparser = nullptr;
+  std::string filename                   = "simple_Sk.dat";
   skparser->parse(filename);
 
-  QMCFiniteSize qfs(skparser.get());
+  QMCFiniteSize qfs(skparser.get(), nkparser.get());
   qfs.parse(std::string("simple_input.xml"));
   qfs.validateXML();
   qfs.initialize();

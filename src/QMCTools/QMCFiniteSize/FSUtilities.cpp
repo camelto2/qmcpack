@@ -14,13 +14,15 @@ void get_gridinfo_from_posgrid(const std::vector<PosType>& posgridlist,
   kx.resize(posgridlist.size());
 
   for (IndexType i = 0; i < posgridlist.size(); i++)
+  {
     kx[i] = posgridlist[i][axis];
+  }
 
   std::vector<RealType>::iterator it;
 
   std::sort(kx.begin(), kx.end());
 
-  it = std::unique(kx.begin(), kx.end());
+  it = std::unique(kx.begin(), kx.end(), [](RealType a, RealType b) { return std::abs(a - b) < 1e-8; });
 
   lx = *(kx.begin());
   rx = *(it - 1);
