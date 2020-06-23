@@ -522,7 +522,7 @@ void QMCFiniteSize::printNkRawSphAvg()
     RealType k2 = 0;
     for (int d = 0; d < 3; d++)
       k2 += NKkpts_raw[ik][d] * NKkpts_raw[ik][d];
-    k2 = round(k2 * 1e7) / 1e7;
+    k2 = round(k2 * 1e8) / 1e8;
     it = kshell.find(k2);
     if (it == kshell.end())
     {
@@ -541,7 +541,8 @@ void QMCFiniteSize::printNkRawSphAvg()
     RealType sphavg = 0.0;
     for (int n = 0; n < it->second.size(); n++)
       sphavg += NK_raw[it->second[n]] / it->second.size();
-    cout << it->first << " " << sphavg << endl;
+    cout << std::sqrt(it->first) << " " << sphavg << endl;
+    NKkmax = std::sqrt(it->first);
   }
 }
 
@@ -587,9 +588,8 @@ void QMCFiniteSize::printSkSplineSphAvg(UBspline_3d_d* spline)
 
 void QMCFiniteSize::printNkSplineSphAvg(UBspline_3d_d* spline)
 {
-  RealType kmax = AA->get_kc() * AA->get_kc() ; //print out to k = kc^2
   RealType nk   = 100;
-  RealType kdel = kmax / (nk - 1.0);
+  RealType kdel = NKkmax / (nk - 1.0);
 
   app_log() << "\nSpherically averaged splined n(k):\n";
   app_log() << setw(12) << "k" << setw(12) << "n(k)"
@@ -663,11 +663,10 @@ QMCFiniteSize::RealType QMCFiniteSize::calcKineticInt(vector<RealType> nk)
 {
   UBspline_3d_d* spline = getNkSpline(nk);
 
-  RealType kmax   = AA->get_kc() * AA->get_kc(); //integrate out to kc^2
   IndexType ngrid = 4 * NKkpts_raw.size(); //make a denser kgrid
 
   vector<RealType> nonunigrid1d, k4nk;
-  RealType dk = kmax / ngrid;
+  RealType dk = NKkmax / ngrid;
 
   nonunigrid1d.push_back(0.0);
   k4nk.push_back(0.0);
@@ -681,12 +680,12 @@ QMCFiniteSize::RealType QMCFiniteSize::calcKineticInt(vector<RealType> nk)
   }
 
   k4nk.push_back(0.0);
-  nonunigrid1d.push_back(kmax);
+  nonunigrid1d.push_back(NKkmax);
 
   NUBspline_1d_d* integrand = spline_clamped(nonunigrid1d, k4nk, 0.0, 0.0);
 
   //Integrate the spline and compute the thermodynamic limit.
-  RealType integratedval = integrate_spline(integrand, 0.0, kmax, 200);
+  RealType integratedval = integrate_spline(integrand, 0.0, NKkmax, 200);
   RealType intnorm       = 1.0 / 2.0 / M_PI / M_PI; //The volume factor here is because 1/Vol is
                                                     //included in QMCPACK's v_k.  See CoulombFunctor.
 

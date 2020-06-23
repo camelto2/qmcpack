@@ -95,6 +95,7 @@ private:
   vector<RealType> NKerr;
   vector<PosType> NKkpts;
   vector<PosType> NKkpts_raw;
+  RealType NKkmax;
   IndexType mtheta;
   IndexType mphi;
   IndexType NumSamples;
