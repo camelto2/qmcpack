@@ -26,7 +26,7 @@ void NkParserHDF5::parse(const string& fname)
     k[0] = ktmp[3 * ik];
     k[1] = ktmp[3 * ik + 1];
     k[2] = ktmp[3 * ik + 2];
-    kgrid.push_back(k);
+    kgridraw.push_back(k);
   }
 
   statfile.getShape<int>("nofk/value", readShape);
@@ -44,11 +44,14 @@ void NkParserHDF5::parse(const string& fname)
     int ieq = estimateEquilibration(block_data);
     RealType avg, err;
     getStats(block_data, avg, err, ieq);
-    nk.push_back(avg);
-    nk_err.push_back(err);
+    nkraw.push_back(avg);
+    nkerr_raw.push_back(err);
   }
 
   statfile.close();
+
+  isParseSuccess = true;
+
 }
 
 } // namespace qmcplusplus
