@@ -43,13 +43,13 @@ public:
   void getSkInfo(UBspline_3d_d* spline, vector<RealType>& symmatelem);
   UBspline_3d_d* getSkSpline(vector<RealType> sk, RealType limit = 1.0);
   UBspline_3d_d* getNkSpline(vector<RealType> nk);
-  RealType sphericalAvgSk(UBspline_3d_d* spline, RealType k);
-  RealType sphericalAvgNk(UBspline_3d_d* spline, RealType k);
 
   RealType integrate_spline(NUBspline_1d_d* spline, RealType a, RealType b, IndexType N);
   NUBspline_1d_d* spline_clamped(vector<RealType>& grid, vector<RealType>& vals, RealType lVal, RealType rVal);
 
   void initialize();
+  void initializeSkCorrection();
+  void initializeNkCorrection();
   void calcPotentialCorrection();
   void calcKineticCorrection();
   void calcLeadingOrderCorrections();
@@ -81,8 +81,10 @@ private:
   Grid_t gridz;
   void printSkRawSphAvg(const vector<RealType>& sk);
   void printSkSplineSphAvg(UBspline_3d_d* spline);
-  void printNkRawSphAvg();
+  void printNkRawSphAvg(const vector<RealType>& nk);
   void printNkSplineSphAvg(UBspline_3d_d* spline);
+  RealType sphericalAvgSk(UBspline_3d_d* spline, RealType k);
+  RealType sphericalAvgNk(UBspline_3d_d* spline, RealType k);
   KContainer Klist;
   vector<TinyVector<int, OHMMS_DIM>> kpts;
   vector<RealType> SK_raw;

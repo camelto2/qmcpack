@@ -462,6 +462,42 @@ void QMCFiniteSize::initialize()
   kpts  = Klist.kpts; //These are in reduced coordinates.
                       //Easier to spline, but will have to convert
                       //for real space integration.
+                      //
+}
+
+void QMCFiniteSize::initializeSkCorrection()
+{
+  if (!skparser->has_grid())
+    skparser->set_grid(kpts);
+  skparser->get_grid(gridx, gridy, gridz);
+}
+
+void QMCFiniteSize::initializeNkCorrection()
+{
+  //get kgrid from nkparser
+  NKkpts_raw = nkparser->get_grid_raw();
+  
+  //find max kpoint, for printing and integration
+  for (int i = 0; i < NKkpts_raw.size(); i++)
+  {
+    RealType kmag = 0.0;
+    for (int d = 0; d < 3; d++)
+      kmag += NKkpts_raw[i][d] * NKkpts_raw[i][d];
+    kmag = std::sqrt(kmag);
+    if (kmag > NKkmax)
+      NKkmax = kmag;
+  }
+
+  //create unitgrid from raw data
+  NKkpts.resize(NKkpts_raw.size());
+  for (int i = 0; i < NKkpts.size(); i++)
+  {
+    NKkpts[i] = P->Lattice.k_unit(NKkpts_raw[i]);
+    cout << NKkpts[i] << endl;
+  }
+  if (!nkparser->has_grid())
+    nkparser->set_grid(NKkpts); //spline on unit kgrid
+  nkparser->get_grid(gridx, gridy, gridz);
 }
 
 void QMCFiniteSize::printSkRawSphAvg(const vector<RealType>& sk)
@@ -508,7 +544,7 @@ void QMCFiniteSize::printSkRawSphAvg(const vector<RealType>& sk)
   }
 }
 
-void QMCFiniteSize::printNkRawSphAvg()
+void QMCFiniteSize::printNkRawSphAvg(const vector<RealType>& nk)
 {
   app_log() << "\n=========================================================\n";
   app_log() << " n(k) Spherical Average From Data\n";
@@ -540,9 +576,8 @@ void QMCFiniteSize::printNkRawSphAvg()
   {
     RealType sphavg = 0.0;
     for (int n = 0; n < it->second.size(); n++)
-      sphavg += NK_raw[it->second[n]] / it->second.size();
+      sphavg += nk[it->second[n]] / it->second.size();
     cout << std::sqrt(it->first) << " " << sphavg << endl;
-    NKkmax = std::sqrt(it->first);
   }
 }
 
@@ -610,6 +645,7 @@ QMCFiniteSize::RealType QMCFiniteSize::calcPotentialDiscrete(vector<RealType> sk
 
 QMCFiniteSize::RealType QMCFiniteSize::calcKineticDiscrete(vector<RealType> nk)
 {
+  printNkRawSphAvg(nk);
   //This is the \frac{1}{\rho Omega} \sum_{\mathbf{k}} \frac{k^2}{2} n(\mathbf{k})
   RealType sum = 0.0;
   assert(NKkpts_raw.size() == nk.size());
@@ -662,6 +698,8 @@ QMCFiniteSize::RealType QMCFiniteSize::calcPotentialInt(vector<RealType> sk)
 QMCFiniteSize::RealType QMCFiniteSize::calcKineticInt(vector<RealType> nk)
 {
   UBspline_3d_d* spline = getNkSpline(nk);
+
+  printNkSplineSphAvg(spline);
 
   IndexType ngrid = 4 * NKkpts_raw.size(); //make a denser kgrid
 
@@ -787,8 +825,10 @@ void QMCFiniteSize::calcLeadingOrderCorrections()
 }
 
 
+
 void QMCFiniteSize::executeSkCorrection()
 {
+
   //Print Spherical Avg from data
   SK_raw    = skparser->get_sk_raw();
   SKerr_raw = skparser->get_skerr_raw();
@@ -802,12 +842,6 @@ void QMCFiniteSize::executeSkCorrection()
   }
   printSkRawSphAvg(SK_raw);
 
-  if (!skparser->has_grid())
-    skparser->set_grid(kpts);
-  cout << "Grid computed.\n";
-  skparser->get_grid(gridx, gridy, gridz);
-
-  //Print Spherical Avg from spline
   skparser->get_sk(SK, SKerr); //now have SK on full grid
   if (skparser->is_normalized() == false)
   {
@@ -826,20 +860,10 @@ void QMCFiniteSize::executeSkCorrection()
 
 void QMCFiniteSize::executeNkCorrection()
 {
-  NKkpts_raw = nkparser->get_grid_raw();
   NK_raw     = nkparser->get_nk_raw();
   NKerr_raw  = nkparser->get_nkerr_raw();
+  printNkRawSphAvg(NK_raw);
 
-  printNkRawSphAvg();
-
-  NKkpts.resize(NKkpts_raw.size());
-  for (int i = 0; i < NKkpts.size(); i++)
-  {
-    NKkpts[i] = P->Lattice.k_unit(NKkpts_raw[i]);
-  }
-  if (!nkparser->has_grid())
-    nkparser->set_grid(NKkpts); //spline on unit kgrid
-  nkparser->get_grid(gridx, gridy, gridz);
   nkparser->get_nk(NK, NKerr);
   UBspline_3d_d* spline = getNkSpline(NK);
   printNkSplineSphAvg(spline);
@@ -881,10 +905,16 @@ bool QMCFiniteSize::execute()
   initialize();
 
   if (skparser)
+  {
+    initializeSkCorrection();
     executeSkCorrection();
+  }
 
   if (nkparser)
+  {
+    initializeNkCorrection();
     executeNkCorrection();
+  }
 
   summary();
 

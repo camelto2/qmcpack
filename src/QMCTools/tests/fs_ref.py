@@ -51,6 +51,7 @@ with open('simple_Sk.dat','w') as f:
         f.write('{0} {1} {2} {3} {4}\n'.format(kcart[0],kcart[1],kcart[2],sk,0.01))
 
 
+
 print("Ewald Handler Corrections: ")
 #corrections
 vol = np.abs(np.linalg.det(A))
@@ -63,3 +64,47 @@ for i in range(len(kpts)):
 print("  Discrete: {}".format(vsum))
 
 vint = 1.066688342657357 #from analytic mathematica calculation
+print("  Integral: {}".format(vint))
+
+# exp(-k^2) and k is unit k
+kpts = kpts.tolist()
+kmag = kmag.tolist()
+for i in np.linspace(-0.9,0.9,19):
+    for j in np.linspace(-0.9,0.9,19):
+        for k in np.linspace(-0.9,0.9,19):
+            if (i == 0) and (j==0) and (k==0):
+                continue
+            kvec = np.matrix([i,j,k])
+            kcart = np.array(np.dot(kvec,B)).reshape((3,))
+            if np.linalg.norm(kcart) > kc:
+                continue
+            kpts.append(np.array(kvec).reshape((3,)))
+            kmag.append(np.linalg.norm(kcart))
+kpts = np.array(kpts)
+kmag = np.array(kmag)
+idx = np.argsort(kmag)
+kpts = kpts[idx]
+kmag = kmag[idx]
+nks = [] 
+with open('simple_Nk.dat','w') as f:
+    f.write('#  kx  ky  kz  nk  err\n')
+    for i in range(len(kpts)):
+        kcart = np.array(np.dot(kpts[i],B)).reshape((3,))
+        kunit = kcart / (2*np.pi) 
+        k = np.linalg.norm(kunit)
+        nk = np.exp(-0.075*k*k)
+        nks.append(nk)
+        f.write('{0} {1} {2} {3} {4}\n'.format(kcart[0],kcart[1],kcart[2],nk,0.01))
+print("Momentum Distribution Corrections: ")
+#corrections
+Ne = 14
+rho = Ne / vol
+tsum = 0
+print("kmax: {} ... kmax cutoff used in mathematica for integral".format(kmag[-1]))
+for i in range(len(kpts)):
+    k2 = kmag[i]*kmag[i]
+    tsum += 0.5*nks[i]*k2 / rho / vol
+print("  Discrete: {}".format(tsum))
+
+tint = 7643.331015321769 #from analytic mathematica calulation up to kmax above
+print("  Integral: {}".format(tint))

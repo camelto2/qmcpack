@@ -17,6 +17,7 @@
 #include "QMCTools/QMCFiniteSize/SkParserBase.h"
 #include "QMCTools/QMCFiniteSize/SkParserASCII.h"
 #include "QMCTools/QMCFiniteSize/NkParserBase.h"
+#include "QMCTools/QMCFiniteSize/NkParserASCII.h"
 #include "QMCTools/QMCFiniteSize/QMCFiniteSize.h"
 #include "Particle/ParticleSet.h"
 #include "Particle/ParticleSetPool.h"
@@ -26,6 +27,7 @@ namespace qmcplusplus
 {
 TEST_CASE("FS parse Sk file", "[tools]")
 {
+  std::cout << "Parsing structure factor" << std::endl;
   typedef QMCTraits::RealType RealType;
   typedef QMCTraits::PosType PosType;
   std::unique_ptr<SkParserBase> skparser = std::make_unique<SkParserASCII>();
@@ -49,15 +51,44 @@ TEST_CASE("FS parse Sk file", "[tools]")
   REQUIRE(skerr[last] == Approx(0.01));
 }
 
+TEST_CASE("FS parse Nk file", "[tools]")
+{
+  std::cout << "Parsing momentum distribution" << std::endl;
+  typedef QMCTraits::RealType RealType;
+  typedef QMCTraits::PosType PosType;
+  std::unique_ptr<NkParserBase> nkparser = std::make_unique<NkParserASCII>();
+  std::string filename                   = "simple_Nk.dat";
+  nkparser->parse(filename);
+  std::vector<RealType> nk    = nkparser->get_nk_raw();
+  std::vector<RealType> nkerr = nkparser->get_nkerr_raw();
+  std::vector<PosType> grid   = nkparser->get_grid_raw();
+
+  REQUIRE(grid[0][0] == Approx(-0.6283185307179586));
+  REQUIRE(grid[0][1] == Approx(0.0));
+  REQUIRE(grid[0][2] == Approx(0.0));
+  REQUIRE(nk[0] == Approx(0.99925028117));
+  REQUIRE(nkerr[0] == Approx(0.01));
+
+  int last = nk.size() - 1;
+  REQUIRE(grid[last][0] == Approx(-18.84955592153876));
+  REQUIRE(grid[last][1] == Approx(18.84955592153876));
+  REQUIRE(grid[last][2] == Approx(75.39822368615503));
+  REQUIRE(nk[last] == Approx(5.288372581358973E-06));
+  REQUIRE(nkerr[last] == Approx(0.01));
+}
+
 TEST_CASE("FS evaluate", "[tools]")
 {
+  std::cout << "Evaluating FS corrections" << std::endl;
   typedef QMCTraits::RealType RealType;
   typedef QMCTraits::PosType PosType;
 
   std::unique_ptr<SkParserBase> skparser = std::make_unique<SkParserASCII>();
-  std::unique_ptr<NkParserBase> nkparser = nullptr;
+  std::unique_ptr<NkParserBase> nkparser = std::make_unique<NkParserASCII>();;
   std::string filename                   = "simple_Sk.dat";
   skparser->parse(filename);
+  filename = "simple_Nk.dat";
+  nkparser->parse(filename);
 
   QMCFiniteSize qfs(skparser.get(), nkparser.get());
   qfs.parse(std::string("simple_input.xml"));
@@ -65,6 +96,7 @@ TEST_CASE("FS evaluate", "[tools]")
   qfs.initialize();
 
   /// reference numbers and simple_Sk.dat created by fs_ref.py
+  qfs.initializeSkCorrection();
   std::vector<RealType> skr = skparser->get_sk_raw();
   RealType vsum             = qfs.calcPotentialDiscrete(skr);
   REQUIRE(vsum == Approx(1.0547517220577185));
@@ -73,6 +105,18 @@ TEST_CASE("FS evaluate", "[tools]")
   skparser->get_sk(sk, skerr);
   RealType vint = qfs.calcPotentialInt(sk);
   REQUIRE(vint == Approx(1.066688342657357).epsilon(0.001));
+
+  /// reference numbers and simple_Nk.dat created by fs_ref.py
+  qfs.initializeNkCorrection();
+  std::vector<RealType> nkr = nkparser->get_nk_raw();
+  RealType tsum             = qfs.calcKineticDiscrete(nkr);
+  REQUIRE(tsum == Approx(15639.497330297849));
+  
+  std::vector<RealType> nk, nkerr;
+  nkparser->get_nk(nk, nkerr);
+  RealType tint = qfs.calcKineticInt(nk);
+  //REQUIRE(tint == Approx(7643.331015321769).epsilon(0.001));
+  cout << tint << endl;
 }
 
 } // namespace qmcplusplus
