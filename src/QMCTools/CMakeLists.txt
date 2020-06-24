@@ -92,6 +92,9 @@ ENDIF()
 INSTALL(TARGETS qmcfinitesize
         RUNTIME DESTINATION bin)
 
+ADD_EXECUTABLE(statProcessor statProcessor.cpp)
+INSTALL(TARGETS statProcessor RUNTIME DESTINATION BIN)
+
 #ppconvert
 if( BUILD_PPCONVERT )
   SUBDIRS(ppconvert)
