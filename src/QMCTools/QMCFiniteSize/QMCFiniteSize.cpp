@@ -645,7 +645,6 @@ QMCFiniteSize::RealType QMCFiniteSize::calcPotentialDiscrete(vector<RealType> sk
 
 QMCFiniteSize::RealType QMCFiniteSize::calcKineticDiscrete(vector<RealType> nk)
 {
-  printNkRawSphAvg(nk);
   //This is the \frac{1}{\rho Omega} \sum_{\mathbf{k}} \frac{k^2}{2} n(\mathbf{k})
   RealType sum = 0.0;
   assert(NKkpts_raw.size() == nk.size());
@@ -698,8 +697,6 @@ QMCFiniteSize::RealType QMCFiniteSize::calcPotentialInt(vector<RealType> sk)
 QMCFiniteSize::RealType QMCFiniteSize::calcKineticInt(vector<RealType> nk)
 {
   UBspline_3d_d* spline = getNkSpline(nk);
-
-  printNkSplineSphAvg(spline);
 
   IndexType ngrid = 4 * NKkpts_raw.size(); //make a denser kgrid
 
