@@ -93,6 +93,10 @@ INSTALL(TARGETS qmcfinitesize
         RUNTIME DESTINATION bin)
 
 ADD_EXECUTABLE(statProcessor statProcessor.cpp)
+TARGET_LINK_LIBRARIES(statProcessor fstool)
+IF(USE_OBJECT_TARGET)
+  TARGET_LINK_LIBRARIES(statprocessor qmcparticle qmcutil containers)
+ENDIF()
 INSTALL(TARGETS statProcessor RUNTIME DESTINATION BIN)
 
 #ppconvert

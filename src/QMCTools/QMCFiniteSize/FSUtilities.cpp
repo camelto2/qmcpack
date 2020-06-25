@@ -1,4 +1,5 @@
 #include "FSUtilities.h"
+#include "Utilities/RandomGenerator.h"
 #include <algorithm>
 
 namespace qmcplusplus
@@ -45,6 +46,49 @@ void getStats(const std::vector<RealType>& vals, RealType& avg, RealType& err, i
   }
   err /= n;
   err = std::sqrt(err);
+}
+
+void getStats(const std::vector<RealType>& vals,
+              const std::vector<RealType>& errs,
+              RealType& avg,
+              RealType& err,
+              int start)
+{
+  avg             = 0.0;
+  err             = 0.0;
+  int n           = vals.size() - start;
+  RealType varsum = 0.0;
+  for (int i = start; i < vals.size(); i++)
+  {
+    avg += vals[i] / n;
+    varsum += errs[i] * errs[i] / n;
+  }
+  err = std::sqrt(varsum / n);
+}
+
+void getStatsWithResampling(const std::vector<RealType>& vals,
+                            const std::vector<RealType>& errs,
+                            RealType& avg,
+                            RealType& err,
+                            int start,
+                            int NumSamples)
+{
+  RandomGenerator_t rng;
+  std::vector<RealType> avgs;
+  for (int is = 0; is < NumSamples; is++)
+  {
+    std::vector<RealType> newVals;
+    for (int i = start; i < vals.size(); i++)
+    {
+      FullPrecRealType chi;
+      rng.generate_normal(&chi, 1);
+      newVals.push_back(vals[i] + chi * errs[i]);
+    }
+    RealType tmp1, tmp2;
+    getStats(newVals, tmp1, tmp2);
+    avgs.push_back(tmp1);
+  }
+  getStats(avgs, avg, err);
 }
 
 int estimateEquilibration(const std::vector<RealType>& vals, RealType frac)
