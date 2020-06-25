@@ -19,10 +19,10 @@
 #include <algorithm>
 #include <cmath>
 #include "QMCTools/QMCFiniteSize/SkParserHDF5.h"
+#include "QMCTools/QMCFiniteSize/NkParserHDF5.h"
 #include "QMCTools/QMCFiniteSize/FSUtilities.h"
+#include "Particle/Lattice/CrystalLattice.h"
 using namespace qmcplusplus;
-
-const int NumSamples = 1024;
 
 typedef SkParserHDF5::RealType RealType;
 typedef SkParserHDF5::FullPrecRealType FullPrecRealType;
@@ -94,6 +94,37 @@ void getSkDataPerTwist(std::string filename,
       kpts_all.push_back(kpts[i]);
       vals_all.push_back(val[i] / nElec); //makes a normalized S(k)
       errs_all.push_back(err[i] / nElec);
+    }
+  }
+}
+
+void getNkDataPerTwist(std::string filename,
+                       int weight,
+                       const PosType& twist,
+                       std::vector<PosType>& kpts_all,
+                       std::vector<RealType>& vals_all,
+                       std::vector<RealType>& errs_all)
+{
+  NkParserHDF5 nkparser;
+  nkparser.parse(filename); //performs block averaging and equilibration estimate
+  std::vector<PosType> kpts = nkparser.get_grid_raw();
+  std::vector<RealType> val = nkparser.get_nk_raw();
+  std::vector<RealType> err = nkparser.get_nkerr_raw();
+  assert(kpts.size() == val.size());
+  assert(kpts.size() == err.size());
+
+  for (int ik = 0; ik < kpts.size(); ik++)
+  {
+    kpts[ik] += twist;
+  }
+
+  for (int j = 0; j < weight; j++)
+  {
+    for (int i = 0; i < kpts.size(); i++)
+    {
+      kpts_all.push_back(kpts[i]);
+      vals_all.push_back(val[i]); //makes a normalized S(k)
+      errs_all.push_back(err[i]);
     }
   }
 }
@@ -180,6 +211,8 @@ int main(int argc, char** argv)
   std::vector<int> twistWeights;
   bool computeSK = false;
   bool computeNK = false;
+  std::vector<std::vector<RealType>> lat;
+  std::vector<PosType> superTwists;
 
   int iargc = 2;
   while (iargc < argc)
@@ -215,6 +248,20 @@ int main(int argc, char** argv)
       iargc++;
       nElec = std::stoi(std::string(argv[iargc]));
     }
+    else if (a == "--ptvs")
+    {
+      iargc++;
+      for (int v = 0; v < 3; v++)
+      {
+        std::vector<RealType> vec;
+        for (int d = 0; d < 3; d++)
+        {
+          vec.push_back(std::stod(std::string(argv[iargc])));
+          iargc++;
+        }
+        lat.push_back(vec);
+      }
+    }
     iargc++;
   }
   iargc = 1;
@@ -230,6 +277,20 @@ int main(int argc, char** argv)
         iargc++;
       }
     }
+    else if (a == "--supertwists")
+    {
+      iargc++;
+      for (int tw = 0; tw < nTwists; tw++)
+      {
+        PosType v;
+        for (int d = 0; d < 3; d++)
+        {
+          v[d] = std::stod(std::string(argv[iargc]));
+          iargc++;
+        }
+        superTwists.push_back(v);
+      }
+    }
     iargc++;
   }
   if (twistWeights.size() == 0)
@@ -239,6 +300,7 @@ int main(int argc, char** argv)
       twistWeights.push_back(1.0);
     }
   }
+
 
   if (computeSK)
   {
@@ -296,6 +358,84 @@ int main(int argc, char** argv)
       getExtrapolatedEstimator(vmc_kpts, vmc_sk, vmc_skerr, dmc_kpts, dmc_sk, dmc_skerr, ext_sk, ext_skerr);
       writeToFile(filename, dmc_kpts, ext_sk, ext_skerr);
     }
+  }
+
+  if (computeNK)
+  {
+    std::vector<PosType> vmc_kpts;
+    std::vector<RealType> vmc_nk;
+    std::vector<RealType> vmc_nkerr;
+    std::vector<PosType> dmc_kpts;
+    std::vector<RealType> dmc_nk;
+    std::vector<RealType> dmc_nkerr;
+    std::vector<RealType> ext_nk;
+    std::vector<RealType> ext_nkerr;
+    if (lat.size() == 0)
+    {
+      std::cout << "For n(k), need to include a lattice and supertiwsts, to convert back to underlying lattice"
+                << std::endl;
+      return 0;
+    }
+    if (superTwists.size() == 0)
+    {
+      std::cout << "For n(k), need to include a lattice and supertwists, to convert back to underlying lattice"
+                << std::endl;
+      return 0;
+    }
+    CrystalLattice<RealType, 3> lattice;
+    for (int i = 0; i < lat.size(); i++)
+    {
+      for (int j = 0; j < lat[i].size(); j++)
+        lattice.R(i, j) = lat[i][j];
+    }
+    lattice.reset();
+    if (foundVMC)
+    {
+      std::cout << "Processing NK VMC files: " << std::endl;
+      for (int tw = 0; tw < nTwists; tw++)
+      {
+        std::stringstream ss;
+        ss << basename << ".g" << std::setfill('0') << std::setw(3) << tw << ".s" << std::setfill('0') << std::setw(3)
+           << vmcIdx << ".stat.h5";
+        std::cout << "  " << ss.str() << "  with weight: " << twistWeights[tw] << std::endl;
+        getNkDataPerTwist(ss.str(), twistWeights[tw], lattice.k_cart(superTwists[tw]), vmc_kpts, vmc_nk, vmc_nkerr);
+      }
+    }
+    if (foundDMC)
+    {
+      std::cout << "Processing NK DMC files: " << std::endl;
+      for (int tw = 0; tw < nTwists; tw++)
+      {
+        std::stringstream ss;
+        ss << basename << ".g" << std::setfill('0') << std::setw(3) << tw << ".s" << std::setfill('0') << std::setw(3)
+           << dmcIdx << ".stat.h5";
+        std::cout << "  " << ss.str() << "  with weight: " << twistWeights[tw] << std::endl;
+        getNkDataPerTwist(ss.str(), twistWeights[tw], lattice.k_cart(superTwists[tw]), dmc_kpts, dmc_nk, dmc_nkerr);
+      }
+    }
+
+    if (foundVMC)
+    {
+      std::string filename = "NK_VMC_twistavg.dat";
+      std::cout << "Writing twist-averaged n(k) VMC estimator to " << filename << std::endl;
+      getAveragedData(vmc_kpts, vmc_nk, vmc_nkerr);
+      writeToFile(filename, vmc_kpts, vmc_nk, vmc_nkerr);
+    }
+    if (foundDMC)
+    {
+      std::string filename = "NK_DMC_twistavg.dat";
+      std::cout << "Writing twist-averaged n(k) DMC estimator to " << filename << std::endl;
+      getAveragedData(vmc_kpts, dmc_nk, dmc_nkerr);
+      writeToFile(filename, dmc_kpts, dmc_nk, dmc_nkerr);
+    }
+    if (foundVMC && foundDMC)
+    {
+      std::string filename = "NK_EXTRAP_twistavg.dat";
+      std::cout << "Writing twist-averaged n(k) extrapolated estimator to " << filename << std::endl;
+      getExtrapolatedEstimator(vmc_kpts, vmc_nk, vmc_nkerr, dmc_kpts, dmc_nk, dmc_nkerr, ext_nk, ext_nkerr);
+      writeToFile(filename, dmc_kpts, ext_nk, ext_nkerr);
+    }
+  
   }
 
   return 0;
