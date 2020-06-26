@@ -100,7 +100,6 @@ void getSkDataPerTwist(std::string filename,
 
 void getNkDataPerTwist(std::string filename,
                        int weight,
-                       const PosType& twist,
                        std::vector<PosType>& kpts_all,
                        std::vector<RealType>& vals_all,
                        std::vector<RealType>& errs_all)
@@ -112,11 +111,6 @@ void getNkDataPerTwist(std::string filename,
   std::vector<RealType> err = nkparser.get_nkerr_raw();
   assert(kpts.size() == val.size());
   assert(kpts.size() == err.size());
-
-  for (int ik = 0; ik < kpts.size(); ik++)
-  {
-    kpts[ik] += twist;
-  }
 
   for (int j = 0; j < weight; j++)
   {
@@ -248,20 +242,6 @@ int main(int argc, char** argv)
       iargc++;
       nElec = std::stoi(std::string(argv[iargc]));
     }
-    else if (a == "--ptvs")
-    {
-      iargc++;
-      for (int v = 0; v < 3; v++)
-      {
-        std::vector<RealType> vec;
-        for (int d = 0; d < 3; d++)
-        {
-          vec.push_back(std::stod(std::string(argv[iargc])));
-          iargc++;
-        }
-        lat.push_back(vec);
-      }
-    }
     iargc++;
   }
   iargc = 1;
@@ -275,20 +255,6 @@ int main(int argc, char** argv)
       {
         twistWeights.push_back(std::stoi(argv[iargc]));
         iargc++;
-      }
-    }
-    else if (a == "--supertwists")
-    {
-      iargc++;
-      for (int tw = 0; tw < nTwists; tw++)
-      {
-        PosType v;
-        for (int d = 0; d < 3; d++)
-        {
-          v[d] = std::stod(std::string(argv[iargc]));
-          iargc++;
-        }
-        superTwists.push_back(v);
       }
     }
     iargc++;
@@ -370,25 +336,6 @@ int main(int argc, char** argv)
     std::vector<RealType> dmc_nkerr;
     std::vector<RealType> ext_nk;
     std::vector<RealType> ext_nkerr;
-    if (lat.size() == 0)
-    {
-      std::cout << "For n(k), need to include a lattice and supertiwsts, to convert back to underlying lattice"
-                << std::endl;
-      return 0;
-    }
-    if (superTwists.size() == 0)
-    {
-      std::cout << "For n(k), need to include a lattice and supertwists, to convert back to underlying lattice"
-                << std::endl;
-      return 0;
-    }
-    CrystalLattice<RealType, 3> lattice;
-    for (int i = 0; i < lat.size(); i++)
-    {
-      for (int j = 0; j < lat[i].size(); j++)
-        lattice.R(i, j) = lat[i][j];
-    }
-    lattice.reset();
     if (foundVMC)
     {
       std::cout << "Processing NK VMC files: " << std::endl;
@@ -398,7 +345,7 @@ int main(int argc, char** argv)
         ss << basename << ".g" << std::setfill('0') << std::setw(3) << tw << ".s" << std::setfill('0') << std::setw(3)
            << vmcIdx << ".stat.h5";
         std::cout << "  " << ss.str() << "  with weight: " << twistWeights[tw] << std::endl;
-        getNkDataPerTwist(ss.str(), twistWeights[tw], lattice.k_cart(superTwists[tw]), vmc_kpts, vmc_nk, vmc_nkerr);
+        getNkDataPerTwist(ss.str(), twistWeights[tw], vmc_kpts, vmc_nk, vmc_nkerr);
       }
     }
     if (foundDMC)
@@ -410,7 +357,7 @@ int main(int argc, char** argv)
         ss << basename << ".g" << std::setfill('0') << std::setw(3) << tw << ".s" << std::setfill('0') << std::setw(3)
            << dmcIdx << ".stat.h5";
         std::cout << "  " << ss.str() << "  with weight: " << twistWeights[tw] << std::endl;
-        getNkDataPerTwist(ss.str(), twistWeights[tw], lattice.k_cart(superTwists[tw]), dmc_kpts, dmc_nk, dmc_nkerr);
+        getNkDataPerTwist(ss.str(), twistWeights[tw], dmc_kpts, dmc_nk, dmc_nkerr);
       }
     }
 
@@ -425,7 +372,7 @@ int main(int argc, char** argv)
     {
       std::string filename = "NK_DMC_twistavg.dat";
       std::cout << "Writing twist-averaged n(k) DMC estimator to " << filename << std::endl;
-      getAveragedData(vmc_kpts, dmc_nk, dmc_nkerr);
+      getAveragedData(dmc_kpts, dmc_nk, dmc_nkerr);
       writeToFile(filename, dmc_kpts, dmc_nk, dmc_nkerr);
     }
     if (foundVMC && foundDMC)
