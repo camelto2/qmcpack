@@ -70,9 +70,9 @@ TEST_CASE("FS parse Nk file", "[tools]")
   REQUIRE(nkerr[0] == Approx(0.01));
 
   int last = nk.size() - 1;
-  REQUIRE(grid[last][0] == Approx(-18.84955592153876));
-  REQUIRE(grid[last][1] == Approx(18.84955592153876));
-  REQUIRE(grid[last][2] == Approx(75.39822368615503));
+  REQUIRE(grid[last][0] == Approx(50.26548245743669));
+  REQUIRE(grid[last][1] == Approx(43.982297150257104));
+  REQUIRE(grid[last][2] == Approx(-43.9822297150257104));
   REQUIRE(nk[last] == Approx(5.288372581358973E-06));
   REQUIRE(nkerr[last] == Approx(0.01));
 }
