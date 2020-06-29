@@ -18,33 +18,20 @@ void NkParserBase::compute_grid()
   if (!isParseSuccess)
     APP_ABORT("NkParserBase::compute_grid(..) : Initial parse failed");
 
-  RealType lx(0), rx(0);
-  RealType ly(0), ry(0);
-  RealType lz(0), rz(0);
-
-  RealType dx(0), dy(0), dz(0);
-  IndexType Nx(0), Ny(0), Nz(0);
-
-  get_gridinfo_from_posgrid(kgridraw, 0, lx, rx, dx, Nx);
-  get_gridinfo_from_posgrid(kgridraw, 1, ly, ry, dy, Ny);
-  get_gridinfo_from_posgrid(kgridraw, 2, lz, rz, dz, Nz);
-
-  kgrid.resize(Nx * Ny * Nz);
-
-  xgrid.set(lx, rx, Nx);
-  ygrid.set(ly, ry, Ny);
-  zgrid.set(lz, rz, Nz);
+  xgrid = get_NUgrid_from_posgrid(kgridraw, 0);
+  ygrid = get_NUgrid_from_posgrid(kgridraw, 1);
+  zgrid = get_NUgrid_from_posgrid(kgridraw, 2);
 
   isGridComputed = true;
 }
 
-void NkParserBase::get_grid(Grid_t& xgrid_i, Grid_t& ygrid_i, Grid_t& zgrid_i)
+void NkParserBase::get_grid(NUgrid*& xgrid_i, NUgrid*& ygrid_i, NUgrid*& zgrid_i)
 {
   if (!isGridComputed)
     compute_grid();
-  xgrid_i.set(xgrid.rmin(), xgrid.rmax(), xgrid.size());
-  ygrid_i.set(ygrid.rmin(), ygrid.rmax(), ygrid.size());
-  zgrid_i.set(zgrid.rmin(), zgrid.rmax(), zgrid.size());
+  xgrid_i = xgrid;
+  ygrid_i = ygrid;
+  zgrid_i = zgrid;
 }
 
 void NkParserBase::set_grid(const vector<PosType>& kgridraw_i)
@@ -77,18 +64,19 @@ void NkParserBase::compute_nk()
   IndexType Nx(0), Ny(0), Nz(0);
   IndexType newindex(0);
 
-  Nx = xgrid.size();
-  Ny = ygrid.size();
-  Nz = zgrid.size();
+  Nx = xgrid->num_points;
+  Ny = ygrid->num_points;
+  Nz = zgrid->num_points;
 
+  kgrid.resize(Nx * Ny * Nz, 0.0);
   nk.resize(Nx * Ny * Nz, 0.0);
   nkerr.resize(Nx * Ny * Nz, 0.0);
 
   for (IndexType i = 0; i < kgridraw.size(); i++)
   {
-    nx = xgrid.getIndex(kgridraw[i][0]);
-    ny = ygrid.getIndex(kgridraw[i][1]);
-    nz = zgrid.getIndex(kgridraw[i][2]);
+    nx = xgrid->reverse_map(xgrid, kgridraw[i][0]);
+    ny = ygrid->reverse_map(ygrid, kgridraw[i][1]);
+    nz = zgrid->reverse_map(zgrid, kgridraw[i][2]);
 
     newindex        = nx * Ny * Nz + ny * Nz + nz;
     kgrid[newindex] = kgridraw[i];

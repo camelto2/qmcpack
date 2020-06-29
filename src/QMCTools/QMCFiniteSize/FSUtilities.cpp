@@ -30,6 +30,27 @@ void get_gridinfo_from_posgrid(const std::vector<PosType>& posgridlist,
   dx = (rx - lx) / RealType(Nx - 1);
 }
 
+NUgrid* get_NUgrid_from_posgrid(const std::vector<PosType>& posgridlist, const IndexType& axis)
+{
+  std::vector<RealType> kx;
+  kx.resize(posgridlist.size());
+
+  for (IndexType i = 0; i < posgridlist.size(); i++)
+  {
+    kx[i] = posgridlist[i][axis];
+  }
+
+  std::vector<RealType>::iterator it;
+
+  std::sort(kx.begin(), kx.end());
+
+  it = std::unique(kx.begin(), kx.end(), [](RealType a, RealType b) { return std::abs(a - b) < 1e-8; });
+
+  kx.resize(std::distance(kx.begin(), it));
+
+  return create_general_grid(kx.data(), kx.size());
+}
+
 void getStats(const std::vector<RealType>& vals, RealType& avg, RealType& err, int start)
 {
   avg   = 0.0;

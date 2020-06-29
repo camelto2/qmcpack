@@ -3,6 +3,7 @@
 
 #include <vector>
 #include "Configuration.h"
+#include "einspline/nugrid.h"
 
 namespace qmcplusplus
 {
@@ -17,6 +18,9 @@ void get_gridinfo_from_posgrid(const std::vector<PosType>& posgridlist, //list o
                                RealType& rx,                            //the upper bound (aka "right")
                                RealType& dx,                            // the grid spacing
                                IndexType& Nx);                          // the number of grid points
+
+NUgrid* get_NUgrid_from_posgrid(const std::vector<PosType>& posgridlist, //list of grid points
+                                const IndexType& axis);
 
 /** Simpleaverage and error estimate
  * 

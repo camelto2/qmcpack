@@ -2,7 +2,7 @@
 #define NK_PARSER_BASE_H
 
 #include "Configuration.h"
-#include "Numerics/OneDimGridBase.h"
+#include "einspline/nugrid.h"
 namespace qmcplusplus
 {
 using namespace std;
@@ -16,7 +16,6 @@ using namespace std;
 class NkParserBase : public QMCTraits
 {
 public:
-  typedef LinearGrid<RealType> Grid_t;
   NkParserBase();
 
   virtual void parse(const string& fname) = 0;
@@ -25,7 +24,7 @@ public:
   vector<RealType> get_nkerr_raw() { return nkerr_raw; }
 
   void compute_grid();
-  void get_grid(Grid_t& xgrid, Grid_t& ygrid, Grid_t& zgrid);
+  void get_grid(NUgrid*& xgrid, NUgrid*& ygrid, NUgrid*& zgrid);
   void get_nk(vector<RealType>& nk, vector<RealType>& nkerr);
   void compute_nk();
   inline bool has_grid() { return hasGrid; }
@@ -41,9 +40,9 @@ protected:
   vector<RealType> nkraw;
   vector<RealType> nkerr_raw;
 
-  Grid_t xgrid;
-  Grid_t ygrid;
-  Grid_t zgrid;
+  NUgrid* xgrid;
+  NUgrid* ygrid;
+  NUgrid* zgrid;
 
   vector<RealType> nk;
   vector<RealType> nkerr;
