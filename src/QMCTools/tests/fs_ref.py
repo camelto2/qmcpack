@@ -67,24 +67,22 @@ vint = 1.066688342657357 #from analytic mathematica calculation
 print("  Integral: {}".format(vint))
 
 # exp(-k^2) and k is unit k
-kpts = kpts.tolist()
-kmag = kmag.tolist()
-for i in np.linspace(-0.9,0.9,19):
-    for j in np.linspace(-0.9,0.9,19):
-        for k in np.linspace(-0.9,0.9,19):
-            if (i == 0) and (j==0) and (k==0):
-                continue
-            kvec = np.matrix([i,j,k])
-            kcart = np.array(np.dot(kvec,B)).reshape((3,))
-            if np.linalg.norm(kcart) > kc:
-                continue
-            kpts.append(np.array(kvec).reshape((3,)))
-            kmag.append(np.linalg.norm(kcart))
-kpts = np.array(kpts)
-kmag = np.array(kmag)
-idx = np.argsort(kmag)
-kpts = kpts[idx]
-kmag = kmag[idx]
+#kpts = kpts.tolist()
+#kmag = kmag.tolist()
+#for i in np.linspace(-0.9,0.9,19):
+#    for j in np.linspace(-0.9,0.9,19):
+#        for k in np.linspace(-0.9,0.9,19):
+#            kvec = np.matrix([i,j,k])
+#            kcart = np.array(np.dot(kvec,B)).reshape((3,))
+#            if np.linalg.norm(kcart) > kc:
+#                continue
+#            kpts.append(np.array(kvec).reshape((3,)))
+#            kmag.append(np.linalg.norm(kcart))
+#kpts = np.array(kpts)
+#kmag = np.array(kmag)
+#idx = np.argsort(kmag)
+#kpts = kpts[idx]
+#kmag = kmag[idx]
 nks = [] 
 with open('simple_Nk.dat','w') as f:
     f.write('#  kx  ky  kz  nk  err\n')

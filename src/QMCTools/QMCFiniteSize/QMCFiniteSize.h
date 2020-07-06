@@ -42,7 +42,7 @@ public:
   void build_spherical_grid(IndexType mtheta, IndexType mphi);
   void getSkInfo(UBspline_3d_d* spline, vector<RealType>& symmatelem);
   UBspline_3d_d* getSkSpline(vector<RealType> sk, RealType limit = 1.0);
-  NUBspline_3d_d* getNkSpline(vector<RealType> nk);
+  NUBspline_1d_d* getNkSpline(vector<RealType> nk);
 
   RealType integrate_spline(NUBspline_1d_d* spline, RealType a, RealType b, IndexType N);
   NUBspline_1d_d* spline_clamped(vector<RealType>& grid, vector<RealType>& vals, RealType lVal, RealType rVal);
@@ -85,9 +85,8 @@ private:
   void printSkRawSphAvg(const vector<RealType>& sk);
   void printSkSplineSphAvg(UBspline_3d_d* spline);
   void printNkRawSphAvg(const vector<RealType>& nk);
-  void printNkSplineSphAvg(NUBspline_3d_d* spline);
+  void printNkSplineSphAvg(NUBspline_1d_d* spline);
   RealType sphericalAvgSk(UBspline_3d_d* spline, RealType k);
-  RealType sphericalAvgNk(NUBspline_3d_d* spline, RealType k);
   KContainer Klist;
   vector<TinyVector<int, OHMMS_DIM>> kpts;
   vector<RealType> SK_raw;
@@ -100,6 +99,7 @@ private:
   vector<RealType> NKerr;
   vector<PosType> NKkpts;
   vector<PosType> NKkpts_raw;
+  map<RealType, vector<int>> kMap;
   RealType NKkmax;
   IndexType mtheta;
   IndexType mphi;

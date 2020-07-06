@@ -250,31 +250,35 @@ UBspline_3d_d* QMCFiniteSize::getSkSpline(vector<RealType> sk, RealType limit)
   return spline;
 }
 
-NUBspline_3d_d* QMCFiniteSize::getNkSpline(vector<RealType> nk)
+NUBspline_1d_d* QMCFiniteSize::getNkSpline(vector<RealType> nk)
 {
+  map<RealType, vector<int>>::iterator it;
+  std::vector<FullPrecRealType> kgrid;
+  std::vector<FullPrecRealType> sphavg;
+
+  //spline the k4 * n(k)_sph_avg
+  kgrid.push_back(0.0);
+  sphavg.push_back(0.0);
+  for (it = kMap.begin(); it != kMap.end(); it++)
+  {
+    RealType avg = 0.0;
+    for (int n = 0; n < it->second.size(); n++)
+      avg += nk[it->second[n]] / it->second.size();
+    kgrid.push_back(it->first);
+    RealType k2 = it->first * it->first;
+    sphavg.push_back(k2 * k2 * avg);
+  }
+
   //setup the einspline boundary conditions.
   BCtype_d bcx;
-  BCtype_d bcy;
-  BCtype_d bcz;
-
   bcx.lCode = NATURAL;
   bcx.rCode = NATURAL;
   bcx.lVal  = 0.0;
   bcx.rVal  = 0.0;
 
-  bcy.lCode = NATURAL;
-  bcy.rCode = NATURAL;
-  bcy.lVal  = 0.0;
-  bcy.rVal  = 0.0;
 
-  bcz.lCode = NATURAL;
-  bcz.rCode = NATURAL;
-  bcz.lVal  = 0.0;
-  bcz.rVal  = 0.0;
-
-  //hack for QMC_MIXED_PRECISION to interface to UBspline_3d_d
-  vector<FullPrecRealType> nk_fp(nk.begin(), nk.end());
-  NUBspline_3d_d* spline = create_NUBspline_3d_d(nugridx, nugridy, nugridz, bcx, bcy, bcz, nk_fp.data());
+  NUgrid* grid1d         = create_general_grid(kgrid.data(), kgrid.size());
+  NUBspline_1d_d* spline = create_NUBspline_1d_d(grid1d, bcx, sphavg.data());
 
   return spline;
 }
@@ -362,35 +366,6 @@ QMCFiniteSize::RealType QMCFiniteSize::sphericalAvgSk(UBspline_3d_d* spline, Rea
   return sum / RealType(ngrid);
 }
 
-QMCFiniteSize::RealType QMCFiniteSize::sphericalAvgNk(NUBspline_3d_d* spline, RealType k)
-{
-  RealType sum         = 0.0;
-  FullPrecRealType val = 0.0;
-  PosType kvec(0);
-  IndexType ngrid = sphericalgrid.size();
-  for (IndexType i = 0; i < ngrid; i++)
-  {
-    kvec     = P->Lattice.k_unit(k * sphericalgrid[i]); // to reduced coordinates
-    bool inx = true;
-    bool iny = true;
-    bool inz = true;
-    if (kvec[0] <= nugridx->start || kvec[0] >= nugridx->end)
-      inx = false;
-    if (kvec[1] <= nugridy->start || kvec[1] >= nugridy->end)
-      iny = false;
-    if (kvec[2] <= nugridz->start || kvec[2] >= nugridz->end)
-      inz = false;
-    if (!(inx & iny & inz))
-      sum += 0; //Nk is 0 for large k
-    else
-    {
-      eval_NUBspline_3d_d(spline, kvec[0], kvec[1], kvec[2], &val);
-      sum += RealType(val);
-    }
-  }
-
-  return sum / RealType(ngrid);
-}
 
 NUBspline_1d_d* QMCFiniteSize::spline_clamped(vector<RealType>& grid,
                                               vector<RealType>& vals,
@@ -472,17 +447,31 @@ void QMCFiniteSize::initializeNkCorrection()
   //get kgrid from nkparser
   NKkpts_raw = nkparser->get_grid_raw();
 
-  //find max kpoint, for printing and integration
-  for (int i = 0; i < NKkpts_raw.size(); i++)
+  //find k shells
+  NKkmax = 0.0;
+  map<RealType, vector<int>>::iterator it;
+  for (int ik = 0; ik < NKkpts_raw.size(); ik++)
   {
-    RealType kmag = 0.0;
+    RealType k = 0;
     for (int d = 0; d < 3; d++)
-      kmag += NKkpts_raw[i][d] * NKkpts_raw[i][d];
-    kmag = std::sqrt(kmag);
-    if (kmag > NKkmax)
-      NKkmax = kmag;
+      k += NKkpts_raw[ik][d] * NKkpts_raw[ik][d];
+    k = round(std::sqrt(k) * 1e8) / 1e8;
+    if (k > NKkmax)
+      NKkmax = k;
+    it = kMap.find(k);
+    if (it == kMap.end())
+    {
+      vector<int> idx;
+      idx.push_back(ik);
+      kMap.insert(pair<RealType, vector<int>>(k, idx));
+    }
+    else
+    {
+      it->second.push_back(ik);
+    }
   }
 
+  /*
   //create unitgrid from raw data
   NKkpts.resize(NKkpts_raw.size());
   for (int i = 0; i < NKkpts.size(); i++)
@@ -492,6 +481,7 @@ void QMCFiniteSize::initializeNkCorrection()
   if (!nkparser->has_grid())
     nkparser->set_grid(NKkpts); //spline on unit kgrid
   nkparser->get_grid(nugridx, nugridy, nugridz);
+  */
 }
 
 void QMCFiniteSize::printSkRawSphAvg(const vector<RealType>& sk)
@@ -544,34 +534,14 @@ void QMCFiniteSize::printNkRawSphAvg(const vector<RealType>& nk)
   app_log() << " n(k) Spherical Average From Data\n";
   app_log() << "=========================================================\n";
 
-  //find k shells
-  map<RealType, vector<int>> kshell;
-  map<RealType, vector<int>>::iterator it;
-  for (int ik = 0; ik < NKkpts_raw.size(); ik++)
-  {
-    RealType k2 = 0;
-    for (int d = 0; d < 3; d++)
-      k2 += NKkpts_raw[ik][d] * NKkpts_raw[ik][d];
-    k2 = round(k2 * 1e8) / 1e8;
-    it = kshell.find(k2);
-    if (it == kshell.end())
-    {
-      vector<int> idx;
-      idx.push_back(ik);
-      kshell.insert(pair<RealType, vector<int>>(k2, idx));
-    }
-    else
-    {
-      it->second.push_back(ik);
-    }
-  }
   //avearge over kshells
-  for (it = kshell.begin(); it != kshell.end(); it++)
+  map<RealType, vector<int>>::iterator it;
+  for (it = kMap.begin(); it != kMap.end(); it++)
   {
     RealType sphavg = 0.0;
     for (int n = 0; n < it->second.size(); n++)
       sphavg += nk[it->second[n]] / it->second.size();
-    app_log() << std::sqrt(it->first) << " " << sphavg << endl;
+    app_log() << it->first << " " << sphavg << endl;
   }
 }
 
@@ -615,7 +585,7 @@ void QMCFiniteSize::printSkSplineSphAvg(UBspline_3d_d* spline)
   }
 }
 
-void QMCFiniteSize::printNkSplineSphAvg(NUBspline_3d_d* spline)
+void QMCFiniteSize::printNkSplineSphAvg(NUBspline_1d_d* spline)
 {
   RealType nk   = 100;
   RealType kdel = NKkmax / (nk - 1.0);
@@ -623,11 +593,13 @@ void QMCFiniteSize::printNkSplineSphAvg(NUBspline_3d_d* spline)
   app_log() << "\nSpherically averaged splined n(k):\n";
   app_log() << setw(12) << "k" << setw(12) << "n(k)"
             << "\n";
-  for (int k = 0; k < nk; k++)
+  for (int k = 1; k < nk; k++)
   {
     RealType kval = kdel * k;
+    RealType val;
+    eval_NUBspline_1d_d(spline, kval, &val);
     app_log() << setw(12) << setprecision(8) << kval << " " << setw(12) << setprecision(8)
-              << sphericalAvgNk(spline, kval) << "\n";
+              << val / kval / kval / kval / kval << "\n";
   }
 }
 
@@ -639,7 +611,7 @@ QMCFiniteSize::RealType QMCFiniteSize::calcPotentialDiscrete(vector<RealType> sk
 
 QMCFiniteSize::RealType QMCFiniteSize::calcKineticDiscrete(vector<RealType> nk)
 {
-  printNkRawSphAvg(nk);
+  //printNkRawSphAvg(nk);
   //This is the \frac{1}{\rho Omega} \sum_{\mathbf{k}} \frac{k^2}{2} n(\mathbf{k})
   RealType sum = 0.0;
   assert(NKkpts_raw.size() == nk.size());
@@ -648,11 +620,9 @@ QMCFiniteSize::RealType QMCFiniteSize::calcKineticDiscrete(vector<RealType> nk)
     RealType k2 = 0.0;
     for (int d = 0; d < 3; d++)
       k2 += NKkpts_raw[ik][d] * NKkpts_raw[ik][d];
-    if (k2 == 0.0)
-      continue;
-    sum += k2 * nk[ik];
+    sum += k2 * nk[ik] / 2.;
   }
-  return 1.0 / (2. * rho * Vol) * sum;
+  return 1.0 / (rho * Vol) * sum;
 }
 
 QMCFiniteSize::RealType QMCFiniteSize::calcPotentialInt(vector<RealType> sk)
@@ -691,10 +661,11 @@ QMCFiniteSize::RealType QMCFiniteSize::calcPotentialInt(vector<RealType> sk)
 
 QMCFiniteSize::RealType QMCFiniteSize::calcKineticInt(vector<RealType> nk)
 {
-  NUBspline_3d_d* spline = getNkSpline(nk);
-  printNkSplineSphAvg(spline);
+  NUBspline_1d_d* spline = getNkSpline(nk);
+  //printNkSplineSphAvg(spline);
 
-  IndexType ngrid = 2 * Klist.kshell.size() - 1; //make a lager kmesh
+  /*
+  IndexType ngrid = 4 * kMap.size();
 
   vector<RealType> nonunigrid1d, k4nk;
   RealType dk = NKkmax / ngrid;
@@ -705,9 +676,10 @@ QMCFiniteSize::RealType QMCFiniteSize::calcKineticInt(vector<RealType> nk)
   {
     RealType kval = i * dk;
     nonunigrid1d.push_back(kval);
-    RealType nkavg = sphericalAvgNk(spline, kval);
-    RealType k4    = kval * kval * kval * kval;
-    k4nk.push_back(0.5 * k4 * nkavg / rho);
+    RealType nkavg;
+    eval_NUBspline_1d_d(spline, kval, &nkavg); //already splined nkavg is k2 * n(k)
+    RealType k3 = kval * kval * kval;
+    k4nk.push_back(0.5 * k3 * nkavg / rho);
   }
 
   k4nk.push_back(0.0);
@@ -716,8 +688,9 @@ QMCFiniteSize::RealType QMCFiniteSize::calcKineticInt(vector<RealType> nk)
   NUBspline_1d_d* integrand = spline_clamped(nonunigrid1d, k4nk, 0.0, 0.0);
 
   //Integrate the spline and compute the thermodynamic limit.
-  RealType integratedval = integrate_spline(integrand, 0.0, NKkmax, 200);
-  RealType intnorm       = 1.0 / 2.0 / M_PI / M_PI; 
+  */
+  RealType integratedval = integrate_spline(spline, 0.0, NKkmax, 200);
+  RealType intnorm       = 1.0 / 2.0 / M_PI / M_PI / rho / 2.0;
 
   return intnorm * integratedval;
 }
@@ -771,14 +744,14 @@ void QMCFiniteSize::calcKineticCorrection()
     }
     RealType discrete = calcKineticDiscrete(newNK_raw);
 
-    vector<RealType> newNK(NK.size());
-    for (int j = 0; j < NK.size(); j++)
-    {
-      FullPrecRealType chi;
-      rng.generate_normal(&chi, 1);
-      newNK[j] = NK[j] + NKerr[j] * chi;
-    }
-    RealType integrated = calcKineticInt(newNK);
+    //vector<RealType> newNK(NK.size());
+    //for (int j = 0; j < NK.size(); j++)
+    //{
+    //  FullPrecRealType chi;
+    //  rng.generate_normal(&chi, 1);
+    //  newNK[j] = NK[j] + NKerr[j] * chi;
+    //}
+    RealType integrated = calcKineticInt(newNK_raw);
     vals[i]             = integrated - discrete;
   }
 
@@ -853,8 +826,7 @@ void QMCFiniteSize::executeNkCorrection()
   NKerr_raw = nkparser->get_nkerr_raw();
   printNkRawSphAvg(NK_raw);
 
-  nkparser->get_nk(NK, NKerr);
-  NUBspline_3d_d* spline = getNkSpline(NK);
+  NUBspline_1d_d* spline = getNkSpline(NK_raw);
   printNkSplineSphAvg(spline);
 
   calcKineticCorrection();
