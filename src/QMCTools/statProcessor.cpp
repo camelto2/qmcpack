@@ -45,7 +45,10 @@ void getExtrapolatedEstimator(const std::vector<PosType>& vmc_kpts,
   assert(vmc_kpts.size() == dmc_kpts.size());
   for (int i = 0; i < vmc_kpts.size(); i++)
   {
-    assert(vmc_kpts[i] == dmc_kpts[i]);
+    for (int d = 0; d < 3; d++)
+    {
+      assert(vmc_kpts[i][d]  == dmc_kpts[i][d]);
+    }
   }
   for (int i = 0; i < dmc_vals.size(); i++)
   {
