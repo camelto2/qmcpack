@@ -262,9 +262,9 @@ SET(BUILD_FCIQMC 0 CACHE BOOL "Build with FCIQMC")
 #SET(MPIP_PROFILE 0 CACHE BOOL "Build with mpip for mpi profile")
 #SET(BUILD_QMCTOOLS 1)
 #SET(MPIP_PROFILE 0)
-SET(QMC_BUILD_STATIC 0 CACHE BOOL "Link to static libraries")
-SET(ENABLE_TIMERS 0 CACHE BOOL "Enable internal timers")
-SET(ENABLE_STACKTRACE 0 CACHE BOOL "Enable use of boost::stacktrace")
+OPTION(QMC_BUILD_STATIC "Link to static libraries" OFF)
+OPTION(ENABLE_TIMERS "Enable internal timers" OFF)
+OPTION(ENABLE_STACKTRACE "Enable use of boost::stacktrace" OFF)
 
 ######################################################################
 # Install options
@@ -485,9 +485,16 @@ IF(QMC_MPI)
     MESSAGE(FATAL_ERROR "MPI support not found! Provide MPI compiler wrappers or build without MPI by passing '-DQMC_MPI=0' to cmake.")
   ENDIF(NOT MPI_FOUND)
 
-  IF(${MPI_CXX_LIBRARY_VERSION_STRING} MATCHES "MVAPICH2" AND NOT ${MPI_CXX_LIBRARY_VERSION_STRING} MATCHES "disable-registration-cache")
-    MESSAGE(FATAL_ERROR "MVAPICH2 with registration cache enabled breaks QMCPACK. "
-                        "Use a different MPI library or build MVAPICH2 with --disable-registration-cache configure option.")
+  IF(${MPI_CXX_LIBRARY_VERSION_STRING} MATCHES "MVAPICH2")
+    STRING(REGEX REPLACE "\n" ";" ONE_LINE "${MPI_CXX_LIBRARY_VERSION_STRING}")
+    STRING(REGEX REPLACE " +|\t" ";" ONE_LINE "${ONE_LINE}")
+    LIST (GET ONE_LINE 3 MVAPICH2_VERSION)
+    MESSAGE(STATUS "MVAPICH2 version ${MVAPICH2_VERSION}")
+    IF(${MVAPICH2_VERSION} VERSION_LESS "2.4" AND NOT ${MPI_CXX_LIBRARY_VERSION_STRING} MATCHES "disable-registration-cache")
+        MESSAGE(FATAL_ERROR "MVAPICH2 (version < 2.4) with registration cache enabled breaks QMCPACK. "
+                            "Use a different MPI library or a MVAPICH2 >=2.4 "
+                            "or build MVAPICH2 with --disable-registration-cache configure option.")
+    ENDIF()
   ENDIF()
 
   IF(${MPI_CXX_LIBRARY_VERSION_STRING} MATCHES "Open MPI")
@@ -686,11 +693,9 @@ ENDIF()
 #-------------------------------------------------------------------
 SET(HAVE_CUDA 0)
 IF(QMC_CUDA OR ENABLE_CUDA)
-  IF(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
-    SET(CUDA_PROPAGATE_HOST_FLAGS ON)
-  ELSE(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
-    SET(CUDA_PROPAGATE_HOST_FLAGS OFF)
-  ENDIF(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+  # FindCUDA default CUDA_PROPAGATE_HOST_FLAGS to ON but we prefer OFF
+  # It happened -ffast-math from host caused numerical issue in CUDA kernels.
+  OPTION(CUDA_PROPAGATE_HOST_FLAGS "Propagate C/CXX_FLAGS and friends to the host compiler via -Xcompile" OFF)
   FIND_PACKAGE(CUDA REQUIRED)
   SET(CUDA_LINK_LIBRARIES_KEYWORD PRIVATE)
   #set(CUDA_NVCC_FLAGS
@@ -773,7 +778,7 @@ INCLUDE_DIRECTORIES( ${PROJECT_SOURCE_DIR}/src ${PROJECT_BINARY_DIR}/src)
 
 IF (USE_VTUNE_TASKS)
   IF (NOT ENABLE_TIMERS)
-    MESSAGE(FATAL_ERROR "USE_VTUNE_TASKS is set, but timers are not enabled.  Set ENABLE_TIMERS=1.")
+    MESSAGE(FATAL_ERROR "USE_VTUNE_TASKS is set, but timers are not enabled.  Set ENABLE_TIMERS=ON.")
   ENDIF()
   SET(USE_VTUNE_API 1)
 ENDIF()

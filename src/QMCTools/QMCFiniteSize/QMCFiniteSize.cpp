@@ -13,7 +13,8 @@
 
 namespace qmcplusplus
 {
-QMCFiniteSize::QMCFiniteSize() : skparser(NULL), ptclPool(NULL), myRcut(0.0), myConst(0.0), P(NULL), h(0.0), sphericalgrid(0), myGrid(NULL)
+QMCFiniteSize::QMCFiniteSize()
+    : skparser(NULL), ptclPool(NULL), myRcut(0.0), myConst(0.0), P(NULL), h(0.0), sphericalgrid(0), myGrid(NULL)
 {
   IndexType mtheta = 80;
   IndexType mphi   = 80;
@@ -171,7 +172,7 @@ void QMCFiniteSize::initBreakup()
   myRcut = AA->get_rc();
   if (rVs == 0)
   {
-    rVs = LRCoulombSingleton::createSpline4RbyVs(AA, myRcut, myGrid);
+    rVs = LRCoulombSingleton::createSpline4RbyVs(AA.get(), myRcut, myGrid);
   }
 }
 

@@ -84,35 +84,37 @@ IF(OHMMS_DIM MATCHES 3)
     Jastrow/CountingJastrowBuilder.cpp
     )
 
-  SET(FERMION_SRCS ${FERMION_SRCS} lcao/LCAOrbitalSet.cpp lcao/LCAOrbitalBuilder.cpp)
-  IF(NOT QMC_COMPLEX)
-    #lcao cusp correction is not ready for complex
+  SET(FERMION_SRCS ${FERMION_SRCS} LCAO/LCAOrbitalSet.cpp LCAO/LCAOrbitalBuilder.cpp)
+  IF(QMC_COMPLEX)
+    SET(FERMION_SRCS ${FERMION_SRCS} LCAO/LCAOSpinorBuilder.cpp)
+  ELSE(QMC_COMPLEX)
+    #LCAO cusp correction is not ready for complex
     SET(FERMION_SRCS ${FERMION_SRCS}
-      lcao/CuspCorrection.cpp
-      lcao/LCAOrbitalSetWithCorrection.cpp
-      lcao/CuspCorrectionConstruction.cpp
+      LCAO/CuspCorrection.cpp
+      LCAO/LCAOrbitalSetWithCorrection.cpp
+      LCAO/CuspCorrectionConstruction.cpp
       )
-  ENDIF(NOT QMC_COMPLEX)
+  ENDIF(QMC_COMPLEX)
 
   IF(QMC_CUDA)
     SET(WFSSRCS_CUDA
-      Fermion/determinant_update.cu
-      Fermion/delayed_update.cu
+      detail/CUDA_legacy/determinant_update.cu
+      detail/CUDA_legacy/delayed_update.cu
       Fermion/DiracDeterminantCUDA.cpp
       Fermion/SlaterDetCUDA.cpp
       TrialWaveFunction_CUDA.cpp
       )
     SET(WFSSRCS_CUDA ${WFSSRCS_CUDA}
-      Jastrow/BsplineJastrowCuda.cu
-      Jastrow/BsplineJastrowCudaPBC.cu
+      detail/CUDA_legacy/BsplineJastrowCuda.cu
+      detail/CUDA_legacy/BsplineJastrowCudaPBC.cu
       Jastrow/OneBodyJastrowOrbitalBspline.cpp
       Jastrow/TwoBodyJastrowOrbitalBspline.cpp
       )
     IF(HAVE_EINSPLINE)
       SET(WFSSRCS_CUDA ${WFSSRCS_CUDA}
         EinsplineSetCuda.cpp
-        PhaseFactors.cu
-        AtomicOrbitalCuda.cu
+        detail/CUDA_legacy/PhaseFactors.cu
+        detail/CUDA_legacy/AtomicOrbitalCuda.cu
         )
     ENDIF(HAVE_EINSPLINE)
   ENDIF(QMC_CUDA)
@@ -139,8 +141,10 @@ IF(OHMMS_DIM MATCHES 3)
         EinsplineSpinorSetBuilder.cpp
         BsplineFactory/SplineC2C.cpp
       )
-    ENDIF(QMC_COMPLEX)
-    IF(NOT QMC_COMPLEX)
+      IF(ENABLE_OFFLOAD)
+        SET(FERMION_SRCS ${FERMION_SRCS} BsplineFactory/SplineC2COMP.cpp)
+      ENDIF(ENABLE_OFFLOAD)
+    ELSE(QMC_COMPLEX)
       SET(FERMION_SRCS ${FERMION_SRCS}
         BsplineFactory/createRealSingle.cpp
         BsplineFactory/createRealDouble.cpp
@@ -150,7 +154,7 @@ IF(OHMMS_DIM MATCHES 3)
       IF(ENABLE_OFFLOAD)
         SET(FERMION_SRCS ${FERMION_SRCS} BsplineFactory/SplineC2ROMP.cpp)
       ENDIF(ENABLE_OFFLOAD)
-    ENDIF(NOT QMC_COMPLEX)
+    ENDIF(QMC_COMPLEX)
 
   ENDIF(HAVE_EINSPLINE)
 
@@ -198,8 +202,8 @@ SET(FERMION_SRCS ${FERMION_SRCS}
 
 IF(ENABLE_CUDA)
   SET(WFSSRCS_CUDA ${WFSSRCS_CUDA}
-      Fermion/delayed_update_helper.cu
-      Fermion/matrix_update_helper.cu
+      detail/CUDA/delayed_update_helper.cu
+      detail/CUDA/matrix_update_helper.cu
       )
 ENDIF(ENABLE_CUDA)
 
@@ -215,6 +219,7 @@ ENDIF(USE_OBJECT_TARGET)
 IF(QMC_CUDA OR ENABLE_CUDA)
   CUDA_ADD_LIBRARY(qmcwfs_cuda ${WFSSRCS_CUDA})
   IF(QMC_CUDA)
+    TARGET_INCLUDE_DIRECTORIES(qmcwfs_cuda PUBLIC ${PROJECT_SOURCE_DIR}/external_codes/thrust)
     TARGET_LINK_LIBRARIES(qmcwfs_cuda PUBLIC qmcparticle platform_device)
   ENDIF()
   TARGET_LINK_LIBRARIES(qmcwfs PRIVATE qmcwfs_cuda)
@@ -222,9 +227,3 @@ ENDIF(QMC_CUDA OR ENABLE_CUDA)
 
 TARGET_LINK_LIBRARIES(qmcwfs PUBLIC qmcparticle platform_device)
 TARGET_LINK_LIBRARIES(qmcwfs PRIVATE einspline Math::BLAS_LAPACK Math::FFTW3 Math::scalar_vector_functions)
-
-#IF(QMC_BUILD_STATIC)
-#  ADD_LIBRARY(qmcwfs STATIC ${WFBASE_SRCS} ${JASTROW_SRCS} ${FERMION_SRCS})
-#ELSE(QMC_BUILD_STATIC)
-#  ADD_LIBRARY(qmcwfs SHARED ${WFBASE_SRCS} ${JASTROW_SRCS} ${FERMION_SRCS})
-#ENDIF(QMC_BUILD_STATIC)
