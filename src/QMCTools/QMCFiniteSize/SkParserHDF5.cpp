@@ -43,16 +43,16 @@ void SkParserHDF5::parse(const string& fname)
   vector<RealType> rhok_i_tmp;
   array<int, 2> rhok_i_dims{readShape[0], readShape[1]};
   statfile.readSlabReshaped(rhok_i_tmp, rhok_i_dims, "skall/rhok_e_i/value");
+  assert(readShape[0] == nBlocks);
   assert(readShape[1] == nKpts);
-  assert(readShape[1] == nBlocks);
 
   //read the Re(rho_k)
   statfile.getShape<int>("skall/rhok_e_r/value", readShape);
   vector<RealType> rhok_r_tmp;
   array<int, 2> rhok_r_dims{readShape[0], readShape[1]};
   statfile.readSlabReshaped(rhok_r_tmp, rhok_r_dims, "skall/rhok_e_r/value");
+  assert(readShape[0] == nBlocks);
   assert(readShape[1] == nKpts);
-  assert(readShape[1] == nBlocks);
 
   //For each k, evaluate the flucuating S(k) for all blocks.
   //Then perform a simple equilibration estimate for this particular S(k) value
