@@ -143,9 +143,8 @@ public:
   /// if true, the CI coefficients are optimized
   bool CI_Optimizable;
   size_t NP;
-  size_t nels_up, nels_dn;
-  size_t FirstIndex_up;
-  size_t FirstIndex_dn;
+  std::vector<size_t> nels;
+  std::vector<size_t> FirstIndexes;
   size_t ActiveSpin;
   bool usingCSF;
   bool IsCloned;
@@ -157,14 +156,12 @@ public:
   std::map<std::string, size_t> SPOSetID;
 
   // map determinant in linear combination to unique det list
-  std::vector<size_t>* C2node_up;
-  std::vector<size_t>* C2node_dn;
+  std::vector<std::vector<size_t>*> C2nodes;
   std::vector<ValueType>* C;
 
   ParticleSet::ParticleGradient_t myG, myG_temp;
   ParticleSet::ParticleLaplacian_t myL, myL_temp;
-  ValueVector_t laplSum_up;
-  ValueVector_t laplSum_dn;
+  std::vector<ValueVector_t> laplSums;
 
   //optimizable variable is shared with the clones
   opt_variables_type* myVars;
@@ -181,9 +178,8 @@ public:
 
   // temporary storage for evaluateDerivatives
   ParticleSet::ParticleGradient_t gmPG;
-  Matrix<RealType> dpsia_up, dLa_up;
-  Matrix<RealType> dpsia_dn, dLa_dn;
-  Array<GradType, OHMMS_DIM> dGa_up, dGa_dn;
+  std::vector<Matrix<RealType>> dpsias, dLas;
+  std::vector<Array<GradType, OHMMS_DIM>> dGas, dGa_dn;
 
   // debug, erase later
   //      MultiSlaterDeterminant *msd;
