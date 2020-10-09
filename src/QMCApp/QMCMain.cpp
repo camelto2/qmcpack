@@ -63,6 +63,8 @@ QMCMain::QMCMain(Communicate* c)
 {
   Communicate NodeComm;
   NodeComm.initializeAsNodeComm(*OHMMS::Controller);
+  // assign accelerators within a node
+  const int num_accelerators = assignAccelerators(NodeComm);
 
   app_summary() << "\n=====================================================\n"
                 << "                    QMCPACK " << QMCPACK_VERSION_MAJOR << "." << QMCPACK_VERSION_MINOR << "."
@@ -77,18 +79,19 @@ QMCMain::QMCMain(Communicate* c)
   // clang-format off
   app_summary()
 #if !defined(HAVE_MPI)
-      << "\n  Built without MPI. Running in serial or with OMP threading only." << std::endl
+      << "\n  Built without MPI. Running in serial or with OMP threads." << std::endl
 #endif
       << "\n  Total number of MPI ranks = " << OHMMS::Controller->size()
       << "\n  Number of MPI groups      = " << myComm->getNumGroups()
       << "\n  MPI group ID              = " << myComm->getGroupID()
       << "\n  Number of ranks in group  = " << myComm->size()
       << "\n  MPI ranks per node        = " << NodeComm.size()
+#if defined(ENABLE_OFFLOAD) || defined(ENABLE_CUDA) || defined(QMC_CUDA) || defined(ENABLE_ROCM)
+      << "\n  Accelerators per node     = " << num_accelerators
+#endif
       << std::endl;
   // clang-format on
 
-  // assign accelerators within a node
-  assignAccelerators(NodeComm);
 #pragma omp parallel
   {
     const int L1_tid = omp_get_thread_num();
@@ -114,7 +117,27 @@ QMCMain::QMCMain(Communicate* c)
                 << "\n  CUDA base precision = " << GET_MACRO_VAL(CUDA_PRECISION)
                 << "\n  CUDA full precision = " << GET_MACRO_VAL(CUDA_PRECISION_FULL)
 #endif
-                << "\n\n  Structure-of-arrays (SoA) optimization enabled" << std::endl;
+                << std::endl;
+
+  // Record features configured in cmake or selected via command-line arguments to the printout
+  app_summary() << std::endl;
+#if !defined(ENABLE_OFFLOAD) && !defined(ENABLE_CUDA) && !defined(QMC_CUDA) && !defined(ENABLE_ROCM)
+  app_summary() << "  CPU only build" << std::endl;
+#else
+#if defined(ENABLE_OFFLOAD)
+  app_summary() << "  OpenMP target offload to accelerators build option is enabled" << std::endl;
+#endif
+#if defined(ENABLE_CUDA) || defined(QMC_CUDA)
+  app_summary() << "  CUDA acceleration build option is enabled" << std::endl;
+#endif
+#if defined(ENABLE_ROCM)
+  app_summary() << "  ROCM acceleration build option is enabled" << std::endl;
+#endif
+#endif
+#ifdef ENABLE_TIMERS
+  app_summary() << "  Timer build option is enabled. Current timer level is "
+                << timer_manager.get_timer_threshold_string() << std::endl;
+#endif
   app_summary() << std::endl;
   app_summary().flush();
 }
@@ -384,7 +407,7 @@ bool QMCMain::validateXML()
   }
   if (qmc_common.use_density)
   {
-    app_log() << "  hamiltonian has MPC. Will read density if it is found." << std::endl;
+    app_log() << "  hamiltonian has MPC. Will read density if it is found." << std::endl << std::endl;
   }
 
   //initialize the random number generator
@@ -439,7 +462,7 @@ bool QMCMain::validateXML()
     }
     else if (cname == "init")
     {
-      InitMolecularSystem moinit(ptclPool);
+      InitMolecularSystem moinit(*ptclPool);
       moinit.put(cur);
     }
 #if !defined(REMOVE_TRACEMANAGER)

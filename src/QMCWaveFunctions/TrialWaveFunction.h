@@ -59,7 +59,7 @@ namespace qmcplusplus
  * based on the number of objects WFC in the input. This accomidates openmp's implicit detection
  * of nested parallelism.
  */
-class TrialWaveFunction : public MPIObjectBase
+class TrialWaveFunction
 {
 public:
   // derived types from WaveFunctionComponent
@@ -97,7 +97,7 @@ public:
   ///differential laplacians
   ParticleSet::ParticleLaplacian_t L;
 
-  TrialWaveFunction(Communicate* c);
+  TrialWaveFunction(const std::string& aname = "psi0");
 
   // delete copy constructor
   TrialWaveFunction(const TrialWaveFunction&) = delete;
@@ -146,9 +146,6 @@ public:
   /** print out state of the trial wavefunction
    */
   void reportStatus(std::ostream& os);
-
-  /** recursively change the ParticleSet whose G and L are evaluated */
-  void resetTargetParticleSet(ParticleSet& P);
 
   /** evalaute the log (internally gradients and laplacian) of the trial wavefunction. gold reference */
   RealType evaluateLog(ParticleSet& P);
@@ -264,7 +261,7 @@ public:
    */
   ValueType calcRatio(ParticleSet& P, int iat, ComputeType ct = ComputeType::ALL);
 
-  /** batched verison of calcRatio */
+  /** batched version of calcRatio */
   static void flex_calcRatio(const RefVector<TrialWaveFunction>& WF_list,
                              const RefVector<ParticleSet>& P_list,
                              int iat,
@@ -274,7 +271,7 @@ public:
   /** compulte multiple ratios to handle non-local moves and other virtual moves
    */
   void evaluateRatios(const VirtualParticleSet& VP, std::vector<ValueType>& ratios, ComputeType ct = ComputeType::ALL);
-  /** batched verison of evaluateRatios
+  /** batched version of evaluateRatios
    * Note: unlike other flex_ static functions, *this is the batch leader instead of WF_list[0].
    */
   void flex_evaluateRatios(const RefVector<TrialWaveFunction>& WF_list,
@@ -321,7 +318,7 @@ public:
    */
   ValueType calcRatioGradWithSpin(ParticleSet& P, int iat, GradType& grad_iat, ComplexType& spingrad_iat);
 
-  /** batched verison of ratioGrad 
+  /** batched version of ratioGrad 
    *
    *  all vector sizes must match
    */
@@ -343,7 +340,7 @@ public:
    */
   GradType evalGradWithSpin(ParticleSet& P, int iat, ComplexType& spingrad);
 
-  /** batched verison of evalGrad
+  /** batched version of evalGrad
     *
     * This is static because it should have no direct access
     * to any TWF.
@@ -411,10 +408,10 @@ public:
                            bool project = false);
 
   static void flex_evaluateParameterDerivatives(const RefVector<TrialWaveFunction>& wf_list,
-                                         const RefVector<ParticleSet>& p_list,
-                                         const opt_variables_type& optvars,
-                                         RecordArray<ValueType>& dlogpsi,
-                                         RecordArray<ValueType>& dhpsioverpsi);
+                                                const RefVector<ParticleSet>& p_list,
+                                                const opt_variables_type& optvars,
+                                                RecordArray<ValueType>& dlogpsi,
+                                                RecordArray<ValueType>& dhpsioverpsi);
 
   void evaluateDerivativesWF(ParticleSet& P, const opt_variables_type& optvars, std::vector<ValueType>& dlogpsi);
 
@@ -452,8 +449,13 @@ public:
 
   std::vector<NewTimer*>& get_timers() { return myTimers; }
 
+  const std::string& getName() const {return myName;}
+
 private:
   static void debugOnlyCheckBuffer(WFBufferType& buffer);
+
+  ///getName is in the way
+  const std::string myName;
 
   ///starting index of the buffer
   size_t BufferCursor;
@@ -472,6 +474,9 @@ private:
 
   ///One over mass of target particleset, needed for Local Energy Derivatives
   RealType OneOverM;
+
+  /// if true, using internal tasking implementation
+  bool use_tasking;
 
   ///a list of WaveFunctionComponents constituting many-body wave functions
   std::vector<WaveFunctionComponent*> Z;

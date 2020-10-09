@@ -165,9 +165,11 @@ bool ParticleSetPool::put(xmlNodePtr cur)
   ParticleSet* pTemp = getParticleSet(id);
   if (pTemp == 0)
   {
-    app_summary() << " Particle Set " << std::endl;
+    app_summary() << std::endl;
+    app_summary() << " Particle Set" << std::endl;
     app_summary() << " ------------" << std::endl;
     app_summary() << "  Name: " << id << std::endl;
+    app_summary() << std::endl;
 
     // select OpenMP offload implementation in ParticleSet.
     if (useGPU == "yes")
@@ -214,7 +216,7 @@ void ParticleSetPool::randomize()
   bool success = true;
   for (int i = 0; i < randomize_nodes.size(); ++i)
   {
-    InitMolecularSystem moinit(this);
+    InitMolecularSystem moinit(*this);
     success &= moinit.put(randomize_nodes[i]);
     xmlFreeNode(randomize_nodes[i]);
   }
@@ -435,7 +437,7 @@ ParticleSet* ParticleSetPool::createESParticleSet(xmlNodePtr cur, const std::str
     else
     {
       //assign non-trivial positions for the quanmtum particles
-      InitMolecularSystem mole(this);
+      InitMolecularSystem mole(*this);
       mole.initMolecule(ions, qp);
       qp->R.setUnit(PosUnit::Cartesian);
     }

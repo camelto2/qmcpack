@@ -119,9 +119,9 @@ public:
                MCPopulation& population,
                TrialWaveFunction& psi,
                QMCHamiltonian& h,
-               WaveFunctionPool& ppool,
                const std::string timer_prefix,
                Communicate* comm,
+               const std::string& QMC_driver_type,
                SetNonLocalMoveHandler = &QMCDriverNew::defaultSetNonLocalMoveHandler);
 
   QMCDriverNew(QMCDriverNew&&) = default;
@@ -337,7 +337,7 @@ protected:
   RealType m_sqrttau;
 
   ///type of qmc: assigned by subclasses
-  std::string QMCType;
+  const std::string QMCType;
   ///root of all the output files
   std::string root_name_;
 
@@ -351,11 +351,9 @@ protected:
   ///Hamiltonian
   QMCHamiltonian& H;
 
-  WaveFunctionPool& psiPool;
-
   /** Observables manager
    *  Has very problematic owner ship and life cycle.
-   *  Can be transfered via branch manager one driver to the next indefinitely
+   *  Can be transferred via branch manager one driver to the next indefinitely
    *  TODO:  Modify Branch manager and others to clear this up.
    */
   EstimatorManagerNew* estimator_manager_;

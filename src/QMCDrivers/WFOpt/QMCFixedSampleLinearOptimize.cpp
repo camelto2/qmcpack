@@ -50,10 +50,8 @@ using MatrixOperators::product;
 QMCFixedSampleLinearOptimize::QMCFixedSampleLinearOptimize(MCWalkerConfiguration& w,
                                                            TrialWaveFunction& psi,
                                                            QMCHamiltonian& h,
-                                                           HamiltonianPool& hpool,
-                                                           WaveFunctionPool& ppool,
                                                            Communicate* comm)
-    : QMCLinearOptimize(w, psi, h, hpool, ppool, comm),
+    : QMCLinearOptimize(w, psi, h, comm, "QMCFixedSampleLinearOptimize"),
 #ifdef HAVE_LMY_ENGINE
       vdeps(1, std::vector<double>()),
 #endif
@@ -99,7 +97,6 @@ QMCFixedSampleLinearOptimize::QMCFixedSampleLinearOptimize(MCWalkerConfiguration
   qmc_driver_mode.set(QMC_OPTIMIZE, 1);
   //read to use vmc output (just in case)
   RootName = "pot";
-  QMCType  = "QMCFixedSampleLinearOptimize";
   m_param.add(Max_iterations, "max_its", "int");
   m_param.add(nstabilizers, "nstabilizers", "int");
   m_param.add(stabilizerScale, "stabilizerscale", "double");
@@ -414,7 +411,6 @@ bool QMCFixedSampleLinearOptimize::run()
         }
       }
       app_log().flush();
-      app_error().flush();
       if (failedTries > 20)
         break;
       //APP_ABORT("QMCFixedSampleLinearOptimize::run TOO MANY FAILURES");
@@ -433,7 +429,6 @@ bool QMCFixedSampleLinearOptimize::run()
         optTarget->Params(i) = currentParameters[i];
     }
     app_log().flush();
-    app_error().flush();
   }
 
   finish();
@@ -551,10 +546,10 @@ bool QMCFixedSampleLinearOptimize::processOptXML(xmlNodePtr opt_xml, const std::
   // {
 #if defined(QMC_CUDA)
   if (useGPU)
-    vmcEngine = std::make_unique<VMCcuda>(W, Psi, H, psiPool, myComm);
+    vmcEngine = std::make_unique<VMCcuda>(W, Psi, H, myComm);
   else
 #endif
-    vmcEngine = std::make_unique<VMC>(W, Psi, H, psiPool, myComm);
+    vmcEngine = std::make_unique<VMC>(W, Psi, H, myComm);
   vmcEngine->setUpdateMode(vmcMove[0] == 'p');
   // }
 

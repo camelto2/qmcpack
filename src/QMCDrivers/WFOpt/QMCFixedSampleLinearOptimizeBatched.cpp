@@ -21,7 +21,7 @@
 #include "OhmmsData/AttributeSet.h"
 #include "Message/CommOperators.h"
 #include "QMCDrivers/WFOpt/QMCCostFunctionBase.h"
-#include "QMCDrivers/WFOpt/QMCCostFunction.h"
+#include "QMCDrivers/WFOpt/QMCCostFunctionBatched.h"
 #include "QMCDrivers/VMC/VMCBatched.h"
 #include "QMCDrivers/WFOpt/QMCCostFunction.h"
 #include "QMCHamiltonians/HamiltonianPool.h"
@@ -46,8 +46,6 @@ using MatrixOperators::product;
 QMCFixedSampleLinearOptimizeBatched::QMCFixedSampleLinearOptimizeBatched(MCWalkerConfiguration& w,
                                                                          TrialWaveFunction& psi,
                                                                          QMCHamiltonian& h,
-                                                                         HamiltonianPool& hpool,
-                                                                         WaveFunctionPool& ppool,
                                                                          QMCDriverInput&& qmcdriver_input,
                                                                          VMCDriverInput&& vmcdriver_input,
                                                                          MCPopulation& population,
@@ -56,13 +54,12 @@ QMCFixedSampleLinearOptimizeBatched::QMCFixedSampleLinearOptimizeBatched(MCWalke
     : QMCLinearOptimizeBatched(w,
                                psi,
                                h,
-                               hpool,
-                               ppool,
                                std::move(qmcdriver_input),
                                std::move(vmcdriver_input),
                                population,
                                samples,
-                               comm),
+                               comm,
+                               "QMCFixedSampleLinearOptimizeBatched"),
 #ifdef HAVE_LMY_ENGINE
       vdeps(1, std::vector<double>()),
 #endif
@@ -98,6 +95,8 @@ QMCFixedSampleLinearOptimizeBatched::QMCFixedSampleLinearOptimizeBatched(MCWalke
       block_first(true),
       block_second(false),
       block_third(false),
+      crowd_size_(1),
+      opt_num_crowds_(1),
       MinMethod("OneShiftOnly"),
       previous_optimizer_type_(OptimizerType::NONE),
       current_optimizer_type_(OptimizerType::NONE)
@@ -108,7 +107,6 @@ QMCFixedSampleLinearOptimizeBatched::QMCFixedSampleLinearOptimizeBatched(MCWalke
   qmc_driver_mode.set(QMC_OPTIMIZE, 1);
   //read to use vmc output (just in case)
   RootName = "pot";
-  QMCType  = "QMCFixedSampleLinearOptimizeBatched";
   m_param.add(Max_iterations, "max_its", "int");
   m_param.add(nstabilizers, "nstabilizers", "int");
   m_param.add(stabilizerScale, "stabilizerscale", "double");
@@ -129,6 +127,9 @@ QMCFixedSampleLinearOptimizeBatched::QMCFixedSampleLinearOptimizeBatched(MCWalke
   m_param.add(num_shifts, "num_shifts", "int");
   m_param.add(cost_increase_tol, "cost_increase_tol", "double");
   m_param.add(target_shift_i, "target_shift_i", "double");
+  m_param.add(crowd_size_, "opt_crowd_size", "int");
+  m_param.add(opt_num_crowds_, "opt_num_crowds", "int");
+
 
 
 #ifdef HAVE_LMY_ENGINE
@@ -423,7 +424,6 @@ bool QMCFixedSampleLinearOptimizeBatched::run()
         }
       }
       app_log().flush();
-      app_error().flush();
       if (failedTries > 20)
         break;
       //APP_ABORT("QMCFixedSampleLinearOptimizeBatched::run TOO MANY FAILURES");
@@ -442,7 +442,6 @@ bool QMCFixedSampleLinearOptimizeBatched::run()
         optTarget->Params(i) = currentParameters[i];
     }
     app_log().flush();
-    app_error().flush();
   }
 
   finish();
@@ -561,7 +560,7 @@ bool QMCFixedSampleLinearOptimizeBatched::processOptXML(xmlNodePtr opt_xml, cons
   QMCDriverInput qmcdriver_input_copy = qmcdriver_input_;
   VMCDriverInput vmcdriver_input_copy = vmcdriver_input_;
   vmcEngine = std::make_unique<VMCBatched>(std::move(qmcdriver_input_copy), std::move(vmcdriver_input_copy),
-                                           population_, Psi, H, psiPool, samples_, myComm);
+                                           population_, Psi, H, samples_, myComm);
 
   vmcEngine->setUpdateMode(vmcMove[0] == 'p');
 
@@ -573,7 +572,7 @@ bool QMCFixedSampleLinearOptimizeBatched::processOptXML(xmlNodePtr opt_xml, cons
 
   bool success = true;
   //allways reset optTarget
-  optTarget = std::make_unique<QMCCostFunction>(W, Psi, H, myComm);
+  optTarget = std::make_unique<QMCCostFunctionBatched>(W, Psi, H, samples_, opt_num_crowds_, crowd_size_, myComm);
   optTarget->setStream(&app_log());
   if (reportH5)
     optTarget->reportH5 = true;

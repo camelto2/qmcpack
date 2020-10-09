@@ -97,8 +97,8 @@ public:
   QMCDriver(MCWalkerConfiguration& w,
             TrialWaveFunction& psi,
             QMCHamiltonian& h,
-            WaveFunctionPool& ppool,
-            Communicate* comm);
+            Communicate* comm,
+            const std::string& QMC_driver_type);
 
   virtual ~QMCDriver();
 
@@ -286,8 +286,8 @@ protected:
   ///pointer to qmc node in xml file
   xmlNodePtr qmcNode;
 
-  ///type of qmc: assigned by subclasses
-  std::string QMCType;
+  ///type of QMC driver
+  const std::string QMCType;
   ///the root of h5File
   std::string h5FileRoot;
   ///root of all the output files
@@ -304,8 +304,6 @@ protected:
 
   ///Hamiltonian
   QMCHamiltonian& H;
-
-  WaveFunctionPool& psiPool;
 
   ///record engine for walkers
   HDFWalkerOutput* wOut;
