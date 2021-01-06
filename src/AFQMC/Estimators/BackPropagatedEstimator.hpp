@@ -8,8 +8,8 @@
 #include <iostream>
 #include <fstream>
 
-#include "io/hdf_multi.h"
-#include "io/hdf_archive.h"
+#include "hdf/hdf_multi.h"
+#include "hdf/hdf_archive.h"
 #include "OhmmsData/libxmldefs.h"
 #include "Utilities/Timer.h"
 
@@ -55,7 +55,7 @@ class BackPropagatedEstimator : public EstimatorBase
   using mpi3CTensor    = boost::multi::array<ComplexType, 3, shared_allocator<ComplexType>>;
 
   using stack_alloc_type = DeviceBufferManager::template allocator_t<ComplexType>;
-  using StaticMatrix      = boost::multi::static_array<ComplexType, 2, stack_alloc_type>;
+  using StaticMatrix     = boost::multi::static_array<ComplexType, 2, stack_alloc_type>;
 
 public:
   BackPropagatedEstimator(afqmc::TaskGroup_& tg_,
@@ -188,7 +188,7 @@ public:
 
     // 1. check structures
     if (Refs.size(0) != wset.size() || Refs.size(1) != nrefs || Refs.size(2) != nrow * ncol)
-      Refs = std::move(mpi3CTensor({wset.size(), nrefs, nrow * ncol}, Refs.get_allocator()));
+      Refs = mpi3CTensor({wset.size(), nrefs, nrow * ncol}, Refs.get_allocator());
     DeviceBufferManager buffer_manager;
     StaticMatrix detR({wset.size(), nrefs * nx}, buffer_manager.get_generator().template get_allocator<ComplexType>());
 

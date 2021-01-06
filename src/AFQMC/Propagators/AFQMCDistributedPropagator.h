@@ -22,7 +22,7 @@
 #include <iostream>
 #include <tuple>
 
-#include "io/hdf_archive.h"
+#include "hdf/hdf_archive.h"
 #include "OhmmsData/libxmldefs.h"
 #include "Utilities/RandomGenerator.h"
 
@@ -73,7 +73,7 @@ public:
   AFQMCDistributedPropagator(AFQMCDistributedPropagator&& other) : base(std::move(other)), core_comm()
   {
     // move constructor for communicator seems broken
-    core_comm = std::move(TG.TG().split(TG.getLocalTGRank(), TG.TG().rank()));
+    core_comm = TG.TG().split(TG.getLocalTGRank(), TG.TG().rank());
   }
   AFQMCDistributedPropagator& operator=(AFQMCDistributedPropagator&& other) = delete;
 

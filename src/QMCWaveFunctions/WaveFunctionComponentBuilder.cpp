@@ -14,7 +14,7 @@
 //////////////////////////////////////////////////////////////////////////////////////
 
 
-#include "QMCWaveFunctions/WaveFunctionComponentBuilder.h"
+#include "WaveFunctionComponentBuilder.h"
 
 /**@file WaveFunctionComponentBuilder.cpp
   *@brief Initialization of static data members for wavefunction-related tags.
@@ -44,8 +44,6 @@ std::string WaveFunctionComponentBuilder::rn_tag = "determinant_rn";
 std::string WaveFunctionComponentBuilder::spo_tag = "psi";
 
 std::string WaveFunctionComponentBuilder::sposet_tag = "sposet";
-
-std::string WaveFunctionComponentBuilder::basisset_tag = "basisset";
 
 std::string WaveFunctionComponentBuilder::ionorb_tag = "ionwf";
 

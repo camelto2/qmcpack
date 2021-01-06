@@ -19,7 +19,7 @@
 /**@file WaveFunctionFactory.cpp
  *@brief Definition of a WaveFunctionFactory
  */
-#include "QMCWaveFunctions/WaveFunctionFactory.h"
+#include "WaveFunctionFactory.h"
 #include "QMCWaveFunctions/Jastrow/JastrowBuilder.h"
 #include "QMCWaveFunctions/Fermion/SlaterDetBuilder.h"
 #include "QMCWaveFunctions/LatticeGaussianProductBuilder.h"
@@ -44,12 +44,14 @@ namespace qmcplusplus
 WaveFunctionFactory::WaveFunctionFactory(const std::string& psiName,
                                          ParticleSet& qp,
                                          PtclPoolType& pset,
-                                         Communicate* c)
+                                         Communicate* c,
+                                         bool tasking)
     : MPIObjectBase(c),
-      targetPsi(std::make_unique<TrialWaveFunction>(psiName)),
+      targetPsi(std::make_unique<TrialWaveFunction>(psiName, tasking)),
       targetPtcl(qp),
       ptclPool(pset),
-      myNode(NULL)
+      myNode(NULL),
+      sposet_builder_factory_(c, qp, pset)
 {
   ClassName = "WaveFunctionFactory";
   myName    = psiName;
@@ -61,7 +63,7 @@ bool WaveFunctionFactory::build(xmlNodePtr cur, bool buildtree)
   app_summary() << std::endl;
   app_summary() << " Many-body wavefunction" << std::endl;
   app_summary() << " -------------------" << std::endl;
-  app_summary() << "  Name: " << myName << std::endl;
+  app_summary() << "  Name: " << myName << "   tasking: " << (targetPsi->use_tasking() ? "yes" : "no") << std::endl;
   app_summary() << std::endl;
 
   ReportEngine PRE(ClassName, "build");
@@ -85,10 +87,7 @@ bool WaveFunctionFactory::build(xmlNodePtr cur, bool buildtree)
   {
     std::string cname((const char*)(cur->name));
     if (cname == "sposet_builder" || cname == "sposet_collection")
-    {
-      SPOSetBuilderFactory factory(myComm, targetPtcl, ptclPool);
-      factory.build_sposet_collection(cur);
-    }
+      sposet_builder_factory_.buildSPOSetCollection(cur);
     else if (cname == WaveFunctionComponentBuilder::detset_tag)
     {
       success = addFermionTerm(cur);
@@ -122,7 +121,7 @@ bool WaveFunctionFactory::build(xmlNodePtr cur, bool buildtree)
     else if (cname == WaveFunctionComponentBuilder::jastrow_tag)
     {
       WaveFunctionComponentBuilder* jbuilder = new JastrowBuilder(myComm, targetPtcl, ptclPool);
-      targetPsi->addComponent(jbuilder->buildComponent(cur), WaveFunctionComponentBuilder::jastrow_tag);
+      targetPsi->addComponent(jbuilder->buildComponent(cur));
       success = true;
       addNode(jbuilder, cur);
     }
@@ -133,7 +132,7 @@ bool WaveFunctionFactory::build(xmlNodePtr cur, bool buildtree)
     else if (cname == WaveFunctionComponentBuilder::ionorb_tag)
     {
       LatticeGaussianProductBuilder* builder = new LatticeGaussianProductBuilder(myComm, targetPtcl, ptclPool);
-      targetPsi->addComponent(builder->buildComponent(cur), WaveFunctionComponentBuilder::ionorb_tag);
+      targetPsi->addComponent(builder->buildComponent(cur));
       success = true;
       addNode(builder, cur);
     }
@@ -145,7 +144,7 @@ bool WaveFunctionFactory::build(xmlNodePtr cur, bool buildtree)
     else if (cname == "example_he")
     {
       WaveFunctionComponentBuilder* exampleHe_builder = new ExampleHeBuilder(myComm, targetPtcl, ptclPool);
-      targetPsi->addComponent(exampleHe_builder->buildComponent(cur), "example_he");
+      targetPsi->addComponent(exampleHe_builder->buildComponent(cur));
       success = true;
       addNode(exampleHe_builder, cur);
     }
@@ -153,7 +152,7 @@ bool WaveFunctionFactory::build(xmlNodePtr cur, bool buildtree)
     else if (cname == "agp")
     {
       AGPDeterminantBuilder* agpbuilder = new AGPDeterminantBuilder(myComm, targetPtcl, ptclPool);
-      targetPsi->addComponent(agpbuilder->buildComponent(cur), "agp");
+      targetPsi->addComponent(agpbuilder->buildComponent(cur));
       success = true;
       addNode(agpbuilder, cur);
     }
@@ -199,8 +198,8 @@ bool WaveFunctionFactory::addFermionTerm(xmlNodePtr cur)
     detbuilder = new PWOrbitalBuilder(myComm, targetPtcl, ptclPool);
   }
   else
-    detbuilder = new SlaterDetBuilder(myComm, targetPtcl, *targetPsi, ptclPool);
-  targetPsi->addComponent(detbuilder->buildComponent(cur), "SlaterDet");
+    detbuilder = new SlaterDetBuilder(myComm, sposet_builder_factory_, targetPtcl, *targetPsi, ptclPool);
+  targetPsi->addComponent(detbuilder->buildComponent(cur));
   addNode(detbuilder, cur);
   return true;
 }

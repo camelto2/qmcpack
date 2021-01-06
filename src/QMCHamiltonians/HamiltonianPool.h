@@ -40,7 +40,7 @@ class WaveFunctionPool;
 class HamiltonianPool : public MPIObjectBase
 {
 public:
-  typedef std::map<std::string, HamiltonianFactory*> PoolType;
+  using PoolType = std::map<std::string, HamiltonianFactory*>;
 
   HamiltonianPool(ParticleSetPool& pset_pool,
                   WaveFunctionPool& psi_pool,
@@ -50,6 +50,7 @@ public:
   HamiltonianPool& operator=(const HamiltonianPool&) = delete;
   HamiltonianPool(HamiltonianPool&&)                 = default;
   HamiltonianPool& operator=(HamiltonianPool&&) = delete;
+  ~HamiltonianPool();
 
   bool put(xmlNodePtr cur);
   bool get(std::ostream& os) const;

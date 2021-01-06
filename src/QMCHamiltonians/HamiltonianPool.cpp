@@ -17,7 +17,7 @@
 /**@file HamiltonianPool.cpp
  * @brief Implements HamiltonianPool operators.
  */
-#include "QMCHamiltonians/HamiltonianPool.h"
+#include "HamiltonianPool.h"
 #include "QMCWaveFunctions/WaveFunctionPool.h"
 #include "Particle/ParticleSetPool.h"
 #include "OhmmsData/AttributeSet.h"
@@ -34,6 +34,16 @@ HamiltonianPool::HamiltonianPool(ParticleSetPool& pset_pool,
 {
   ClassName = "HamiltonianPool";
   myName    = aname;
+}
+
+HamiltonianPool::~HamiltonianPool()
+{
+  PoolType::iterator it(myPool.begin());
+  while (it != myPool.end())
+  {
+    delete (*it).second;
+    ++it;
+  }
 }
 
 bool HamiltonianPool::put(xmlNodePtr cur)

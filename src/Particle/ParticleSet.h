@@ -23,11 +23,11 @@
 #include "ParticleTags.h"
 #include "DynamicCoordinates.h"
 #include "Walker.h"
-#include <Utilities/SpeciesSet.h>
-#include <Utilities/PooledData.h>
-#include <OhmmsPETE/OhmmsArray.h>
-#include <Utilities/TimerManager.h>
-#include <OhmmsSoA/VectorSoaContainer.h>
+#include "Utilities/SpeciesSet.h"
+#include "Utilities/PooledData.h"
+#include "OhmmsPETE/OhmmsArray.h"
+#include "Utilities/TimerManager.h"
+#include "OhmmsSoA/VectorSoaContainer.h"
 #include "type_traits/template_types.hpp"
 namespace qmcplusplus
 {
@@ -35,30 +35,6 @@ namespace qmcplusplus
 class DistanceTableData;
 
 class StructFact;
-
-/** Monte Carlo Data of an ensemble
- *
- * The quantities are shared by all the nodes in a group
- * - NumSamples number of samples
- * - Weight     total weight of a sample
- * - Energy     average energy of a sample
- * - Variance   variance
- * - LivingFraction fraction of walkers alive each step.
- */
-template<typename T>
-struct MCDataType
-{
-  T NumSamples;
-  T RNSamples;
-  T Weight;
-  T Energy;
-  T AlternateEnergy;
-  T Variance;
-  T R2Accepted;
-  T R2Proposed;
-  T LivingFraction;
-};
-
 
 /** Specialized paritlce class for atomistic simulations
  *
@@ -88,9 +64,6 @@ public:
   quantum_domains quantum_domain;
 
   //@{ public data members
-  ///property of an ensemble represented by this ParticleSet
-  //MCDataType<FullPrecRealType> EnsembleProperty;
-
   ///ParticleLayout
   ParticleLayout_t Lattice, PrimitiveLattice;
   ///Long-range box
@@ -157,7 +130,7 @@ public:
   SpeciesSet mySpecies;
 
   ///Structure factor
-  StructFact* SK;
+  std::unique_ptr<StructFact> SK;
 
   ///Particle density in G-space for MPC interaction
   std::vector<TinyVector<int, OHMMS_DIM>> DensityReducedGvecs;
@@ -662,16 +635,6 @@ protected:
 
   /// Descriptions from distance table creation.  Same order as DistTables.
   std::vector<std::string> distTableDescriptions;
-
-  enum PSTimers
-  {
-    PS_newpos,
-    PS_donePbyP,
-    PS_accept,
-    PS_update
-  };
-
-  static const TimerNameList_t<PSTimers> PSTimerNames;
 
   TimerList_t myTimers;
 

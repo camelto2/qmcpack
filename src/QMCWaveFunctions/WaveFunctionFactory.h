@@ -33,11 +33,13 @@ public:
   typedef std::map<std::string, ParticleSet*> PtclPoolType;
 
   /** constructor
+   * @param psiName name for both the factory and psi
    * @param qp quantum particleset
    * @param pset pool of particlesets
    * @param c  communicator
+   * @param c  using tasking inside TWF
    */
-  WaveFunctionFactory(const std::string& psiName, ParticleSet& qp, PtclPoolType& pset, Communicate* c);
+  WaveFunctionFactory(const std::string& psiName, ParticleSet& qp, PtclPoolType& pset, Communicate* c, bool tasking = false);
 
   ///read from xmlNode
   bool put(xmlNodePtr cur);
@@ -45,6 +47,8 @@ public:
   xmlNodePtr getNode() const { return myNode; }
   ///get targetPsi
   TrialWaveFunction* getTWF() const { return targetPsi.get(); }
+  ///get SPOSet
+  SPOSet* getSPOSet(const std::string& name) const { return sposet_builder_factory_.getSPOSet(name); }
 
 private:
   /** process xmlNode to populate targetPsi
@@ -71,6 +75,9 @@ private:
   xmlNodePtr myNode;
   ///builder tree
   UPtrVector<WaveFunctionComponentBuilder> psiBuilder;
+
+  /// factory for all the sposet builders in this WF
+  SPOSetBuilderFactory sposet_builder_factory_;
 };
 
 } // namespace qmcplusplus

@@ -34,8 +34,10 @@ void testTrialWaveFunction_diamondC_2x1x1(const int ndelay)
   OHMMS::Controller->initialize(0, NULL);
   Communicate* c = OHMMS::Controller;
 
-  ParticleSet ions_;
-  ParticleSet elec_;
+  auto ions_uptr = std::make_unique<ParticleSet>();
+  auto elec_uptr = std::make_unique<ParticleSet>();
+  ParticleSet& ions_(*ions_uptr);
+  ParticleSet& elec_(*elec_uptr);
 
   ions_.setName("ion");
   ions_.create(4);
@@ -88,8 +90,8 @@ void testTrialWaveFunction_diamondC_2x1x1(const int ndelay)
   elec_.createSK(); // needed by AoS J2 for ChiesaKEcorrection
 
   ParticleSetPool ptcl{c};
-  ptcl.addParticleSet(&elec_);
-  ptcl.addParticleSet(&ions_);
+  ptcl.addParticleSet(std::move(elec_uptr));
+  ptcl.addParticleSet(std::move(ions_uptr));
 
   // make a ParticleSet Clone
   ParticleSet elec_clone(elec_);
@@ -111,9 +113,9 @@ void testTrialWaveFunction_diamondC_2x1x1(const int ndelay)
   SPOSet* spo = einSet.createSPOSetFromXML(ein1);
   REQUIRE(spo != nullptr);
 
-  auto* det_up = new DiracDet(spo);
+  auto* det_up = new DiracDet(std::unique_ptr<SPOSet>(spo->makeClone()));
   det_up->set(0, 2, ndelay);
-  auto* det_dn = new DiracDet(spo);
+  auto* det_dn = new DiracDet(std::unique_ptr<SPOSet>(spo->makeClone()));
   det_dn->set(2, 2, ndelay);
 
   auto* slater_det = new SlaterDet(elec_);
@@ -121,7 +123,7 @@ void testTrialWaveFunction_diamondC_2x1x1(const int ndelay)
   slater_det->add(det_dn, 1);
 
   TrialWaveFunction psi;
-  psi.addComponent(slater_det, "SingleDet");
+  psi.addComponent(slater_det);
 
   const char* jas_input = "<tmp> \
 <jastrow name=\"J2\" type=\"Two-Body\" function=\"Bspline\" print=\"yes\"> \
@@ -139,7 +141,7 @@ void testTrialWaveFunction_diamondC_2x1x1(const int ndelay)
   xmlNodePtr jas1     = xmlFirstElementChild(jas_root);
 
   RadialJastrowBuilder jb(c, elec_);
-  psi.addComponent(jb.buildComponent(jas1), "RadialJastrow");
+  psi.addComponent(jb.buildComponent(jas1));
 
 #if !defined(QMC_CUDA)
   // initialize distance tables.
@@ -469,8 +471,8 @@ TEST_CASE("TrialWaveFunction_diamondC_2x1x1", "[wavefunction]")
   testTrialWaveFunction_diamondC_2x1x1<DiracDeterminantBatched<MatrixDelayedUpdateCUDA<VT, FPVT>>>(1);
   testTrialWaveFunction_diamondC_2x1x1<DiracDeterminantBatched<MatrixDelayedUpdateCUDA<VT, FPVT>>>(2);
 #endif
-  testTrialWaveFunction_diamondC_2x1x1<DiracDeterminantBatched<MatrixUpdateOMP<VT, FPVT>>>(1);
-  testTrialWaveFunction_diamondC_2x1x1<DiracDeterminantBatched<MatrixUpdateOMP<VT, FPVT>>>(2);
+  testTrialWaveFunction_diamondC_2x1x1<DiracDeterminantBatched<MatrixUpdateOMPTarget<VT, FPVT>>>(1);
+  testTrialWaveFunction_diamondC_2x1x1<DiracDeterminantBatched<MatrixUpdateOMPTarget<VT, FPVT>>>(2);
   testTrialWaveFunction_diamondC_2x1x1<DiracDeterminant<DelayedUpdate<VT, FPVT>>>(1);
   testTrialWaveFunction_diamondC_2x1x1<DiracDeterminant<DelayedUpdate<VT, FPVT>>>(2);
 }

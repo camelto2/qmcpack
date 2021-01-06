@@ -17,7 +17,7 @@
 #include <cassert>
 #include <iostream>
 #include <fstream>
-#include "QMCDrivers/WFOpt/QMCCorrelatedSamplingLinearOptimize.h"
+#include "QMCCorrelatedSamplingLinearOptimize.h"
 #include "Particle/HDFWalkerIO.h"
 #include "OhmmsData/AttributeSet.h"
 #include "Message/CommOperators.h"
@@ -326,7 +326,7 @@ bool QMCCorrelatedSamplingLinearOptimize::put(xmlNodePtr q)
   if (vmcEngine == 0)
   {
 #if defined(QMC_CUDA)
-    vmcEngine = std::make_unique<VMCcuda>(W, Psi, H, myComm);
+    vmcEngine = std::make_unique<VMCcuda>(W, Psi, H, myComm, false);
     vmcCSEngine = dynamic_cast<VMCcuda*>(vmcEngine.get());
     vmcCSEngine->setOpt(true);
 #else

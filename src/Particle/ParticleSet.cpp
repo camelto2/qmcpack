@@ -19,7 +19,7 @@
 
 #include <numeric>
 #include <iomanip>
-#include "Particle/ParticleSet.h"
+#include "ParticleSet.h"
 #include "Particle/DynamicCoordinatesBuilder.h"
 #include "Particle/DistanceTableData.h"
 #include "Particle/createDistanceTable.h"
@@ -41,10 +41,22 @@ template<>
 int ParticleSet::Walker_t::cuda_DataSize = 0;
 #endif
 
-const TimerNameList_t<ParticleSet::PSTimers> ParticleSet::PSTimerNames = {{PS_newpos, "ParticleSet::computeNewPosDT"},
-                                                                          {PS_donePbyP, "ParticleSet::donePbyP"},
-                                                                          {PS_accept, "ParticleSet::acceptMove"},
-                                                                          {PS_update, "ParticleSet::update"}};
+enum PSetTimers
+{
+  PS_newpos,
+  PS_donePbyP,
+  PS_accept,
+  PS_update
+};
+
+static const TimerNameList_t<PSetTimers>
+generatePSetTimerNames(std::string& obj_name)
+{
+  return {{PS_newpos, "ParticleSet:" + obj_name + "::computeNewPosDT"},
+          {PS_donePbyP, "ParticleSet:" + obj_name + "::donePbyP"},
+          {PS_accept, "ParticleSet:" + obj_name + "::acceptMove"},
+          {PS_update, "ParticleSet:" + obj_name + "::update"}};
+}
 
 ParticleSet::ParticleSet(const DynamicCoordinateKind kind)
     : quantum_domain(classical),
@@ -52,7 +64,6 @@ ParticleSet::ParticleSet(const DynamicCoordinateKind kind)
       SameMass(true),
       ThreadID(0),
       activePtcl(-1),
-      SK(0),
       Properties(0, 0, 1, WP::MAXPROPERTIES),
       myTwist(0.0),
       ParentName("0"),
@@ -60,7 +71,7 @@ ParticleSet::ParticleSet(const DynamicCoordinateKind kind)
       coordinates_(createDynamicCoordinates(kind))
 {
   initPropertyList();
-  setup_timers(myTimers, PSTimerNames, timer_level_fine);
+  setup_timers(myTimers, generatePSetTimerNames(myName), timer_level_medium);
 }
 
 ParticleSet::ParticleSet(const ParticleSet& p)
@@ -69,7 +80,6 @@ ParticleSet::ParticleSet(const ParticleSet& p)
       ThreadID(0),
       activePtcl(-1),
       mySpecies(p.getSpeciesSet()),
-      SK(0),
       Properties(p.Properties),
       myTwist(0.0),
       ParentName(p.parentName()),
@@ -95,12 +105,12 @@ ParticleSet::ParticleSet(const ParticleSet& p)
   if (p.SK)
   {
     LRBox = p.LRBox;               //copy LRBox
-    SK    = new StructFact(*p.SK); //safe to use the copy constructor
+    SK    = std::make_unique<StructFact>(*p.SK); //safe to use the copy constructor
     //R.InUnit=p.R.InUnit;
     //createSK();
     //SK->DoUpdate=p.SK->DoUpdate;
   }
-  setup_timers(myTimers, PSTimerNames, timer_level_fine);
+  setup_timers(myTimers, generatePSetTimerNames(myName), timer_level_medium);
   myTwist = p.myTwist;
 
   G = p.G;
@@ -111,8 +121,6 @@ ParticleSet::~ParticleSet()
 {
   DEBUG_MEMORY("ParticleSet::~ParticleSet");
   delete_iter(DistTables.begin(), DistTables.end());
-  if (SK)
-    delete SK;
 }
 
 void ParticleSet::create(int numPtcl)
@@ -505,7 +513,7 @@ void ParticleSet::mw_computeNewPosDistTablesAndSK(const RefVector<ParticleSet>& 
         P_list[iw].get().DistTables[i]->move(P_list[iw], new_positions[iw], iat, maybe_accept);
     }
 
-    StructFact* SK = P_list[0].get().SK;
+    auto& SK = P_list[0].get().SK;
     if (SK && SK->DoUpdate)
     {
 #pragma omp for

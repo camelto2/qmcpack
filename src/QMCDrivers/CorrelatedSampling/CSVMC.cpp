@@ -14,7 +14,7 @@
 //////////////////////////////////////////////////////////////////////////////////////
 
 
-#include "QMCDrivers/CorrelatedSampling/CSVMC.h"
+#include "CSVMC.h"
 #include "QMCDrivers/CorrelatedSampling/CSVMCUpdateAll.h"
 #include "QMCDrivers/CorrelatedSampling/CSVMCUpdatePbyP.h"
 #include "Estimators/CSEnergyEstimator.h"
@@ -23,7 +23,7 @@
 #include "Message/OpenMP.h"
 #include "Message/CommOperators.h"
 #include "Utilities/FairDivide.h"
-#include <qmc_common.h>
+#include "Utilities/qmc_common.h"
 //#define ENABLE_VMC_OMP_MASTER
 #if !defined(REMOVE_TRACEMANAGER)
 #include "Estimators/TraceManager.h"
@@ -276,7 +276,7 @@ void CSVMC::resetRun()
         app_log() << os.str() << std::endl;
 
       CSMovers[ip]->put(qmcNode);
-      CSMovers[ip]->resetRun(branchEngine, estimatorClones[ip], traceClones[ip], DriftModifier);
+      CSMovers[ip]->resetRun(branchEngine.get(), estimatorClones[ip], traceClones[ip], DriftModifier);
     }
   }
 #if !defined(REMOVE_TRACEMANAGER)
@@ -301,7 +301,7 @@ void CSVMC::resetRun()
   {
     //int ip=omp_get_thread_num();
     CSMovers[ip]->put(qmcNode);
-    CSMovers[ip]->resetRun(branchEngine, estimatorClones[ip], traceClones[ip], DriftModifier);
+    CSMovers[ip]->resetRun(branchEngine.get(), estimatorClones[ip], traceClones[ip], DriftModifier);
     if (qmc_driver_mode[QMC_UPDATE_MODE])
       CSMovers[ip]->initCSWalkersForPbyP(W.begin() + wPerNode[ip], W.begin() + wPerNode[ip + 1], nWarmupSteps > 0);
     else

@@ -12,7 +12,7 @@
 //////////////////////////////////////////////////////////////////////////////////////
 
 
-#include <QMCWaveFunctions/SPOSetBuilder.h>
+#include "SPOSetBuilder.h"
 #include "OhmmsData/AttributeSet.h"
 
 #if !defined(QMC_COMPLEX)
@@ -121,6 +121,7 @@ SPOSet* SPOSetBuilder::createSPOSet(xmlNodePtr cur)
     app_warning() << "SPOSet object name mismatched! input name: " << spo_object_name
                   << "   object name: " << sposet->getName() << std::endl;
 
+  sposet->checkObject();
   // builder owns created sposets
   sposets.push_back(sposet);
 

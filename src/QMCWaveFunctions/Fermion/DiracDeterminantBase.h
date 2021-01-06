@@ -27,25 +27,27 @@ class DiracDeterminantBase : public WaveFunctionComponent
 {
 public:
   /** constructor
-   *@param spos the single-particle orbital set
+   *@param spos the single-particle orbital set.
+   *  shared_ptr is intended neither for sharing between spin up and down electrons nor for sharing between clones.
+   *  The sharing aspect is for the determinants used by the the multi-determinant slow implementation.
    *@param first index of the first particle
    */
-  DiracDeterminantBase(SPOSetPtr const spos, int first = 0)
-      : UpdateTimer(*timer_manager.createTimer("DiracDeterminantBase::update", timer_level_fine)),
-        RatioTimer(*timer_manager.createTimer("DiracDeterminantBase::ratio", timer_level_fine)),
-        InverseTimer(*timer_manager.createTimer("DiracDeterminantBase::inverse", timer_level_fine)),
-        BufferTimer(*timer_manager.createTimer("DiracDeterminantBase::buffer", timer_level_fine)),
-        SPOVTimer(*timer_manager.createTimer("DiracDeterminantBase::spoval", timer_level_fine)),
-        SPOVGLTimer(*timer_manager.createTimer("DiracDeterminantBase::spovgl", timer_level_fine)),
-        Phi(spos),
+  DiracDeterminantBase(const std::string& class_name, std::shared_ptr<SPOSet>&& spos, int first = 0)
+      : WaveFunctionComponent(class_name),
+        UpdateTimer(*timer_manager.createTimer(class_name + "::update", timer_level_fine)),
+        RatioTimer(*timer_manager.createTimer(class_name + "::ratio", timer_level_fine)),
+        InverseTimer(*timer_manager.createTimer(class_name + "::inverse", timer_level_fine)),
+        BufferTimer(*timer_manager.createTimer(class_name + "::buffer", timer_level_fine)),
+        SPOVTimer(*timer_manager.createTimer(class_name + "::spoval", timer_level_fine)),
+        SPOVGLTimer(*timer_manager.createTimer(class_name + "::spovgl", timer_level_fine)),
+        Phi(std::move(spos)),
         FirstIndex(first),
-        LastIndex(first + spos->size()),
-        NumOrbitals(spos->size()),
-        NumPtcls(spos->size())
+        LastIndex(first + Phi->size()),
+        NumOrbitals(Phi->size()),
+        NumPtcls(Phi->size())
   {
     Optimizable  = Phi->isOptimizable();
     is_fermionic = true;
-    ClassName    = "DiracDeterminantBase";
     registerTimers();
   }
 
@@ -57,7 +59,7 @@ public:
   DiracDeterminantBase& operator=(const DiracDeterminantBase& s) = delete;
 
   // get the SPO pointer
-  inline SPOSetPtr getPhi() const { return Phi; }
+  inline SPOSetPtr getPhi() const { return Phi.get(); }
 
   // get FirstIndex, Last Index
   inline int getFirstIndex() const { return FirstIndex; }
@@ -103,8 +105,10 @@ public:
   using WaveFunctionComponent::mw_completeUpdates;
   using WaveFunctionComponent::mw_evalGrad;
   using WaveFunctionComponent::mw_ratioGrad;
+  using WaveFunctionComponent::mw_ratioGradAsync;
   using WaveFunctionComponent::ratio;
   using WaveFunctionComponent::ratioGrad;
+  using WaveFunctionComponent::ratioGradAsync;
   using WaveFunctionComponent::restore;
 
   using WaveFunctionComponent::evalGradSource;
@@ -148,7 +152,7 @@ public:
    * This interface is exposed only to SlaterDet and its derived classes
    * can overwrite to clone itself correctly.
    */
-  virtual DiracDeterminantBase* makeCopy(SPOSet* spo) const = 0;
+  virtual DiracDeterminantBase* makeCopy(std::shared_ptr<SPOSet>&& spo) const = 0;
 
 #ifdef QMC_CUDA
   // expose GPU interfaces
@@ -169,8 +173,11 @@ public:
 protected:
   /// Timers
   NewTimer &UpdateTimer, &RatioTimer, &InverseTimer, &BufferTimer, &SPOVTimer, &SPOVGLTimer;
-  /// a set of single-particle orbitals used to fill in the  values of the matrix
-  SPOSetPtr const Phi;
+  /** a set of single-particle orbitals used to fill in the  values of the matrix
+   *  shared_ptr is intended neither for sharing between spin up and down electrons nor for sharing between clones.
+   *  The sharing aspect is for the determinants used by the the multi-determinant slow implementation.
+   */
+  const std::shared_ptr<SPOSet> Phi;
   ///index of the first particle with respect to the particle set
   int FirstIndex;
   ///index of the last particle with respect to the particle set
