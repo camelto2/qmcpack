@@ -495,6 +495,8 @@ def read_qmcpack_dense(filename):
                                             (nmo*nmo,nchol))
             except KeyError:
                 print("Error Hamiltonian/DenseFactorized/L")
+    assert chol.shape == (nmo*nmo, nchol)
+    assert hcore.shape == (nmo, nmo)
     return hcore, chol, enuc
 
 def read_common_input(filename, get_hcore=True):
@@ -669,7 +671,7 @@ def sparse_to_dense(sparse_file, dense_file, real_chol=False):
                                            dtype=numpy.float64)
             s = 0
             for ic, bs in enumerate(block_sizes):
-                ixs, vchunk = get_chunk(sph5, ic, False)
+                ixs, vchunk = get_chunk(sph5, ic, real_chol)
                 row_ix, col_ix = ixs[::2], ixs[1::2]
                 sort = numpy.argsort(row_ix)
                 row_ix = row_ix[sort]

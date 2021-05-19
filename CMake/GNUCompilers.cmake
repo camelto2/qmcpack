@@ -1,16 +1,17 @@
 # Check compiler version
-IF ( CMAKE_CXX_COMPILER_VERSION VERSION_LESS 5.0 )
-MESSAGE(FATAL_ERROR "Requires gcc 5.0 or higher ")
+IF ( CMAKE_CXX_COMPILER_VERSION VERSION_LESS 7.0 )
+MESSAGE(FATAL_ERROR "Requires gcc 7.0 or higher ")
 ENDIF()
-
-# Set the std
-SET(CMAKE_C_FLAGS   "${CMAKE_C_FLAGS} -std=c99")
 
 # Enable OpenMP
 IF(QMC_OMP)
   SET(ENABLE_OPENMP 1)
   SET(CMAKE_C_FLAGS     "${CMAKE_C_FLAGS} -fopenmp")
   SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fopenmp")
+  IF(ENABLE_OFFLOAD AND NOT CMAKE_SYSTEM_NAME STREQUAL "CrayLinuxEnvironment")
+    SET(OFFLOAD_TARGET "nvptx-none" CACHE STRING "Offload target architecture")
+    SET(OPENMP_OFFLOAD_COMPILE_OPTIONS "-foffload=${OFFLOAD_TARGET} -foffload=\"-lm -latomic\"")
+  ENDIF()
 ENDIF(QMC_OMP)
 
 # Set gnu specific flags (which we always want)
@@ -31,7 +32,6 @@ SET(CMAKE_C_FLAGS     "${CMAKE_C_FLAGS} -Werror=vla")
 SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wvla")
 
 # set compiler warnings
-SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}" )
 SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wcomment -Wmisleading-indentation -Wmaybe-uninitialized -Wuninitialized -Wreorder -Wno-unknown-pragmas -Wno-sign-compare")
 
 # Set extra optimization specific flags
@@ -40,6 +40,7 @@ SET( CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -fomit-frame-pointer -f
 SET( CMAKE_C_FLAGS_RELWITHDEBINFO     "${CMAKE_C_FLAGS_RELWITHDEBINFO} -fomit-frame-pointer -ffast-math" )
 SET( CMAKE_CXX_FLAGS_RELWITHDEBINFO "${CMAKE_CXX_FLAGS_RELWITHDEBINFO} -fomit-frame-pointer -ffast-math" )
 
+#--------------------------------------
 # Special architectural flags
 #--------------------------------------
 # case arch

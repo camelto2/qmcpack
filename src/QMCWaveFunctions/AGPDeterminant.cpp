@@ -12,7 +12,7 @@
 //////////////////////////////////////////////////////////////////////////////////////
 
 
-#include "QMCWaveFunctions/AGPDeterminant.h"
+#include "AGPDeterminant.h"
 #include "Numerics/DeterminantOperators.h"
 #include "Numerics/MatrixOperators.h"
 #include "CPU/SIMD/simd.hpp"
@@ -21,7 +21,9 @@ namespace qmcplusplus
 {
 using std::copy;
 
-AGPDeterminant::AGPDeterminant(BasisSetType* bs) : GeminalBasis(bs), NumPtcls(0) {}
+AGPDeterminant::AGPDeterminant(BasisSetType* bs)
+    : WaveFunctionComponent("AGPDeterminant"), GeminalBasis(bs), NumPtcls(0)
+{}
 AGPDeterminant::~AGPDeterminant() {}
 
 void AGPDeterminant::resize(int nup, int ndown)
@@ -87,9 +89,6 @@ void AGPDeterminant::reportStatus(std::ostream& os)
   //do nothing
 }
 
-
-void AGPDeterminant::resetTargetParticleSet(ParticleSet& P) { GeminalBasis->resetTargetParticleSet(P); }
-
 /** Calculate the log value of the Dirac determinant for particles
  *@param P input configuration containing N particles
  *@param G a vector containing N gradients
@@ -100,7 +99,7 @@ void AGPDeterminant::resetTargetParticleSet(ParticleSet& P) { GeminalBasis->rese
  *contribution of the determinant to G(radient) and L(aplacian)
  *for local energy calculations.
  */
-AGPDeterminant::LogValueType AGPDeterminant::evaluateLog(ParticleSet& P,
+AGPDeterminant::LogValueType AGPDeterminant::evaluateLog(const ParticleSet& P,
                                                          ParticleSet::ParticleGradient_t& G,
                                                          ParticleSet::ParticleLaplacian_t& L)
 {
@@ -110,7 +109,7 @@ AGPDeterminant::LogValueType AGPDeterminant::evaluateLog(ParticleSet& P,
   return LogValue;
 }
 
-void AGPDeterminant::evaluateLogAndStore(ParticleSet& P)
+void AGPDeterminant::evaluateLogAndStore(const ParticleSet& P)
 {
   //GeminalBasis->evaluate(P);
   GeminalBasis->evaluateForWalkerMove(P); //@@
@@ -418,7 +417,6 @@ WaveFunctionComponentPtr AGPDeterminant::makeClone(ParticleSet& tqp) const
 {
   AGPDeterminant* myclone = new AGPDeterminant(0);
   myclone->GeminalBasis   = GeminalBasis->makeClone();
-  myclone->GeminalBasis->resetTargetParticleSet(tqp);
   myclone->resize(Nup, Ndown);
   myclone->Lambda = Lambda;
   if (Nup != Ndown)

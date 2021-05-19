@@ -2,9 +2,10 @@
 // This file is distributed under the University of Illinois/NCSA Open Source License.
 // See LICENSE file in top directory for details.
 //
-// Copyright (c) 2016 Jeongnim Kim and QMCPACK developers.
+// Copyright (c) 2020 QMCPACK developers.
 //
-// File developed by: Jeongnim Kim, jeongnim.kim@gmail.com, University of Illinois at Urbana-Champaign
+// File developed by: Peter Doak, doakpw@ornl.gov, Oak Ridge National Laboratory
+//                    Jeongnim Kim, jeongnim.kim@gmail.com, University of Illinois at Urbana-Champaign
 //                    Jeremy McMinnis, jmcminis@gmail.com, University of Illinois at Urbana-Champaign
 //                    Jaron T. Krogel, krogeljt@ornl.gov, Oak Ridge National Laboratory
 //                    Mark A. Berrill, berrillma@ornl.gov, Oak Ridge National Laboratory
@@ -15,25 +16,26 @@
 
 #ifndef QMCPLUSPLUS_SCALAR_ESTIMATORBASE_H
 #define QMCPLUSPLUS_SCALAR_ESTIMATORBASE_H
-#include <Particle/MCWalkerConfiguration.h>
-#include <OhmmsData/RecordProperty.h>
-#include <OhmmsData/HDFAttribIO.h>
-#include <Estimators/accumulators.h>
-#include "QMCDrivers/MCPopulation.h"
+#include "Particle/MCWalkerConfiguration.h"
+#include "OhmmsData/RecordProperty.h"
+#include "OhmmsData/HDFAttribIO.h"
+#include "Estimators/accumulators.h"
+#include "Particle/Walker.h"
 #if !defined(REMOVE_TRACEMANAGER)
-#include <Estimators/TraceManager.h>
+#include "Estimators/TraceManager.h"
 #endif
 
 namespace qmcplusplus
 {
-struct observable_helper;
+class ObservableHelper;
 
 /** Abstract class for an estimator of a scalar operator.
  *
  * ScalarEstimators derived from ScalarEstimatorBase  implement three main functions
- * - reset : reset the internal values so that observables can be accumulated
  * - accumulate : measure and accumulate its value and the square of the value
- * - report : evaluate the block average and variance
+ * - add2Record : \todo document this
+ * - registerObservables : \todo document this
+ * - clone : because all types must be erased
  * ScalarEstimatorBase and its derived classes do not perform any I/O function.
  */
 struct ScalarEstimatorBase
@@ -41,7 +43,7 @@ struct ScalarEstimatorBase
   typedef QMCTraits::FullPrecRealType RealType;
   typedef accumulator_set<RealType> accumulator_type;
   typedef MCWalkerConfiguration::Walker_t Walker_t;
-  using MCPWalker = MCPopulation::MCPWalker;
+  using MCPWalker = Walker<QMCTraits, PtclOnLatticeTraits>;
   typedef MCWalkerConfiguration::const_iterator WalkerIterator;
   typedef RecordNamedProperty<RealType> RecordListType;
 
@@ -100,9 +102,29 @@ struct ScalarEstimatorBase
     first_sq += FirstIndex;
     for (int i = 0; i < scalars.size(); i++)
     {
-      *first++         = scalars[i].mean();
-      *first_sq++      = scalars[i].mean2();
+      *first++    = scalars[i].mean();
+      *first_sq++ = scalars[i].mean2();
+      // For mixed precision I believe this is where Collectables data goes from Actual QMCT::RealType
+      // to the local RealType which is hard coded to QMCTFullPrecRealType.
+      // I think it is a bad idea to have RealType to have a changing meaning,
+      // I also feel like having the floating point expension needed to write always to
+      // double in hdf5 is poor form especially since I had to figure this out in many
+      // years later.
       scalars_saved[i] = scalars[i]; //save current block
+      scalars[i].clear();
+    }
+  }
+
+  /** add the block accumulated scalars
+   * @param first starting iterator of values
+   */
+  template<typename IT>
+  inline void addAccumulated(IT first)
+  {
+    first += FirstIndex;
+    for (int i = 0; i < scalars.size(); i++)
+    {
+      *first++ += scalars[i].result();
       scalars[i].clear();
     }
   }
@@ -117,13 +139,13 @@ struct ScalarEstimatorBase
    */
   virtual void accumulate(const MCWalkerConfiguration& W, WalkerIterator first, WalkerIterator last, RealType wgt) = 0;
 
-   /** a virtual function to accumulate observables or collectables
+  /** a virtual function to accumulate observables or collectables
    * @param global_walkers_ walkers per ranks or walkers total?
    * @param RefVector of MCPWalkers
    * @param wgt weight or maybe norm
    *
    */
-  virtual void accumulate(const int global_walkers, RefVector<MCPWalker>&, RealType wgt) = 0;
+  virtual void accumulate(const RefVector<MCPWalker>&) = 0;
 
   /** add the content of the scalar estimator to the record
    * @param record scalar data list
@@ -136,15 +158,10 @@ struct ScalarEstimatorBase
    * @param h5desc descriptor of a data stored in a h5 group
    * @param gid h5 group to which each statistical data will be stored
    */
-  virtual void registerObservables(std::vector<observable_helper*>& h5dec, hid_t gid) = 0;
+  virtual void registerObservables(std::vector<ObservableHelper>& h5dec, hid_t gid) = 0;
 
   ///clone the object
   virtual ScalarEstimatorBase* clone() = 0;
-
-  inline void setNumberOfBlocks(int nsamples)
-  {
-    //       NSTEPS=1.0/ static_cast<RealType>(nsamples);
-  }
 };
 } // namespace qmcplusplus
 

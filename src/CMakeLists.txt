@@ -24,8 +24,8 @@ INCLUDE(${PROJECT_SOURCE_DIR}/CMake/unit_test.cmake)
 
 SET(GITREV_BARE_FILE git-rev.h)
 SET(GITREV_BARE_TMP git-rev-tmp.h)
-SET(GITREV_FILE ${CMAKE_BINARY_DIR}/src/${GITREV_BARE_FILE})
-SET(GITREV_TMP ${CMAKE_BINARY_DIR}/src/${GITREV_BARE_TMP})
+SET(GITREV_FILE ${qmcpack_BINARY_DIR}/src/${GITREV_BARE_FILE})
+SET(GITREV_TMP ${qmcpack_BINARY_DIR}/src/${GITREV_BARE_TMP})
 
 # Always clean up git-rev-tmp.h file when cmake is run
 EXECUTE_PROCESS(
@@ -83,7 +83,7 @@ IF (IS_GIT_PROJECT)
     COMMAND ${CMAKE_COMMAND} -E echo >> ${GITREV_TMP}
     COMMAND ${CMAKE_COMMAND} -E copy_if_different ${GITREV_TMP} ${GITREV_FILE}
     COMMAND ${CMAKE_COMMAND} -E remove ${GITREV_TMP}
-    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+    WORKING_DIRECTORY ${qmcpack_SOURCE_DIR}
     VERBATIM
   )
 
@@ -93,7 +93,7 @@ IF (IS_GIT_PROJECT)
   EXECUTE_PROCESS(
     COMMAND ${GIT_EXECUTABLE} rev-parse --abbrev-ref HEAD
     OUTPUT_VARIABLE GIT_CONFIG_BRANCH
-    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+    WORKING_DIRECTORY ${qmcpack_SOURCE_DIR}
     OUTPUT_STRIP_TRAILING_WHITESPACE
   )
 
@@ -111,7 +111,7 @@ IF (IS_GIT_PROJECT)
   EXECUTE_PROCESS(
     COMMAND ${GIT_EXECUTABLE} describe --always --dirty --abbrev=40 --match="NoTagWithThisName"
     OUTPUT_VARIABLE GIT_CONFIG_COMMIT_HASH
-    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+    WORKING_DIRECTORY ${qmcpack_SOURCE_DIR}
     OUTPUT_STRIP_TRAILING_WHITESPACE
   )
   MESSAGE("Git branch: ${GIT_CONFIG_BRANCH}")
@@ -120,30 +120,28 @@ ENDIF()
 
 INCLUDE_DIRECTORIES("${qmcpack_SOURCE_DIR}/external_codes/boost_multi")
 
-
   ####################################
   # create libqmcutil
   ####################################
   SET(UTILITIES
-    qmc_common.cpp
+    Utilities/qmc_common.cpp
     Utilities/RandomGenerator.cpp
     Utilities/OhmmsObject.cpp
     Utilities/SpeciesSet.cpp
     Utilities/SimpleParser.cpp
+    Utilities/Clock.cpp
     Utilities/NewTimer.cpp
+    Utilities/TimerManager.cpp
     Utilities/RunTimeManager.cpp
     Utilities/ProgressReportEngine.cpp
     Utilities/unit_conversion.cpp
-    OhmmsData/Libxml2Doc.cpp
+    Utilities/ResourceCollection.cpp
     OhmmsApp/ProjectData.cpp
     OhmmsApp/RandomNumberControl.cpp
     Numerics/OptimizableFunctorBase.cpp
     Numerics/SmoothFunctions.cpp
-    QMCFactory/OneDimGridFactory.cpp
-    Message/Communicate.cpp
-    Message/MPIObjectBase.cpp
+    Numerics/OneDimGridFactory.cpp
     Optimize/VariableSet.cpp
-    io/hdf_archive.cpp
     )
 IF (IS_GIT_PROJECT)
   SET(UTILITIES "${UTILITIES};${GITREV_TMP}")
@@ -154,8 +152,9 @@ IF(USE_OBJECT_TARGET)
 ELSE(USE_OBJECT_TARGET)
   ADD_LIBRARY(qmcutil ${UTILITIES})
 ENDIF(USE_OBJECT_TARGET)
-  TARGET_LINK_LIBRARIES(qmcutil PUBLIC message containers)
-  TARGET_LINK_LIBRARIES(qmcutil PUBLIC LibXml2::LibXml2 IO::HDF5 Boost::boost ${QMC_UTIL_LIBS})
+  TARGET_INCLUDE_DIRECTORIES(qmcutil PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/Utilities")
+  TARGET_LINK_LIBRARIES(qmcutil PUBLIC message containers qmcio)
+  TARGET_LINK_LIBRARIES(qmcutil PUBLIC LibXml2::LibXml2 Boost::boost ${QMC_UTIL_LIBS})
 
   # For unit tests, enable use for the fake RNG
   FUNCTION( USE_FAKE_RNG TARGET )
@@ -169,12 +168,14 @@ ENDIF(USE_OBJECT_TARGET)
   )
   ADD_LIBRARY(qmcfakerng ${UNIT_TEST_UTILITIES})
 
+  SUBDIRS(io)
   SUBDIRS(einspline)
   SUBDIRS(Containers)
   SUBDIRS(Message)
   SUBDIRS(Platforms)
   SUBDIRS(Particle)
-
+  SUBDIRS(Utilities)
+  
 if(QMC_BUILD_SANDBOX_ONLY)
 
   MESSAGE(STATUS "Minimal build: only Sandbox")
@@ -184,6 +185,7 @@ else() #{{{
 
   SUBDIRS(QMCWaveFunctions)
   SUBDIRS(QMCHamiltonians)
+  SUBDIRS(Estimators)
   SUBDIRS(QMCDrivers)
 
   IF(BUILD_LMYENGINE_INTERFACE)
@@ -200,10 +202,7 @@ else() #{{{
   ENDIF(BUILD_FCIQMC)
 
   SUBDIRS(QMCApp)
-
-  #IF(BUILD_QMCTOOLS)
   SUBDIRS(QMCTools)
-  #ENDIF(BUILD_QMCTOOLS)
 
   IF (BUILD_UNIT_TESTS) #{
     #Unit test directories
@@ -212,12 +211,9 @@ else() #{{{
     SUBDIRS(einspline/tests)
     SUBDIRS(spline2/tests)
     SUBDIRS(Concurrency/tests)
-    SUBDIRS(OhmmsData/tests)
-    SUBDIRS(io/tests)
     SUBDIRS(QMCWaveFunctions/tests)
     SUBDIRS(QMCHamiltonians/tests)
     SUBDIRS(type_traits/tests)
-    SUBDIRS(Estimators/tests)
     SUBDIRS(QMCDrivers/tests)
     SUBDIRS(QMCApp/tests)
     SUBDIRS(Message/tests)

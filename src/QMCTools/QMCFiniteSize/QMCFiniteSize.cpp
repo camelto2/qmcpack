@@ -1,4 +1,4 @@
-#include "QMCTools/QMCFiniteSize/QMCFiniteSize.h"
+#include "QMCFiniteSize.h"
 #include "OhmmsData/AttributeSet.h"
 #include "QMCWaveFunctions/WaveFunctionComponentBuilder.h"
 #include <iostream>
@@ -189,7 +189,7 @@ void QMCFiniteSize::initBreakup()
   myRcut = AA->get_rc();
   if (rVs == 0)
   {
-    rVs = LRCoulombSingleton::createSpline4RbyVs(AA, myRcut, myGrid);
+    rVs = LRCoulombSingleton::createSpline4RbyVs(AA.get(), myRcut, myGrid);
   }
 }
 
@@ -647,7 +647,7 @@ void QMCFiniteSize::printNkSplineSphAvg(NUBspline_3d_d* spline)
             << "\n";
   for (RealType k = 0; k <= NKkmax; k += 0.05)
   {
-    RealType val = sphericalAvgNk(spline,k);
+    RealType val = sphericalAvgNk(spline, k);
     app_log() << setw(12) << setprecision(8) << k << " " << setw(12) << val << endl;
   }
 }
@@ -661,7 +661,7 @@ QMCFiniteSize::RealType QMCFiniteSize::calcPotentialDiscrete(vector<RealType> sk
 QMCFiniteSize::RealType QMCFiniteSize::calcKineticDiscrete(vector<RealType> nk)
 {
   //This is the \frac{1}{\rho Omega} \sum_{\mathbf{k}} \frac{k^2}{2} n(\mathbf{k})
-  RealType sum = 0.0;
+  RealType sum  = 0.0;
   RealType norm = 0.0;
   assert(NKkpts_raw.size() == nk.size());
   for (int ik = 0; ik < NKkpts_raw.size(); ik++)
@@ -726,8 +726,8 @@ QMCFiniteSize::RealType QMCFiniteSize::calcKineticInt(vector<RealType> nk)
   {
     RealType kval = i * dk;
     nonunigrid1d.push_back(kval);
-    RealType nkavg = sphericalAvgNk(spline,kval);
-    RealType k4 = kval * kval * kval * kval;
+    RealType nkavg = sphericalAvgNk(spline, kval);
+    RealType k4    = kval * kval * kval * kval;
     k4nk.push_back(0.5 * k4 * nkavg);
   }
 

@@ -12,7 +12,7 @@
 //////////////////////////////////////////////////////////////////////////////////////
 
 
-#include "QMCDrivers/RMC/RMCUpdatePbyP.h"
+#include "RMCUpdatePbyP.h"
 #include "QMCDrivers/DriftOperators.h"
 #include "Message/OpenMP.h"
 #include "Configuration.h"
@@ -43,11 +43,13 @@ RMCUpdatePbyPWithDrift::RMCUpdatePbyPWithDrift(MCWalkerConfiguration& w,
                                                RandomGenerator_t& rg,
                                                std::vector<int> act,
                                                std::vector<int> tp)
-    : QMCUpdateBase(w, psi, h, rg), Action(act), TransProb(tp),
-      advance_timer_(*TimerManager.createTimer("RMCUpdatePbyP::advance", timer_level_medium)),
-      movepbyp_timer_(*TimerManager.createTimer("RMCUpdatePbyP::movePbyP", timer_level_medium)),
-      update_mbo_timer_(*TimerManager.createTimer("RMCUpdatePbyP::updateMBO", timer_level_medium)),
-      energy_timer_(*TimerManager.createTimer("RMCUpdatePbyP::energy", timer_level_medium))
+    : QMCUpdateBase(w, psi, h, rg),
+      Action(act),
+      TransProb(tp),
+      advance_timer_(*timer_manager.createTimer("RMCUpdatePbyP::advance", timer_level_medium)),
+      movepbyp_timer_(*timer_manager.createTimer("RMCUpdatePbyP::movePbyP", timer_level_medium)),
+      update_mbo_timer_(*timer_manager.createTimer("RMCUpdatePbyP::updateMBO", timer_level_medium)),
+      energy_timer_(*timer_manager.createTimer("RMCUpdatePbyP::energy", timer_level_medium))
 {
   scaleDrift = false;
   actionType = SYM_ACTION;
@@ -88,10 +90,10 @@ bool RMCUpdatePbyPWithDrift::put(xmlNodePtr cur)
   ParameterSet m_param;
   bool usedrift      = true;
   std::string action = "SLA";
-  m_param.add(usedrift, "useDrift", "bool");
-  m_param.add(action, "Action", "string");
-  m_param.add(equilSteps, "equilsteps", "int");
-  m_param.add(equilSteps, "equilSteps", "int");
+  m_param.add(usedrift, "useDrift");
+  m_param.add(action, "Action");
+  m_param.add(equilSteps, "equilsteps");
+  m_param.add(equilSteps, "equilSteps");
   m_param.put(cur);
 
   if (usedrift == true)
@@ -152,11 +154,12 @@ void RMCUpdatePbyPWithDrift::advanceWalkersVMC()
       DriftModifier->getDrift(tauovermass, grad_iat, dr);
       dr += sqrttau * deltaR[iat];
       bool is_valid = W.makeMoveAndCheck(iat, dr);
-      RealType rr = tauovermass * dot(deltaR[iat], deltaR[iat]);
+      RealType rr   = tauovermass * dot(deltaR[iat], deltaR[iat]);
       rr_proposed += rr;
       if (!is_valid || rr > m_r2max)
       {
         ++nRejectTemp;
+        W.accept_rejectMove(iat, false);
         continue;
       }
       ValueType ratio = Psi.calcRatioGrad(W, iat, grad_iat);
@@ -165,7 +168,7 @@ void RMCUpdatePbyPWithDrift::advanceWalkersVMC()
       {
         ++nRejectTemp;
         ++nNodeCrossing;
-        W.rejectMove(iat);
+        W.accept_rejectMove(iat, false);
         Psi.rejectMove(iat);
       }
       else
@@ -173,23 +176,24 @@ void RMCUpdatePbyPWithDrift::advanceWalkersVMC()
         RealType logGf = -0.5 * dot(deltaR[iat], deltaR[iat]);
         //Use the force of the particle iat
         DriftModifier->getDrift(tauovermass, grad_iat, dr);
-        dr             = W.R[iat] - W.activePos - dr;
-        RealType logGb = -oneover2tau * dot(dr, dr);
-        RealType prob  = std::norm(ratio) * std::exp(logGb - logGf);
+        dr               = W.R[iat] - W.activePos - dr;
+        RealType logGb   = -oneover2tau * dot(dr, dr);
+        RealType prob    = std::norm(ratio) * std::exp(logGb - logGf);
+        bool is_accepted = false;
         if (RandomGen() < prob)
         {
+          is_accepted = true;
           ++nAcceptTemp;
           Psi.acceptMove(W, iat, true);
-          W.acceptMove(iat, true);
           rr_accepted += rr;
           gf_acc *= prob; //accumulate the ratio
         }
         else
         {
           ++nRejectTemp;
-          W.rejectMove(iat);
           Psi.rejectMove(iat);
         }
+        W.accept_rejectMove(iat, is_accepted);
       }
     }
   }
@@ -281,11 +285,12 @@ void RMCUpdatePbyPWithDrift::advanceWalkersRMC()
       DriftModifier->getDrift(tauovermass, grad_iat, dr);
       dr += sqrttau * deltaR[iat];
       bool is_valid = W.makeMoveAndCheck(iat, dr);
-      RealType rr = tauovermass * dot(deltaR[iat], deltaR[iat]);
+      RealType rr   = tauovermass * dot(deltaR[iat], deltaR[iat]);
       rr_proposed += rr;
       if (!is_valid || rr > m_r2max)
       {
         ++nRejectTemp;
+        W.accept_rejectMove(iat, false);
         continue;
       }
       ValueType ratio = Psi.calcRatioGrad(W, iat, grad_iat);
@@ -294,7 +299,7 @@ void RMCUpdatePbyPWithDrift::advanceWalkersRMC()
       {
         ++nRejectTemp;
         ++nNodeCrossing;
-        W.rejectMove(iat);
+        W.accept_rejectMove(iat, false);
         Psi.rejectMove(iat);
       }
       else
@@ -302,23 +307,24 @@ void RMCUpdatePbyPWithDrift::advanceWalkersRMC()
         RealType logGf = -0.5 * dot(deltaR[iat], deltaR[iat]);
         //Use the force of the particle iat
         DriftModifier->getDrift(tauovermass, grad_iat, dr);
-        dr             = W.R[iat] - W.activePos - dr;
-        RealType logGb = -oneover2tau * dot(dr, dr);
-        RealType prob  = std::norm(ratio) * std::exp(logGb - logGf);
+        dr               = W.R[iat] - W.activePos - dr;
+        RealType logGb   = -oneover2tau * dot(dr, dr);
+        RealType prob    = std::norm(ratio) * std::exp(logGb - logGf);
+        bool is_accepted = false;
         if (RandomGen() < prob)
         {
+          is_accepted = true;
           ++nAcceptTemp;
           Psi.acceptMove(W, iat, true);
-          W.acceptMove(iat, true);
           rr_accepted += rr;
           gf_acc *= prob; //accumulate the ratio
         }
         else
         {
           ++nRejectTemp;
-          W.rejectMove(iat);
           Psi.rejectMove(iat);
         }
+        W.accept_rejectMove(iat, is_accepted);
       }
     }
   }

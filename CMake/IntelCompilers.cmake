@@ -1,11 +1,7 @@
 # Check compiler version
-SET(INTEL_COMPILER 1)
-IF ( CMAKE_CXX_COMPILER_VERSION VERSION_LESS 18.0 )
-MESSAGE(FATAL_ERROR "Requires Intel 18.0 or higher ")
-ENDIF()
-
-# Set the std
-SET(CMAKE_C_FLAGS   "${CMAKE_C_FLAGS} -std=c99")
+if(CMAKE_CXX_COMPILER_VERSION VERSION_LESS 19.0.0.20190206)
+message(FATAL_ERROR "Requires Intel 19 update 3 (19.0.0.20190206) or higher!")
+endif()
 
 # Enable OpenMP
 IF(QMC_OMP)
@@ -34,6 +30,9 @@ SET( CMAKE_CXX_FLAGS_RELWITHDEBINFO "${CMAKE_CXX_FLAGS_RELWITHDEBINFO} -restrict
 # Set prefetch flag
 SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -qopt-prefetch" )
 
+IF(MIXED_PRECISION)
+  SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -prec-sqrt" )
+ENDIF()
 #check if -ftz is accepted
 CHECK_CXX_COMPILER_FLAG( "${CMAKE_CXX_FLAGS} -ftz" INTEL_FTZ )
 IF( INTEL_FTZ)

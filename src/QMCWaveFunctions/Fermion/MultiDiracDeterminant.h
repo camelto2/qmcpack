@@ -56,7 +56,7 @@ public:
    *@param spos the single-particle orbital set
    *@param first index of the first particle
    */
-  MultiDiracDeterminant(SPOSetPtr const& spos, int first = 0);
+  MultiDiracDeterminant(std::unique_ptr<SPOSet>&& spos, int first = 0);
 
   ///default destructor
   ~MultiDiracDeterminant();
@@ -75,7 +75,7 @@ public:
    */
   SPOSetPtr clonePhi() const;
 
-  SPOSetPtr getPhi() { return Phi; };
+  SPOSetPtr getPhi() { return Phi.get(); };
 
   inline IndexType rows() const { return NumPtcls; }
 
@@ -178,7 +178,6 @@ public:
 
 
   inline void reportStatus(std::ostream& os) {}
-  void resetTargetParticleSet(ParticleSet& P) { Phi->resetTargetParticleSet(P); }
 
   ///reset the size: with the number of particles and number of orbtials
   virtual void resize(int nel, int morb);
@@ -221,13 +220,13 @@ public:
     return PsiValueType();
   }
 
-  LogValueType evaluateLog(ParticleSet& P, ParticleSet::ParticleGradient_t& G, ParticleSet::ParticleLaplacian_t& L)
+  LogValueType evaluateLog(const ParticleSet& P, ParticleSet::ParticleGradient_t& G, ParticleSet::ParticleLaplacian_t& L)
   {
     APP_ABORT("  MultiDiracDeterminant: This should not be called. \n");
     return 0.0;
   }
 
-  ValueType evaluate(ParticleSet& P, ParticleSet::ParticleGradient_t& G, ParticleSet::ParticleLaplacian_t& L)
+  ValueType evaluate(const ParticleSet& P, ParticleSet::ParticleGradient_t& G, ParticleSet::ParticleLaplacian_t& L)
   {
     APP_ABORT("  MultiDiracDeterminant: This should not be called. \n");
     return ValueType();
@@ -384,12 +383,22 @@ public:
 
   void setDetInfo(int ref, std::vector<ci_configuration2>* list);
 
-  void evaluateDetsForPtclMove(ParticleSet& P, int iat);
-  void evaluateDetsAndGradsForPtclMove(ParticleSet& P, int iat);
+  /** evaluate the value of all the unique determinants with one electron moved. Used by the table method
+   *@param P particle set which provides the positions
+   *@param iat the index of the moved electron
+   *@param refPtcl if given, the id of the reference particle in virtual moves
+   */
+  void evaluateDetsForPtclMove(const ParticleSet& P, int iat, int refPtcl = -1);
+
+  /// evaluate the value and gradients of all the unique determinants with one electron moved. Used by the table method
+  void evaluateDetsAndGradsForPtclMove(const ParticleSet& P, int iat);
+
+  /// evaluate the gradients of all the unique determinants with one electron moved. Used by the table method
   void evaluateGrads(ParticleSet& P, int iat);
-  void evaluateAllForPtclMove(ParticleSet& P, int iat);
+
+  void evaluateAllForPtclMove(const ParticleSet& P, int iat);
   // full evaluation of all the structures from scratch, used in evaluateLog for example
-  void evaluateForWalkerMove(ParticleSet& P, bool fromScratch = true);
+  void evaluateForWalkerMove(const ParticleSet& P, bool fromScratch = true);
 
   ///total number of particles
   int NP;
@@ -401,10 +410,8 @@ public:
   int FirstIndex;
   ///index of the last particle with respect to the particle set
   int LastIndex;
-  ///index of the particle (or row)
-  int WorkingIndex;
   ///a set of single-particle orbitals used to fill in the  values of the matrix
-  SPOSetPtr Phi;
+  std::unique_ptr<SPOSet> Phi;
   /// number of determinants handled by this object
   int NumDets;
   ///bool to cleanup

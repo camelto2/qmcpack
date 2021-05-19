@@ -14,7 +14,7 @@
 //////////////////////////////////////////////////////////////////////////////////////
 
 
-#include "QMCHamiltonians/CoulombPBCAB.h"
+#include "CoulombPBCAB.h"
 #include "Particle/DistanceTableData.h"
 #include "Message/Communicate.h"
 #include "Utilities/ProgressReportEngine.h"
@@ -24,7 +24,7 @@ namespace qmcplusplus
 CoulombPBCAB::CoulombPBCAB(ParticleSet& ions, ParticleSet& elns, bool computeForces)
     : ForceBase(ions, elns),
       PtclA(ions),
-      myTableIndex(elns.addTable(ions, DT_SOA_PREFERRED)),
+      myTableIndex(elns.addTable(ions)),
       myConst(0.0),
       myGrid(nullptr),
       V0(nullptr),
@@ -117,7 +117,7 @@ CoulombPBCAB::~CoulombPBCAB()
 
 void CoulombPBCAB::resetTargetParticleSet(ParticleSet& P)
 {
-  int tid = P.addTable(PtclA, DT_SOA_PREFERRED);
+  int tid = P.addTable(PtclA);
   if (tid != myTableIndex)
   {
     APP_ABORT("CoulombPBCAB::resetTargetParticleSet found inconsistent table index");
@@ -198,8 +198,8 @@ CoulombPBCAB::Return_t CoulombPBCAB::evaluate_sp(ParticleSet& P)
   RealType Vsr                = 0.0;
   RealType Vlr                = 0.0;
   mRealType& Vc               = myConst;
-  Array<RealType, 1>& Ve_samp = Ve_samp_tmp;
-  Array<RealType, 1>& Vi_samp = Vi_samp_tmp;
+  Array<RealType, 1>& Ve_samp = *Ve_sample;
+  Array<RealType, 1>& Vi_samp = *Vi_sample;
   Ve_samp                     = 0.0;
   Vi_samp                     = 0.0;
   {
@@ -307,6 +307,7 @@ CoulombPBCAB::Return_t CoulombPBCAB::evaluate_sp(ParticleSet& P)
     app_log() << "sharetest:   e share:" << Vecsum << std::endl;
     app_log() << "sharetest:   i share:" << Vicsum << std::endl;
   }
+
 #endif
   return Value;
 }
@@ -323,8 +324,6 @@ CoulombPBCAB::Return_t CoulombPBCAB::evalConsts(bool report)
   int nelns = Peln.getTotalNum();
   int nions = Pion.getTotalNum();
 #if !defined(REMOVE_TRACEMANAGER)
-  Ve_samp_tmp.resize(nelns);
-  Vi_samp_tmp.resize(nions);
   Ve_const.resize(nelns);
   Vi_const.resize(nions);
   Ve_const = 0.0;
@@ -470,7 +469,7 @@ void CoulombPBCAB::initBreakup(ParticleSet& P)
   // create the spline function for the short-range part assuming pure potential
   if (V0 == nullptr)
   {
-    V0 = LRCoulombSingleton::createSpline4RbyVs(AB, myRcut, myGrid);
+    V0 = LRCoulombSingleton::createSpline4RbyVs(AB.get(), myRcut, myGrid);
     if (Vat.size())
     {
       APP_ABORT("CoulombPBCAB::initBreakup.  Vat is not empty\n");
@@ -484,9 +483,9 @@ void CoulombPBCAB::initBreakup(ParticleSet& P)
   {
     dAB = LRCoulombSingleton::getDerivHandler(P);
     if (fV0 == nullptr)
-      fV0 = LRCoulombSingleton::createSpline4RbyVs(dAB, myRcut, myGrid);
+      fV0 = LRCoulombSingleton::createSpline4RbyVs(dAB.get(), myRcut, myGrid);
     if (dfV0 == nullptr)
-      dfV0 = LRCoulombSingleton::createSpline4RbyVsDeriv(dAB, myRcut, myGrid);
+      dfV0 = LRCoulombSingleton::createSpline4RbyVsDeriv(dAB.get(), myRcut, myGrid);
     if (fVat.size())
     {
       APP_ABORT("CoulombPBCAB::initBreakup.  Vat is not empty\n");
@@ -502,7 +501,7 @@ void CoulombPBCAB::initBreakup(ParticleSet& P)
  * @param groupID species index
  * @param ppot radial functor for \f$rV_{loc}\f$ on a grid
  */
-void CoulombPBCAB::add(int groupID, RadFunctorType* ppot)
+void CoulombPBCAB::add(int groupID, std::unique_ptr<RadFunctorType>&& ppot)
 {
   if (myGrid == nullptr)
   {
@@ -636,32 +635,25 @@ CoulombPBCAB::Return_t CoulombPBCAB::evalSRwithForces(ParticleSet& P)
   mRealType rinv(1.0);
   //Magnitude of force.
   mRealType dvdr(0.0);
-  if (d_ab.DTType == DT_SOA)
+  for (size_t b = 0; b < NptclB; ++b)
   {
-    for (size_t b = 0; b < NptclB; ++b)
+    const auto& dist = d_ab.getDistRow(b);
+    const auto& dr   = d_ab.getDisplRow(b);
+    mRealType esum   = czero;
+    for (size_t a = 0; a < NptclA; ++a)
     {
-      const auto& dist = d_ab.getDistRow(b);
-      const auto& dr   = d_ab.getDisplRow(b);
-      mRealType esum   = czero;
-      for (size_t a = 0; a < NptclA; ++a)
-      {
-        //Low hanging SIMD fruit here.  See J1/J2 grad computation.
-        rinv = 1.0 / dist[a];
-        rV   = Vat[a]->splint(dist[a]);
-        frV  = fVat[a]->splint(dist[a]);
-        fdrV = fdVat[a]->splint(dist[a]);
-        dvdr = Qat[b] * Zat[a] * (fdrV - frV * rinv) * rinv;
-        forces[a][0] -= dvdr * dr[a][0] * rinv;
-        forces[a][1] -= dvdr * dr[a][1] * rinv;
-        forces[a][2] -= dvdr * dr[a][2] * rinv;
-        esum += Zat[a] * rV * rinv; //Total energy accumulation
-      }
-      res += esum * Qat[b];
+      //Low hanging SIMD fruit here.  See J1/J2 grad computation.
+      rinv = 1.0 / dist[a];
+      rV   = Vat[a]->splint(dist[a]);
+      frV  = fVat[a]->splint(dist[a]);
+      fdrV = fdVat[a]->splint(dist[a]);
+      dvdr = Qat[b] * Zat[a] * (fdrV - frV * rinv) * rinv;
+      forces[a][0] -= dvdr * dr[a][0] * rinv;
+      forces[a][1] -= dvdr * dr[a][1] * rinv;
+      forces[a][2] -= dvdr * dr[a][2] * rinv;
+      esum += Zat[a] * rV * rinv; //Total energy accumulation
     }
-  }
-  else
-  {
-    APP_ABORT("LocalECP Forces are only supported with SoA version of QMCPACK");
+    res += esum * Qat[b];
   }
   return res;
 }

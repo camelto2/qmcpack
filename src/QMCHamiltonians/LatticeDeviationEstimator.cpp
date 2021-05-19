@@ -9,8 +9,8 @@
 // File created by: Yubo Yang, paul.young.0414@gmail.com, University of Illinois at Urbana-Champaign
 //////////////////////////////////////////////////////////////////////////////////////
 
-#include "QMCHamiltonians/LatticeDeviationEstimator.h"
-#include <OhmmsData/AttributeSet.h>
+#include "LatticeDeviationEstimator.h"
+#include "OhmmsData/AttributeSet.h"
 
 namespace qmcplusplus
 {
@@ -26,7 +26,7 @@ LatticeDeviationEstimator::LatticeDeviationEstimator(ParticleSet& P,
       sgroup(sgroup_in),
       hdf5_out(false),
       per_xyz(false),
-      myTableID_(P.addTable(sP, DT_SOA))
+      myTableID_(P.addTable(sP))
 {
   // calculate number of source particles to use as lattice sites
   int src_species_id = sspecies.findSpecies(sgroup);
@@ -98,7 +98,7 @@ LatticeDeviationEstimator::Return_t LatticeDeviationEstimator::evaluate(Particle
   Value = 0.0;
   std::fill(xyz2.begin(), xyz2.end(), 0.0);
 
-  RealType wgt = tWalker->Weight;
+  RealType wgt        = tWalker->Weight;
   const auto& d_table = P.getDistTable(myTableID_);
 
   // temp variables
@@ -116,8 +116,8 @@ LatticeDeviationEstimator::Return_t LatticeDeviationEstimator::evaluate(Particle
         if (tspecies.speciesName[tpset.GroupID[jat]] == tgroup)
         {
           // distance between particle iat in source pset, and jat in target pset
-          r = d_table.getDistRow(jat)[iat];
-          r2 = r*r;
+          r  = d_table.getDistRow(jat)[iat];
+          r2 = r * r;
           Value += r2;
 
           if (hdf5_out & !per_xyz)
@@ -157,7 +157,10 @@ LatticeDeviationEstimator::Return_t LatticeDeviationEstimator::evaluate(Particle
   Value /= num_sites;
   if (per_xyz)
   {
-    std::transform(xyz2.begin(), xyz2.end(), xyz2.begin(), bind2nd(std::multiplies<RealType>(), 1. / num_sites));
+    for (int idir = 0; idir < OHMMS_DIM; idir++)
+    {
+      xyz2[idir] /= num_sites;
+    }
   }
 
   return Value;
@@ -222,7 +225,7 @@ OperatorBase* LatticeDeviationEstimator::makeClone(ParticleSet& qp, TrialWaveFun
   return myclone;
 }
 
-void LatticeDeviationEstimator::registerCollectables(std::vector<observable_helper*>& h5desc, hid_t gid) const
+void LatticeDeviationEstimator::registerCollectables(std::vector<ObservableHelper>& h5desc, hid_t gid) const
 {
   if (hdf5_out)
   {
@@ -235,12 +238,10 @@ void LatticeDeviationEstimator::registerCollectables(std::vector<observable_help
     }
 
     // open hdf5 entry and resize
-    observable_helper* h5o = new observable_helper(myName);
-    h5o->set_dimensions(ndim, h5_index);
-    h5o->open(gid);
-
-    // add to h5 file
-    h5desc.push_back(h5o);
+    h5desc.emplace_back(myName);
+    auto& h5o = h5desc.back();
+    h5o.set_dimensions(ndim, h5_index);
+    h5o.open(gid);
   }
 }
 

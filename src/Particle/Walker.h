@@ -113,6 +113,8 @@ public:
   FullPrecRealType Multiplicity;
   /// mark true if this walker is being sent.
   bool SendInProgress;
+  /// if true, this walker is either copied or tranferred from another MPI rank.
+  bool wasTouched = true;
 
   /** The configuration vector (3N-dimensional vector to store
      the positions of all the particles for a single walker)*/
@@ -149,7 +151,7 @@ public:
   bool get_has_been_on_wire() const { return has_been_on_wire_; }
   void set_has_been_on_wire(bool tf) { has_been_on_wire_ = tf; }
 #endif
-  
+
   /// Data for GPU-vectorized versions
 #ifdef QMC_CUDA
   static int cuda_DataSize;
@@ -206,6 +208,14 @@ public:
     //static_cast<Matrix<FullPrecRealType>>(Properties) = 0.0;
   }
 
+#if defined(QMC_CUDA)
+  //some member variables in CUDA build cannot be and should not be copied
+  //use default copy constructor to skip actual data copy
+  Walker(const Walker& a) = default;
+#else
+  Walker(const Walker& a) : Properties(1, WP::NUMPROPERTIES, 1, WP::MAXPROPERTIES) { makeCopy(a); }
+#endif
+
   inline int addPropertyHistory(int leng)
   {
     int newL                            = PropertyHistory.size();
@@ -252,8 +262,6 @@ public:
     return mean;
   }
 
-  inline ~Walker() {}
-
   ///assignment operator
   inline Walker& operator=(const Walker& a)
   {
@@ -293,7 +301,9 @@ public:
     ReleasedNodeAge    = a.ReleasedNodeAge;
     if (R.size() != a.R.size())
       resize(a.R.size());
-    R     = a.R;
+    R = a.R;
+    if (spins.size() != a.spins.size())
+      resize(a.spins.size());
     spins = a.spins;
 #if !defined(SOA_MEMORY_OPTIMIZED)
     G = a.G;
@@ -302,6 +312,8 @@ public:
     //Drift = a.Drift;
     Properties.copy(a.Properties);
     DataSet = a.DataSet;
+    block_end = a.block_end;
+    scalar_end = a.scalar_end;
     if (PropertyHistory.size() != a.PropertyHistory.size())
       PropertyHistory.resize(a.PropertyHistory.size());
     for (int i = 0; i < PropertyHistory.size(); i++)
@@ -434,9 +446,14 @@ public:
     DataSet.add(ReleasedNodeAge);
     DataSet.add(ReleasedNodeWeight);
     // vectors
+    assert(R.size() != 0);
     DataSet.add(R.first_address(), R.last_address());
+    assert(spins.size() != 0);
+    DataSet.add(spins.first_address(), spins.last_address());
 #if !defined(SOA_MEMORY_OPTIMIZED)
+    assert(G.size() != 0);
     DataSet.add(G.first_address(), G.last_address());
+    assert(L.size() != 0);
     DataSet.add(L.first_address(), L.last_address());
 #endif
     //Don't add the nLocal but the actual allocated size.  We want to register once for the life of a
@@ -466,12 +483,18 @@ public:
 
   void copyFromBuffer()
   {
+    assert(DataSet.size() != 0);
     DataSet.rewind();
     DataSet >> ID >> ParentID >> Generation >> Age >> ReleasedNodeAge >> ReleasedNodeWeight;
     // vectors
+    assert(R.size() != 0);
     DataSet.get(R.first_address(), R.last_address());
+    assert(spins.size() != 0);
+    DataSet.get(spins.first_address(), spins.last_address());
 #if !defined(SOA_MEMORY_OPTIMIZED)
+    assert(G.size() != 0);
     DataSet.get(G.first_address(), G.last_address());
+    assert(L.size() != 0);
     DataSet.get(L.first_address(), L.last_address());
 #endif
     DataSet.get(Properties.data(), Properties.data() + Properties.capacity());
@@ -519,6 +542,7 @@ public:
     DataSet << ID << ParentID << Generation << Age << ReleasedNodeAge << ReleasedNodeWeight;
     // vectors
     DataSet.put(R.first_address(), R.last_address());
+    DataSet.put(spins.first_address(), spins.last_address());
 #if !defined(SOA_MEMORY_OPTIMIZED)
     DataSet.put(G.first_address(), G.last_address());
     DataSet.put(L.first_address(), L.last_address());

@@ -14,8 +14,8 @@
 //////////////////////////////////////////////////////////////////////////////////////
 
 
-#include "Platforms/sysutil.h"
-#include "QMCDrivers/QMCUpdateBase.h"
+#include "QMCUpdateBase.h"
+#include "MemoryUsage.h"
 #include "ParticleBase/ParticleUtility.h"
 #include "ParticleBase/RandomSeqGenerator.h"
 #include "QMCDrivers/DriftOperators.h"
@@ -76,7 +76,7 @@ void QMCUpdateBase::setDefaults()
   nSubSteps  = 1;
   MaxAge     = 10;
   m_r2max    = -1;
-  myParams.add(m_r2max, "maxDisplSq", "double"); //maximum displacement
+  myParams.add(m_r2max, "maxDisplSq"); //maximum displacement
   //store 1/mass per species
   SpeciesSet tspecies(W.getSpeciesSet());
   assert(tspecies.getTotalNum() == W.groups());
@@ -89,7 +89,7 @@ void QMCUpdateBase::setDefaults()
     for (int iat = W.first(ig); iat < W.last(ig); ++iat)
       MassInvP[iat] = MassInvS[ig];
 
-  InitWalkersTimer = TimerManager.createTimer("QMCUpdateBase::WalkerInit", timer_level_medium);
+  InitWalkersTimer = timer_manager.createTimer("QMCUpdateBase::WalkerInit", timer_level_medium);
 }
 
 bool QMCUpdateBase::put(xmlNodePtr cur)
@@ -226,7 +226,8 @@ void QMCUpdateBase::initWalkersForPbyP(WalkerIter_t it, WalkerIter_t it_end)
   for (; it != it_end; ++it)
   {
     Walker_t& awalker(**it);
-    W.R = awalker.R;
+    W.R     = awalker.R;
+    W.spins = awalker.spins;
     W.update();
     if (awalker.DataSet.size())
       awalker.DataSet.clear();
@@ -261,6 +262,46 @@ QMCUpdateBase::RealType QMCUpdateBase::getNodeCorrection(const ParticleSet::Part
   //RealType x=m_tauovermass*vsq;
   //return (vsq<std::numeric_limits<RealType>::epsilon())? 1.0:((-1.0+std::sqrt(1.0+2.0*x))/x);
   return setScaledDriftPbyPandNodeCorr(Tau, MassInvP, g, gscaled);
+}
+
+bool QMCUpdateBase::checkLogAndGL(ParticleSet& pset, TrialWaveFunction& twf)
+{
+  bool success = true;
+  TrialWaveFunction::LogValueType log_value{twf.getLogPsi(), twf.getPhase()};
+  ParticleSet::ParticleGradient_t G_saved  = twf.G;
+  ParticleSet::ParticleLaplacian_t L_saved = twf.L;
+
+  pset.update();
+  twf.evaluateLog(pset);
+
+  const RealType threshold = 100 * std::numeric_limits<float>::epsilon();
+  auto& ref_G              = twf.G;
+  auto& ref_L              = twf.L;
+  TrialWaveFunction::LogValueType ref_log{twf.getLogPsi(), twf.getPhase()};
+  if (std::abs(std::exp(log_value) - std::exp(ref_log)) > std::abs(std::exp(ref_log)) * threshold)
+  {
+    success = false;
+    std::cout << "Logpsi " << log_value << " ref " << ref_log << std::endl;
+  }
+  for (int iel = 0; iel < ref_G.size(); iel++)
+  {
+    auto grad_diff = ref_G[iel] - G_saved[iel];
+    if (std::sqrt(std::abs(dot(grad_diff, grad_diff))) > std::sqrt(std::abs(dot(ref_G[iel], ref_G[iel]))) * threshold)
+    {
+      success = false;
+      std::cout << "Grad[" << iel << "] ref = " << ref_G[iel] << " wrong = " << G_saved[iel] << " Delta " << grad_diff
+                << std::endl;
+    }
+    auto lap_diff = ref_L[iel] - L_saved[iel];
+    if (std::abs(lap_diff) > std::abs(ref_L[iel]) * threshold)
+    {
+      // very hard to check mixed precision case, only print, no error out
+      success = !std::is_same<RealType, FullPrecRealType>::value;
+      std::cout << "lap[" << iel << "] ref = " << ref_L[iel] << " wrong = " << L_saved[iel] << " Delta " << lap_diff
+                << std::endl;
+    }
+  }
+  return success;
 }
 
 void QMCUpdateBase::setReleasedNodeMultiplicity(WalkerIter_t it, WalkerIter_t it_end)

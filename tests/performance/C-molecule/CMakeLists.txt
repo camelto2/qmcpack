@@ -9,14 +9,14 @@ IF (NOT QMC_CUDA)
   FUNCTION(ADD_C_MOLECULE_TEST TEST_NAME TEST_DIR TEST_SOURCE_DIR INPUT_FILE H5_FILE ADJUST_INPUT)
     MESSAGE_VERBOSE("Adding test ${TEST_NAME}")
     SET (WDIR "${qmcpack_BINARY_DIR}/tests/performance/C-molecule/${TEST_DIR}")
-    SET (SDIR "${CMAKE_SOURCE_DIR}/tests/performance/C-molecule/sample/${TEST_SOURCE_DIR}")
+    SET (SDIR "${qmcpack_SOURCE_DIR}/tests/performance/C-molecule/sample/${TEST_SOURCE_DIR}")
 
-    SET(QMC_APP "${qmcpack_BINARY_DIR}/bin/qmcpack")
+    SET ( QMC_APP $<TARGET_FILE:qmcpack> )
     IF (ENABLE_TIMERS)
       SET(PERF_ARGS "--enable-timers=fine")
     ENDIF()
 
-    SET (PPDIR "${CMAKE_SOURCE_DIR}/tests/performance/C-molecule")
+    SET (PPDIR "${qmcpack_SOURCE_DIR}/tests/performance/C-molecule")
 
     EXECUTE_PROCESS(COMMAND ${CMAKE_COMMAND} -E copy_directory ${SDIR} ${WDIR})
 
@@ -29,7 +29,7 @@ IF (NOT QMC_CUDA)
     MAYBE_SYMLINK("${QMC_DATA}/C-molecule/${H5_FILE}" "${WDIR}/../${H5_FILE}")
 
     SEPARATE_ARGUMENTS(ADJUST_INPUT)
-    EXECUTE_PROCESS(COMMAND python ${CMAKE_SOURCE_DIR}/tests/performance/adjust_qmcpack_input.py ${ADJUST_INPUT} ${TEST_DIR}/${INPUT_FILE}
+    EXECUTE_PROCESS(COMMAND ${qmcpack_SOURCE_DIR}/tests/performance/adjust_qmcpack_input.py ${ADJUST_INPUT} ${TEST_DIR}/${INPUT_FILE}
                    WORKING_DIRECTORY "${qmcpack_BINARY_DIR}/tests/performance/C-molecule")
 
     SET(PROCS 1)
@@ -47,7 +47,7 @@ IF (NOT QMC_CUDA)
     SET_TESTS_PROPERTIES(${TEST_NAME} PROPERTIES PROCESSORS ${TOT_PROCS} PROCESSOR_AFFINITY TRUE)
 
     IF (ENABLE_TIMERS)
-      ADD_TEST(NAME "${TEST_NAME}-time" COMMAND python ../process_perf.py ${INPUT_FILE})
+      ADD_TEST(NAME "${TEST_NAME}-time" COMMAND ../process_perf.py ${INPUT_FILE})
       SET_TESTS_PROPERTIES("${TEST_NAME}-time" PROPERTIES LABELS "performance")
       SET_TESTS_PROPERTIES("${TEST_NAME}-time" PROPERTIES WORKING_DIRECTORY "${WDIR}")
       SET_TESTS_PROPERTIES("${TEST_NAME}-time" PROPERTIES DEPENDS ${TEST_NAME})

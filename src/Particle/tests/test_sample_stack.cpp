@@ -25,7 +25,6 @@ namespace qmcplusplus
 {
 TEST_CASE("SampleStack", "[particle]")
 {
-
   SampleStack samples;
 
   const int total_num = 2; // number of particles
@@ -36,15 +35,20 @@ TEST_CASE("SampleStack", "[particle]")
   REQUIRE(samples.getMaxSamples() == 8);
   REQUIRE(samples.getNumSamples() == 0);
 
+  // increase storage
+  samples.setMaxSamples(10);
+  REQUIRE(samples.getMaxSamples() == 10);
+  REQUIRE(samples.getNumSamples() == 0);
+
   using Walker_t     = ParticleSet::Walker_t;
-  using WalkerList_t = std::vector<Walker_t*>;
+  using WalkerList_t = std::vector<std::unique_ptr<Walker_t>>;
 
   WalkerList_t walker_list;
 
   // Add size one list
-  walker_list.push_back(new Walker_t(total_num));
+  walker_list.push_back(std::make_unique<Walker_t>(total_num));
   walker_list[0]->R[0][0] = 1.1;
-  for (auto wi : walker_list)
+  for (auto& wi : walker_list)
   {
     samples.appendSample(MCSample(*wi));
   }
@@ -55,6 +59,13 @@ TEST_CASE("SampleStack", "[particle]")
   REQUIRE(w1.R[0][0] == Approx(1.1));
 
   // Should test that more members of the Walker are saved correctly
+
+  samples.resetSampleCount();
+  REQUIRE(samples.getNumSamples() == 0);
+
+  // clear storage
+  samples.clearEnsemble();
+  REQUIRE(samples.getNumSamples() == 0);
 }
 
 

@@ -63,46 +63,90 @@ int main(int argc, char** argv)
   std::unique_ptr<NkParserBase> nkparser(nullptr);
   int iargc = 2;
 
-  while (iargc + 1 < argc)
+  bool show_usage = false;
+  bool show_warn  = false;
+  /* For a successful execution of the code, atleast 3 arguments will need to be
+   * provided along with the executable. Therefore, print usage information if
+   * argc is less than 4.
+   */
+  if (argc < 4)
   {
+    std::cout << "Insufficient number of arguments.\n\n";
+    show_usage = true;
+  }
+  else
+  {
+    int iargc      = 2;
+    bool skf_found = false;
+    bool nkf_found = false;
     std::string a(argv[iargc]);
     std::string anxt(argv[iargc + 1]);
-    if (a == "--SKascii")
+    while (iargc + 1 < argc)
     {
-      skparser = std::make_unique<SkParserASCII>();
-      skparser->parse(anxt);
+      if (a == "--SKascii")
+      {
+        skparser = std::make_unique<SkParserASCII>();
+        skparser->parse(anxt);
+        if (skf_found)
+          show_warn = true;
+        skf_found = true;
+        iargc += 2;
+      }
+      else if (a == "--SKhdf5")
+      {
+        skparser = std::make_unique<SkParserHDF5>();
+        skparser->parse(anxt);
+        if (skf_found)
+          show_warn = true;
+        skf_found = true;
+        iargc += 2;
+      }
+      else if (a == "--NKhdf5")
+      {
+        nkparser = std::make_unique<NkParserHDF5>();
+        nkparser->parse(anxt);
+        if (nkf_found)
+          show_warn = true;
+        nkf_found = true;
+        iargc += 2;
+      }
+      else if (a == "--NKascii")
+      {
+        nkparser = std::make_unique<NkParserASCII>();
+        nkparser->parse(anxt);
+        if (nkf_found)
+          show_warn = true;
+        nkf_found = true;
+        iargc += 2;
+      }
+      else if (a == "--help")
+      {
+        show_usage = true;
+        iargc += 1;
+      }
+      else
+      {
+        std::cout << "Unrecognized flag '" << a << "'.\n\n";
+        show_usage = true;
+        break;
+      }
     }
-    else if (a == "--scalardat")
-    {
-      skparser = std::make_unique<SkParserScalarDat>();
-      skparser->parse(anxt);
-    }
-    else if (a == "--SKhdf5")
-    {
-      skparser = std::make_unique<SkParserHDF5>();
-      skparser->parse(anxt);
-    }
-    else if (a == "--NKhdf5")
-    {
-      nkparser = std::make_unique<NkParserHDF5>();
-      nkparser->parse(anxt);
-    }
-    else if (a == "--NKascii")
-    {
-      nkparser = std::make_unique<NkParserASCII>();
-      nkparser->parse(anxt);
-    }
-    else if (a == "--help")
-    {
-      std::cout << "Usage:  qmcfinitesize [main.xml] --[skformat] [SK_FILE]\n";
-      std::cout << "  [skformat]\n";
-      std::cout << "    --ascii:      S(k) given in kx ky kz sk sk_err format.  Header necessary.\n";
-      std::cout << "    --scalardat:  File containing skall elements with energy.pl output format.\n";
-      std::cout << "    --hdf5:       stat.h5 file containing skall data.\n";
-      return 0;
-    }
-    iargc++;
   }
+
+  if (show_usage)
+  {
+    std::cout << "Usage:  qmcfinitesize [main.xml] --[skformat] [SK_FILE] --[nkformat] [NK_FILE]\n";
+    std::cout << "  [skformat]\n";
+    std::cout << "    --SKascii:      S(k) given in kx ky kz sk sk_err format.  Header necessary.\n";
+    std::cout << "    --SKhdf5:       stat.h5 file containing skall data.\n";
+    std::cout << "  [nkformat]\n";
+    std::cout << "    --NKascii:      n(k) given in kx ky kz nk nk_err.  Header necessary.\n";
+    std::cout << "    --NKhdf5:       stat.h5 file containing momentum estimator data.\n";
+    return 0;
+  }
+
+  if (show_warn)
+    std::cout << "WARNING:  multiple formats were provided. All but the last will be ignored.\n\n";
 
   QMCFiniteSize qmcfs(skparser.get(), nkparser.get());
   qmcfs.parse(std::string(argv[1]));

@@ -2,7 +2,7 @@
 #define NK_PARSER_HDF5_H
 
 #include "QMCTools/QMCFiniteSize/NkParserBase.h"
-#include "io/hdf_archive.h"
+#include "io/hdf/hdf_archive.h"
 
 namespace qmcplusplus
 {

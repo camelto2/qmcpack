@@ -18,7 +18,7 @@
  */
 #ifndef QMCPLUSPLUS_SK_ALL_ESTIMATOR_H
 #define QMCPLUSPLUS_SK_ALL_ESTIMATOR_H
-#include <QMCHamiltonians/OperatorBase.h>
+#include "QMCHamiltonians/OperatorBase.h"
 #include <vector>
 namespace qmcplusplus
 {
@@ -39,7 +39,7 @@ public:
 
   void addObservables(PropertySetType& plist);
   void addObservables(PropertySetType& plist, BufferType& collectables);
-  void registerCollectables(std::vector<observable_helper*>& h5desc, hid_t gid) const;
+  void registerCollectables(std::vector<ObservableHelper>& h5desc, hid_t gid) const;
   void setObservables(PropertySetType& plist);
   void setParticlePropertyList(PropertySetType& plist, int offset);
   bool put(xmlNodePtr cur);

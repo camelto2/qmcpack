@@ -10,7 +10,7 @@
 //////////////////////////////////////////////////////////////////////////////////////
 
 
-#include "QMCDrivers/VMC/SOVMCUpdatePbyP.h"
+#include "SOVMCUpdatePbyP.h"
 #include "QMCDrivers/DriftOperators.h"
 #include "Message/OpenMP.h"
 #if !defined(REMOVE_TRACEMANAGER)
@@ -28,10 +28,10 @@ SOVMCUpdatePbyP::SOVMCUpdatePbyP(MCWalkerConfiguration& w,
                                  QMCHamiltonian& h,
                                  RandomGenerator_t& rg)
     : QMCUpdateBase(w, psi, h, rg),
-      buffer_timer_(*TimerManager.createTimer("SOVMCUpdatePbyP::Buffer", timer_level_medium)),
-      movepbyp_timer_(*TimerManager.createTimer("SOVMCUpdatePbyP::MovePbyP", timer_level_medium)),
-      hamiltonian_timer_(*TimerManager.createTimer("SOVMCUpdatePbyP::Hamiltonian", timer_level_medium)),
-      collectables_timer_(*TimerManager.createTimer("SOVMCUpdatePbyP::Collectables", timer_level_medium))
+      buffer_timer_(*timer_manager.createTimer("SOVMCUpdatePbyP::Buffer", timer_level_medium)),
+      movepbyp_timer_(*timer_manager.createTimer("SOVMCUpdatePbyP::MovePbyP", timer_level_medium)),
+      hamiltonian_timer_(*timer_manager.createTimer("SOVMCUpdatePbyP::Hamiltonian", timer_level_medium)),
+      collectables_timer_(*timer_manager.createTimer("SOVMCUpdatePbyP::Collectables", timer_level_medium))
 {}
 
 SOVMCUpdatePbyP::~SOVMCUpdatePbyP() {}
@@ -59,6 +59,7 @@ void SOVMCUpdatePbyP::advanceWalker(Walker_t& thisWalker, bool recompute)
       RealType tauovermass = Tau * MassInvS[ig];
       RealType oneover2tau = 0.5 / (tauovermass);
       RealType sqrttau     = std::sqrt(tauovermass);
+      Psi.prepareGroup(W, ig);
       for (int iat = W.first(ig); iat < W.last(ig); ++iat)
       {
         PosType dr;
@@ -80,6 +81,7 @@ void SOVMCUpdatePbyP::advanceWalker(Walker_t& thisWalker, bool recompute)
         if (!W.makeMoveAndCheckWithSpin(iat, dr, ds))
         {
           ++nReject;
+          W.accept_rejectMove(iat, false);
           continue;
         }
         RealType prob(0);
@@ -104,19 +106,21 @@ void SOVMCUpdatePbyP::advanceWalker(Walker_t& thisWalker, bool recompute)
         {
           prob = std::norm(Psi.calcRatio(W, iat));
         }
+
+        bool is_accepted = false;
         if (prob >= std::numeric_limits<RealType>::epsilon() && RandomGen() < prob)
         {
-          moved = true;
+          is_accepted = true;
+          moved       = true;
           ++nAccept;
           Psi.acceptMove(W, iat, true);
-          W.acceptMove(iat, true);
         }
         else
         {
           ++nReject;
-          W.rejectMove(iat);
           Psi.rejectMove(iat);
         }
+        W.accept_rejectMove(iat, is_accepted);
       }
     }
     Psi.completeUpdates();
@@ -125,6 +129,7 @@ void SOVMCUpdatePbyP::advanceWalker(Walker_t& thisWalker, bool recompute)
   movepbyp_timer_.stop();
   buffer_timer_.start();
   RealType logpsi = Psi.updateBuffer(W, w_buffer, recompute);
+  assert(checkLogAndGL(W, Psi));
   W.saveWalker(thisWalker);
   buffer_timer_.stop();
   // end PbyP moves

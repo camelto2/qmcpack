@@ -2,9 +2,10 @@
 // This file is distributed under the University of Illinois/NCSA Open Source License.
 // See LICENSE file in top directory for details.
 //
-// Copyright (c) 2016 Jeongnim Kim and QMCPACK developers.
+// Copyright (c) 2020 QMCPACK developers.
 //
-// File developed by: Ken Esler, kpesler@gmail.com, University of Illinois at Urbana-Champaign
+// File developed by: Peter Doak, doakpw@ornl.gov, Oak Ridge National Laboratory
+//                    Ken Esler, kpesler@gmail.com, University of Illinois at Urbana-Champaign
 //                    Jeremy McMinnis, jmcminis@gmail.com, University of Illinois at Urbana-Champaign
 //                    Jeongnim Kim, jeongnim.kim@gmail.com, University of Illinois at Urbana-Champaign
 //                    Ye Luo, yeluo@anl.gov, Argonne National Laboratory
@@ -19,7 +20,7 @@
 
 #include "Configuration.h"
 #include "Particle/MCWalkerConfiguration.h"
-#include "QMCDrivers/MCPopulation.h"
+#include "QMCDrivers/WalkerElementsRef.h"
 #include "Message/MPIObjectBase.h"
 #include "Message/CommOperators.h"
 // #include "QMCDrivers/ForwardWalking/ForwardWalkingStructure.h"
@@ -53,8 +54,6 @@ class WalkerControlBase : public MPIObjectBase
 public:
   ///typedef of Walker_t
   typedef MCWalkerConfiguration::Walker_t Walker_t;
-  /// distinct type for "new" walker, currently same as Walker_t
-  using MCPWalker = MCPopulation::MCPWalker;
   ///typedef of FullPrecRealType
   using FullPrecRealType = QMCTraits::FullPrecRealType;
   ///typedef of IndexType
@@ -62,7 +61,7 @@ public:
 
   /** An enum to access curData and accumData for reduction
    *
-   * curData is larger than this //LE_MAX + n_node * T
+   * curData is larger than this //LE_MAX + n_rank * T
    */
   enum
   {
@@ -82,33 +81,6 @@ public:
     LE_MAX
   };
 
-  struct PopulationAdjustment
-  {
-    int num_walkers{0}; // This is the number of walkers we are adjusting to
-    RefVector<MCPWalker> good_walkers;
-    std::vector<int> copies_to_make;
-    RefVector<MCPWalker> bad_walkers;
-  };
-
-  struct WalkerAdjustmentCriteria
-  {
-    FullPrecRealType esum{0.0};
-    FullPrecRealType e2sum{0.0};
-    FullPrecRealType wsum{0.0};
-    FullPrecRealType ecum{0.0};
-    FullPrecRealType w2sum{0.0};
-    FullPrecRealType besum{0.0};
-    FullPrecRealType bwgtsum{0.0};
-    FullPrecRealType r2_accepted{0.0};
-    FullPrecRealType r2_proposed{0.0};
-    int nfn{0};
-    int nrn{0};
-    int ngoodfn{0};
-    int ncr{0};
-    int nc{0};
-  };
-
-
   /** default constructor
    *
    * Set the SwapMode to zero so that instantiation can be done
@@ -121,14 +93,8 @@ public:
   /** start a block */
   void start();
 
-  /** start controller  and initialize the IDs of walkers*/
+  /** legacy: start controller  and initialize the IDs of walkers*/
   void setWalkerID(MCWalkerConfiguration& walkers);
-
-  /** start controller
-   *
-   *  WalkerID's are initialized by MCPopulation, SOC
-   */
-  void setWalkerID(MCPopulation& population);
 
   /** take averages and writes to a file */
   void measureProperties(int iter);
@@ -151,18 +117,13 @@ public:
    */
   inline FullPrecRealType getCurrentValue(int i) { return curData[i]; }
 
-  /** return global population
+  /** legacy: return global population
    *  update properties without branching 
    *
    */
   int doNotBranch(int iter, MCWalkerConfiguration& W);
 
-  /** return global population
-   *  update properties without branching
-   */
-  int doNotBranch(int iter, MCPopulation& pop);
-
-  /** sort Walkers between good and bad and prepare branching
+  /** legacy: sort Walkers between good and bad and prepare branching
    *
    *  not a sort changes internal state of walkers to copy and how many of each copy
    */
@@ -170,49 +131,22 @@ public:
 
   static std::vector<IndexType> syncFutureWalkersPerRank(Communicate* comm, IndexType n_walkers);
 
-  /** create data structure needed to do population adjustment
-   *
-   *  refactored sortWalkers
-   *  This data structure contains what was updated in the state.
-   */
-  PopulationAdjustment calcPopulationAdjustment(MCPopulation& pop);
-
-  /** do the actual adjustment
-   *
-   *  unfortunately right now this requires knowledge of the global context, seems unecessary
-   *  but this is why MCPopulation is handed in.
-   */
-  int adjustPopulation(PopulationAdjustment& adjust);
-
-  /** apply per node limit Nmax and Nmin
+  /** legacy: apply per rank limit Nmax and Nmin
    */
   int applyNmaxNmin(int current_population);
 
-  /** copy good walkers to W
+  /** legacy: copy good walkers to W
    */
   int copyWalkers(MCWalkerConfiguration& W);
-
-  void Write2XYZ(MCWalkerConfiguration& W);
 
   /** reset to accumulate data */
   virtual void reset();
 
-  /** perform branch and swap walkers as required 
+  /** legacy: perform branch and swap walkers as required 
    *
    *  \return global population
    */
   virtual int branch(int iter, MCWalkerConfiguration& W, FullPrecRealType trigger);
-
-  /** perform branch and swap walkers as required 
-   *
-   *  \return global population
-   */
-  virtual int branch(int iter, MCPopulation& pop, FullPrecRealType trigger);
-
-  virtual FullPrecRealType getFeedBackParameter(int ngen, FullPrecRealType tau)
-  {
-    return 1.0 / (static_cast<FullPrecRealType>(ngen) * tau);
-  }
 
   bool put(xmlNodePtr cur);
 
@@ -232,14 +166,6 @@ public:
   void set_method(IndexType method) { method_ = method; }
 
 protected:
-  /** makes adjustments to local population based on adjust
-   *
-   * \param[inout] pop the local population
-   * \param[in]    the population adjustment, it is not updated to reflect local state and is now invalid.
-   */
-  static void onRankSpawnKill(MCPopulation& pop, PopulationAdjustment& adjust);
-
-
   ///id for the method
   IndexType method_;
   ///minimum number of walkers
@@ -254,8 +180,8 @@ protected:
   FullPrecRealType trialEnergy;
   ///target sigma to limit fluctuations of the trial energy
   FullPrecRealType target_sigma_;
-  ///number of particle per node
-  std::vector<int> NumPerNode;
+  ///number of particle per rank
+  std::vector<int> NumPerRank;
   ///offset of the particle index
   std::vector<int> OffSet;
   ///offset of the particle index for a fair distribution
@@ -265,7 +191,7 @@ protected:
   std::string dmcFname;
   ///file to save energy histogram
   std::ofstream* dmcStream;
-  ///Number of walkers created by this node
+  ///Number of walkers created by this rank
   IndexType NumWalkersCreated;
   ///context id
   IndexType MyContext;
@@ -288,22 +214,6 @@ protected:
 
   ///ensemble properties
   MCDataType<FullPrecRealType> ensemble_property_;
-
-  friend class qmcplusplus::testing::UnifiedDriverWalkerControlMPITest;
-private:
-  /** Refactoring possibly dead releaseNodesCode out
-   * @{
-   */
-  static auto rn_walkerCalcAdjust(UPtr<MCPWalker>& walker, WalkerAdjustmentCriteria wac);
-
-  static auto addReleaseNodeWalkers(PopulationAdjustment& adjust,
-                                    WalkerAdjustmentCriteria& wac,
-                                    RefVector<MCPWalker>& good_walkers_rn,
-                                    std::vector<int>& copies_to_make_rn);
-  /**}@*/
-  static auto walkerCalcAdjust(UPtr<MCPWalker>& walker, WalkerAdjustmentCriteria wac);
-
-  static void updateCurDataWithCalcAdjust(std::vector<FullPrecRealType>& data, WalkerAdjustmentCriteria wac, PopulationAdjustment& adjustment, MCPopulation& pop);
 };
 
 } // namespace qmcplusplus

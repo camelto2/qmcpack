@@ -14,7 +14,7 @@
 //////////////////////////////////////////////////////////////////////////////////////
 
 
-#include "Estimators/CSEnergyEstimator.h"
+#include "CSEnergyEstimator.h"
 #include "QMCHamiltonians/QMCHamiltonian.h"
 #include "QMCWaveFunctions/TrialWaveFunction.h"
 #include "ParticleBase/ParticleAttribOps.h"
@@ -91,7 +91,7 @@ void CSEnergyEstimator::add2Record(RecordNamedProperty<RealType>& record)
   //msg.add(d_data.begin(),d_data.end());
 }
 
-void CSEnergyEstimator::registerObservables(std::vector<observable_helper*>& h5dec, hid_t gid)
+void CSEnergyEstimator::registerObservables(std::vector<ObservableHelper>& h5dec, hid_t gid)
 {
   //NEED TO IMPLEMENT for hdf5
 }

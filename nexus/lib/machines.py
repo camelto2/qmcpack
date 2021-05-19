@@ -1499,7 +1499,7 @@ class Supercomputer(Machine):
                 envs     = envs
                 )
         elif launcher=='srun':  # Amos contribution from Ryan McAvoy
-            None # anything needed here?
+            None
         elif launcher=='ibrun': # Lonestar contribution from Paul Young
             job.run_options.add(
 	        np	= '-n '+str(job.processes),
@@ -2114,8 +2114,13 @@ class Cori(NerscMachine):
             self.procs_per_node = 2
             self.cores_per_node = 32
             self.ram_per_node   = 128
+        elif 'amd' in job.constraint:
+            self.nodes = 20
+            self.procs_per_node = 2
+            self.cores_per_node = 32
+            self.ram_per_node   = 2048
         else:
-            self.error('SLURM input "constraint" must contain either "knl" or "haswell"\nyou provided: {0}'.format(job.constraint))
+            self.error('SLURM input "constraint" must contain either "knl", "haswell", or "amd" on Cori\nyou provided: {0}'.format(job.constraint))
         #end if
         if job.core_spec is not None:
             self.cores_per_node -= job.core_spec
@@ -2128,8 +2133,10 @@ class Cori(NerscMachine):
             hyperthreads   = 4
         elif 'haswell' in job.constraint:
             hyperthreads   = 2
+        elif 'amd' in job.constraint:
+            hyperthreads   = 2
         else:
-            self.error('SLURM input "constraint" must contain either "knl" or "haswell"\nyou provided: {0}'.format(job.constraint))
+            self.error('SLURM input "constraint" must contain either "knl", "haswell" or "amd" on Cori\nyou provided: {0}'.format(job.constraint))
         #end if
         cpus_per_task = int(floor(float(self.cores_per_node)/job.processes_per_node))*hyperthreads
         c='#!/bin/bash\n'
@@ -2598,302 +2605,84 @@ class Amos(Supercomputer):
 #end class Amos
 
 
+class SnlMachine(Supercomputer):
+    requires_account   = True
+    batch_capable      = True
+    #executable_subfile = True
 
-# SANDIA test
-class Chama(Supercomputer):
+    prefixed_output    = True
+    outfile_extension  = '.output'
+    errfile_extension  = '.error'
+
+    def write_job_header(self,job):
+        if job.queue is None:
+            job.queue='batch'
+        #end if
+
+        cpus_per_task = int(floor(float(self.cores_per_node)/job.processes_per_node))
+
+        if job.qos == 'long':
+            max_time = 96
+        elif 'short' in job.queue:
+            max_time = 4
+        else:
+            max_time = 48
+        #end if
+
+        job.total_hours = job.days*24 + job.hours + job.minutes/60.0 + job.seconds/3600.0
+        if job.total_hours > max_time:   # warn if job will take more than 48 hrs.
+            if job.qos == 'long':
+                self.warn('!!! ATTENTION !!!\n  the maximum runtime on {0} should not be more than {1} with --qos=\'long\'\n  you requested: {2}'.format(job.queue,max_time,job.total_hours))
+            elif 'short' in job.queue:
+                self.warn('!!! ATTENTION !!!\n  the maximum runtime on {0} should not be more than {1} with -p short[,batch]\n  you requested: {2}'.format(job.queue,max_time,job.total_hours))
+            else:
+                self.warn('!!! ATTENTION !!!\n  the maximum runtime on {0} should not be more than {1}\n  you requested: {2}'.format(job.queue,max_time,job.total_hours))
+            #end if
+            job.hours   = max_time
+            job.minutes = 0
+            job.seconds = 0
+        #end if
+
+        c='#!/bin/bash\n'
+        c+='#SBATCH -p '+str(job.queue)+'\n'
+        c+='#SBATCH --job-name '+str(job.name)+'\n'
+        c+='#SBATCH --account='+str(job.account)+'\n'
+        c+='#SBATCH -N '+str(job.nodes)+'\n'
+        c+='#SBATCH --ntasks-per-node={0}\n'.format(job.processes_per_node)
+        c+='#SBATCH --cpus-per-task={0}\n'.format(cpus_per_task)
+        c+='#SBATCH -t {0}:{1}:{2}\n'.format(str(job.hours+24*job.days).zfill(2),str(job.minutes).zfill(2),str(job.seconds).zfill(2))
+        c+='#SBATCH -o {0}\n'.format(job.outfile)
+        c+='#SBATCH -e {0}\n'.format(job.errfile)
+        if job.qos:
+            c+='#SBATCH --qos={}\n'.format(job.qos)
+        c+='\n'
+        return c
+    #end def write_job_header
+#end class SnlMachine
+
+class Chama(SnlMachine):
     name = 'chama'
-
-    requires_account   = True
-    batch_capable      = True
-    #executable_subfile = True
-
-    prefixed_output    = True
-    outfile_extension  = '.output'
-    errfile_extension  = '.error'
-
-    def write_job_header(self,job):
-        if job.queue is None:
-            job.queue='batch'
-        #end if
-
-        job.total_hours = job.days*24 + job.hours + job.minutes/60.0 + job.seconds/3600.0
-        if job.total_hours > 96:   # warn if job will take more than 96 hrs.
-            self.warn('!!! ATTENTION !!!\n  the maximum runtime on {0} should not be more than {1}\n  you requested: {2}'.format(job.queue,max_time,job.total_hours))
-            job.hours   = max_time
-            job.minutes =0
-            job.seconds =0
-        #end if
-
-        #end if
-        c='#!/bin/bash\n'
-        c+='#SBATCH --job-name '+str(job.name)+'\n'
-        c+='#SBATCH --account='+str(job.account)+'\n'
-        c+='#SBATCH -N '+str(job.nodes)+'\n'
-        c+='#SBATCH --ntasks-per-node={0}\n'.format(job.processes_per_node)
-        c+='#SBATCH --cpus-per-task={0}\n'.format(job.threads)
-        c+='#SBATCH -t {0}:{1}:{2}\n'.format(str(job.hours+24*job.days).zfill(2),str(job.minutes).zfill(2),str(job.seconds).zfill(2))
-        #c+='#SBATCH --export=ALL\n'   # equiv to PBS -V
-        c+='#SBATCH -o {0}\n'.format(job.outfile)
-        c+='#SBATCH -e {0}\n'.format(job.errfile)
-        c+='\n'
-        c+='module purge\n'
-        c+='module add intel/intel-16.0.1.150\n'
-        c+='module add libraries/intel-mkl-16.0.1.150\n'
-        c+='module add mvapich2-intel-psm/1.7\n'
-        return c
-    #end def write_job_header
 #end class Chama
-##### SANDIA test
 
-
-
-class Uno(Supercomputer):
-    name = 'uno'
-
-    requires_account   = True
-    batch_capable      = True
-    #executable_subfile = True
-
-    prefixed_output    = True
-    outfile_extension  = '.output'
-    errfile_extension  = '.error'
-
-    def write_job_header(self,job):
-        if job.queue is None:
-            job.queue='batch'
-        #end if
-
-        job.total_hours = job.days*24 + job.hours + job.minutes/60.0 + job.seconds/3600.0
-        if job.total_hours > 96:   # warn if job will take more than 96 hrs.
-            self.warn('!!! ATTENTION !!!\n  the maximum runtime on {0} should not be more than {1}\n  you requested: {2}'.format(job.queue,max_time,job.total_hours))
-            job.hours   = max_time
-            job.minutes =0
-            job.seconds =0
-        #end if
-
-        #end if
-        c='#!/bin/bash\n'
-        c+='#SBATCH --job-name '+str(job.name)+'\n'
-        c+='#SBATCH --account='+str(job.account)+'\n'
-        c+='#SBATCH -N '+str(job.nodes)+'\n'
-        c+='#SBATCH --ntasks-per-node={0}\n'.format(job.processes_per_node)
-        c+='#SBATCH --cpus-per-task={0}\n'.format(job.threads)
-        c+='#SBATCH -t {0}:{1}:{2}\n'.format(str(job.hours+24*job.days).zfill(2),str(job.minutes).zfill(2),str(job.seconds).zfill(2))
-        #c+='#SBATCH --export=ALL\n'   # equiv to PBS -V
-        c+='#SBATCH -o {0}\n'.format(job.outfile)
-        c+='#SBATCH -e {0}\n'.format(job.errfile)
-        c+='#SBATCH -p quad\n'
-        c+='\n'
-        c+='module purge\n'
-        c+='module add intel/intel-16.0.1.150\n'
-        c+='module add libraries/intel-mkl-16.0.1.150\n'
-        c+='module add mvapich2-intel-psm/1.7\n'
-        return c
-    #end def write_job_header
-#end class Uno
-##### SANDIA test
-
-
-
-
-## Added 09/23/2016 by JP Townsend
-class Serrano(Supercomputer):
-    name = 'serrano'
-
-    requires_account   = True
-    batch_capable      = True
-    #executable_subfile = True
-
-    prefixed_output    = True
-    outfile_extension  = '.output'
-    errfile_extension  = '.error'
-
-    def write_job_header(self,job):
-        if job.queue is None:
-            job.queue='batch'
-        #end if
-
-        job.total_hours = job.days*24 + job.hours + job.minutes/60.0 + job.seconds/3600.0
-        if job.total_hours > 96:   # warn if job will take more than 96 hrs.
-            self.warn('!!! ATTENTION !!!\n  the maximum runtime on {0} should not be more than {1}\n  you requested: {2}'.format(job.queue,max_time,job.total_hours))
-            job.hours   = max_time
-            job.minutes =0
-            job.seconds =0
-        #end if
-
-        #end if
-        c='#!/bin/bash\n'
-        c+='#SBATCH --job-name '+str(job.name)+'\n'
-        c+='#SBATCH --account='+str(job.account)+'\n'
-        c+='#SBATCH -N '+str(job.nodes)+'\n'
-        c+='#SBATCH --ntasks-per-node={0}\n'.format(job.processes_per_node)
-        c+='#SBATCH --cpus-per-task={0}\n'.format(job.threads)
-        c+='#SBATCH -t {0}:{1}:{2}\n'.format(str(job.hours+24*job.days).zfill(2),str(job.minutes).zfill(2),str(job.seconds).zfill(2))
-        #c+='#SBATCH --export=ALL\n'   # equiv to PBS -V
-        c+='#SBATCH -o {0}\n'.format(job.outfile)
-        c+='#SBATCH -e {0}\n'.format(job.errfile)
-        #c+='#SBATCH -p quad\n'
-        c+='\n'
-        c+='module purge\n'
-        c+='module add intel/16.0.3\n'
-        c+='module add mkl/16.0\n'
-        c+='module add mvapich2-intel-psm2/2.2rc1\n'
-        return c
-    #end def write_job_header
-#end class Serrano
-##### SANDIA test
-
-
-
-
-## Added 09/23/2016 by JP Townsend
-class Skybridge(Supercomputer):
+class Skybridge(SnlMachine):
     name = 'skybridge'
-
-    requires_account   = True
-    batch_capable      = True
-    #executable_subfile = True
-
-    prefixed_output    = True
-    outfile_extension  = '.output'
-    errfile_extension  = '.error'
-
-    def write_job_header(self,job):
-        if job.queue is None:
-            job.queue='batch'
-        #end if
-
-        job.total_hours = job.days*24 + job.hours + job.minutes/60.0 + job.seconds/3600.0
-        if job.total_hours > 96:   # warn if job will take more than 96 hrs.
-            self.warn('!!! ATTENTION !!!\n  the maximum runtime on {0} should not be more than {1}\n  you requested: {2}'.format(job.queue,max_time,job.total_hours))
-            job.hours   = max_time
-            job.minutes =0
-            job.seconds =0
-        #end if
-
-        #end if
-        c='#!/bin/bash\n'
-        c+='#SBATCH --job-name '+str(job.name)+'\n'
-        c+='#SBATCH --account='+str(job.account)+'\n'
-        c+='#SBATCH -N '+str(job.nodes)+'\n'
-        c+='#SBATCH --ntasks-per-node={0}\n'.format(job.processes_per_node)
-        c+='#SBATCH --cpus-per-task={0}\n'.format(job.threads)
-        c+='#SBATCH -t {0}:{1}:{2}\n'.format(str(job.hours+24*job.days).zfill(2),str(job.minutes).zfill(2),str(job.seconds).zfill(2))
-        #c+='#SBATCH --export=ALL\n'   # equiv to PBS -V
-        c+='#SBATCH -o {0}\n'.format(job.outfile)
-        c+='#SBATCH -e {0}\n'.format(job.errfile)
-        #c+='#SBATCH -p quad\n'
-        c+='\n'
-        c+='module purge\n'
-        c+='module add intel/intel-16.0.1.150\n'
-        c+='module add libraries/intel-mkl-16.0.1.150\n'
-        c+='module add mvapich2-intel-psm/1.7\n'
-        return c
-    #end def write_job_header
 #end class Skybridge
-##### SANDIA test
 
+class Eclipse(SnlMachine):
+    name = 'eclipse'
+#end class Eclipse
 
+class Attaway(SnlMachine):
+    name = 'attaway'
+#end class Attaway
 
+class Uno(SnlMachine):
+    name = 'uno'
+#end class Uno
 
-## Added 09/23/2016 by JP Townsend
-class Redsky(Supercomputer):
-    name = 'redsky'
-
-    requires_account   = True
-    batch_capable      = True
-    #executable_subfile = True
-
-    prefixed_output    = True
-    outfile_extension  = '.output'
-    errfile_extension  = '.error'
-
-    def write_job_header(self,job):
-        if job.queue is None:
-            job.queue='batch'
-        #end if
-
-        job.total_hours = job.days*24 + job.hours + job.minutes/60.0 + job.seconds/3600.0
-        if job.total_hours > 96:   # warn if job will take more than 96 hrs.
-            self.warn('!!! ATTENTION !!!\n  the maximum runtime on {0} should not be more than {1}\n  you requested: {2}'.format(job.queue,max_time,job.total_hours))
-            job.hours   = max_time
-            job.minutes =0
-            job.seconds =0
-        #end if
-
-        #end if
-        c='#!/bin/bash\n'
-        c+='#SBATCH --job-name '+str(job.name)+'\n'
-        c+='#SBATCH --account='+str(job.account)+'\n'
-        c+='#SBATCH -N '+str(job.nodes)+'\n'
-        c+='#SBATCH --ntasks-per-node={0}\n'.format(job.processes_per_node)
-        c+='#SBATCH --cpus-per-task={0}\n'.format(job.threads)
-        c+='#SBATCH -t {0}:{1}:{2}\n'.format(str(job.hours+24*job.days).zfill(2),str(job.minutes).zfill(2),str(job.seconds).zfill(2))
-        #c+='#SBATCH --export=ALL\n'   # equiv to PBS -V
-        c+='#SBATCH -o {0}\n'.format(job.outfile)
-        c+='#SBATCH -e {0}\n'.format(job.errfile)
-        #c+='#SBATCH -p quad\n'
-        c+='\n'
-        c+='module purge\n'
-        c+='module add intel/intel-16.0.1.150\n'
-        c+='module add libraries/intel-mkl-16.0.1.150\n'
-        c+='module add mvapich2-intel-psm/1.7\n'
-        return c
-    #end def write_job_header
-#end class Redsky
-##### SANDIA test
-
-
-
-
-## Added 09/23/2016 by JP Townsend
-class Solo(Supercomputer):
+class Solo(SnlMachine):
     name = 'solo'
-
-    requires_account   = True
-    batch_capable      = True
-    #executable_subfile = True
-
-    prefixed_output    = True
-    outfile_extension  = '.output'
-    errfile_extension  = '.error'
-
-    def write_job_header(self,job):
-        if job.queue is None:
-            job.queue='batch'
-        #end if
-
-        job.total_hours = job.days*24 + job.hours + job.minutes/60.0 + job.seconds/3600.0
-        if job.total_hours > 96:   # warn if job will take more than 96 hrs.
-            self.warn('!!! ATTENTION !!!\n  the maximum runtime on {0} should not be more than {1}\n  you requested: {2}'.format(job.queue,max_time,job.total_hours))
-            job.hours   = max_time
-            job.minutes =0
-            job.seconds =0
-        #end if
-
-        #end if
-        c='#!/bin/bash\n'
-        c+='#SBATCH --job-name '+str(job.name)+'\n'
-        c+='#SBATCH --account='+str(job.account)+'\n'
-        c+='#SBATCH -N '+str(job.nodes)+'\n'
-        c+='#SBATCH --ntasks-per-node={0}\n'.format(job.processes_per_node)
-        c+='#SBATCH --cpus-per-task={0}\n'.format(job.threads)
-        c+='#SBATCH -t {0}:{1}:{2}\n'.format(str(job.hours+24*job.days).zfill(2),str(job.minutes).zfill(2),str(job.seconds).zfill(2))
-        #c+='#SBATCH --export=ALL\n'   # equiv to PBS -V
-        c+='#SBATCH -o {0}\n'.format(job.outfile)
-        c+='#SBATCH -e {0}\n'.format(job.errfile)
-        #c+='#SBATCH -p quad\n'
-        c+='\n'
-        c+='module purge\n'
-        c+='module add intel/16.0.3\n'
-        c+='module add mkl/16.0\n'
-        c+='module add mvapich2-intel-psm2/2.2rc1\n'
-        return c
-    #end def write_job_header
 #end class Solo
-##### SANDIA test
-
-
 
 # machines at LRZ  https://www.lrz.de/english/
 class SuperMUC(Supercomputer):
@@ -3356,6 +3145,83 @@ class Rhea(Supercomputer):
 #end class Rhea
 
 
+## Added 19/03/2021 by A Zen
+class Andes(Supercomputer):
+
+    name = 'andes'
+    requires_account   = True
+    batch_capable      = True
+    #executable_subfile = True
+    prefixed_output    = True
+    outfile_extension  = '.output'
+    errfile_extension  = '.error'
+
+    def post_process_job(self,job):
+        job.run_options.add(
+            N='-N {}'.format(job.nodes),
+            n='-n {}'.format(job.processes),
+            )
+        if job.threads>1:
+            job.run_options.add(
+                c = '-c {}'.format(job.threads),
+                )
+            if 'cpu_bind' not in job.run_options:
+                if job.processes_per_node==self.cores_per_node:
+                    cpu_bind = '--cpu-bind=threads'
+                else:
+                    cpu_bind = '--cpu-bind=cores'
+                #end if
+                job.run_options.add(
+                    cpu_bind = cpu_bind
+                    )
+            #end if
+        #end if
+    #end def post_process_job
+
+    def write_job_header(self,job):
+        if job.queue is None:
+            job.queue='batch'
+        #end if
+        base_partition = None
+        max_partition = 384
+        if job.nodes <= 16:
+            max_time = 48
+        elif job.nodes <= 64:
+            max_time = 36
+        else:
+            max_time = 3
+        job.total_hours = job.days*24 + job.hours + job.minutes/60.0 + job.seconds/3600.0
+        if job.total_hours > max_time:   # warn if job will take more than 96 hrs.
+            self.warn('!!! ATTENTION !!!\n  the maximum runtime on {0} should not be more than {1}\n  you requested: {2}'.format(job.queue,max_time,job.total_hours))
+            job.hours   = max_time
+            job.minutes =0
+            job.seconds =0
+        #end if
+
+        c='#!/bin/bash\n'
+        c+='#SBATCH --job-name '+str(job.name)+'\n'
+        c+='#SBATCH --account='+str(job.account)+'\n'
+        c+='#SBATCH -N '+str(job.nodes)+'\n'
+        c+='#SBATCH -t {0}:{1}:{2}\n'.format(str(job.hours+24*job.days).zfill(2),str(job.minutes).zfill(2),str(job.seconds).zfill(2))
+        c+='#SBATCH -o {0}\n'.format(job.outfile)
+        c+='#SBATCH -e {0}\n'.format(job.errfile)
+        if job.email is not None:
+            c+='#SBATCH --mail-user {}\n'.format(job.email)
+            c+='#SBATCH --mail-type ALL\n'
+            #c+='#SBATCH --mail-type FAIL\n'
+        #end if
+        c+='\n'
+        c+='cd $SLURM_SUBMIT_DIR\n'
+        c+='\n'
+        c+='echo JobID : $SLURM_JOBID \n'
+        c+='echo Number of nodes requested: $SLURM_JOB_NUM_NODES \n'
+        c+='echo List of nodes assigned to the job: $SLURM_NODELIST \n'
+        c+='\n'
+        return c
+    #end def write_job_header
+#end class Andes
+
+
 class Tomcat3(Supercomputer):
     name             = 'tomcat3'
     requires_account = False
@@ -3413,18 +3279,19 @@ Lonestar(    22656,   2,     6,   12,  128,  'ibrun',     'qsub',   'qstat',    
 Matisse(        20,   2,     8,   64,    2, 'mpirun',   'sbatch',   'sacct', 'scancel')
 Komodo(         24,   2,     6,   48,    2, 'mpirun',   'sbatch',   'sacct', 'scancel')
 Amos(         5120,   1,    16,   16,  128,   'srun',   'sbatch',   'sacct', 'scancel')
-Chama(        1220,   2,    16,   64, 1000,   'srun',   'sbatch',  'squeue', 'scancel')
-Uno(             4,   4,    32,  128, 1000,   'srun',   'sbatch',  'squeue', 'scancel')
-Serrano(      1122,   2,    18,  128, 1000,   'srun',   'sbatch',  'squeue', 'scancel')
-Skybridge(    1848,   2,    16,   64, 1000,   'srun',   'sbatch',  'squeue', 'scancel')
-Redsky(       2302,   2,     8,   12, 1000,   'srun',   'sbatch',  'squeue', 'scancel')
-Solo(          187,   2,    18,  128, 1000,   'srun',   'sbatch',  'squeue', 'scancel')
+Chama(        1232,   2,     8,   64, 1000,   'srun',   'sbatch',  'squeue', 'scancel')
+Uno(           168,   2,     8,  128, 1000,   'srun',   'sbatch',  'squeue', 'scancel')
+Eclipse(      1488,   2,    18,  128, 1000,   'srun',   'sbatch',  'squeue', 'scancel')
+Attaway(      1488,   2,    18,  192, 1000,   'srun',   'sbatch',  'squeue', 'scancel')
+Skybridge(    1848,   2,     8,   64, 1000,   'srun',   'sbatch',  'squeue', 'scancel')
+Solo(          374,   2,    18,  128, 1000,   'srun',   'sbatch',  'squeue', 'scancel')
 SuperMUC(      512,   1,    28,  256,    8,'mpiexec', 'llsubmit',     'llq','llcancel')
 Stampede2(    4200,   1,    68,   96,   50,  'ibrun',   'sbatch',  'squeue', 'scancel')
 CadesMoab(     156,   2,    18,  128,  100, 'mpirun',     'qsub',   'qstat',    'qdel')
 CadesSlurm(    156,   2,    18,  128,  100, 'mpirun',   'sbatch',  'squeue', 'scancel')
 Summit(       4608,   2,    21,  512,  100,  'jsrun',     'bsub',   'bjobs',   'bkill')
 Rhea(          512,   2,     8,  128, 1000,   'srun',   'sbatch',  'squeue', 'scancel')
+Andes(         704,   2,    16,  256, 1000,   'srun',   'sbatch',  'squeue', 'scancel')
 Tomcat3(         8,   1,    64,  192, 1000, 'mpirun',   'sbatch',   'sacct', 'scancel')
 SuperMUC_NG(  6336,   1,    48,   96, 1000,'mpiexec',   'sbatch',   'sacct', 'scancel')
 

@@ -28,22 +28,20 @@ public:
   virtual void checkOutVariables(const opt_variables_type& active) {}
   virtual void resetParameters(const opt_variables_type& active) {}
   virtual void reportStatus(std::ostream& os) {}
-  virtual void resetTargetParticleSet(ParticleSet& P) {}
 
   TinyVector<ValueType, 3> coeff;
 
-  LinearOrbital()
+  LinearOrbital() : WaveFunctionComponent("LinearOrbital")
   {
     coeff[0] = 1.0;
     coeff[1] = 2.0;
     coeff[2] = 3.0;
   }
 
-  virtual LogValueType evaluateLog(ParticleSet& P,
+  virtual LogValueType evaluateLog(const ParticleSet& P,
                                    ParticleSet::ParticleGradient_t& G,
                                    ParticleSet::ParticleLaplacian_t& L)
   {
-    APP_ABORT("LinearOrbital. evaluateLog");
     ValueType v = 0.0;
     for (int i = 0; i < P.R.size(); i++)
     {
@@ -70,7 +68,7 @@ public:
 
   virtual void registerData(ParticleSet& P, WFBufferType& buf) {}
 
-  virtual LogValueType updateBuffer(ParticleSet& P, WFBufferType& buf, bool fromscratch = false) { return 0.0; }
+  virtual LogValueType updateBuffer(ParticleSet& P, WFBufferType& buf, bool fromscratch = false) { return evaluateLog(P, P.G, P.L); }
 
   virtual void copyFromBuffer(ParticleSet& P, WFBufferType& buf) {}
 };

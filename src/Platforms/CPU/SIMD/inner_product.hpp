@@ -23,7 +23,7 @@
 #ifndef QMCPLUSPLUS_INNER_PRODUCT_HPP
 #define QMCPLUSPLUS_INNER_PRODUCT_HPP
 
-#include <OhmmsPETE/TinyVector.h>
+#include "OhmmsPETE/TinyVector.h"
 
 namespace qmcplusplus
 {
@@ -209,6 +209,24 @@ inline void transpose(const T* restrict A, size_t m, size_t lda, TO* restrict B,
   for (size_t i = 0; i < n; ++i)
     for (size_t j = 0; j < m; ++j)
       B[i * ldb + j] = A[j * lda + i];
+}
+
+/** copy of A(m,n) to B(m,n) 
+     * @param A starting address, A(m,lda)
+     * @param m number of A rows
+     * @param lda stride of A's row
+     * @param B starting address B(m,ldb)
+     * @param m number of B rows
+     * @param ldb stride of B's row
+     *
+     * Blas-like interface
+     */
+template<typename T, typename TO>
+inline void remapCopy(size_t m, size_t n, const T* restrict A,  size_t lda, TO* restrict B, size_t ldb)
+{
+  for (size_t j = 0; j < m; ++j)
+    for (size_t i = 0; i < n; ++i)
+      B[j * ldb + i] = A[j * lda + i];
 }
 
 } // namespace simd

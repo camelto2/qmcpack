@@ -20,8 +20,8 @@
 
 #include "DiracDeterminantCUDA.h"
 #include "CUDA_legacy/cuda_inverse.h"
-#include "QMCWaveFunctions/Fermion/determinant_update.h"
-#include "QMCWaveFunctions/Fermion/delayed_update.h"
+#include "QMCWaveFunctions/detail/CUDA_legacy/determinant_update.h"
+#include "QMCWaveFunctions/detail/CUDA_legacy/delayed_update.h"
 #include "Numerics/DeterminantOperators.h"
 #include <unistd.h>
 
@@ -30,8 +30,8 @@
 
 namespace qmcplusplus
 {
-DiracDeterminantCUDA::DiracDeterminantCUDA(SPOSetPtr const spos, int first)
-    : DiracDeterminantBase(spos, first),
+DiracDeterminantCUDA::DiracDeterminantCUDA(std::shared_ptr<SPOSet>&& spos, int first)
+    : DiracDeterminantBase("DiracDeterminantCUDA", std::move(spos), first),
       UpdateJobList_d("DiracDeterminant::UpdateJobList_d"),
       srcList_d("DiracDeterminant::srcList_d"),
       destList_d("DiracDeterminant::destList_d"),
@@ -65,7 +65,6 @@ DiracDeterminantCUDA::DiracDeterminantCUDA(SPOSetPtr const spos, int first)
 {
   for (int i = 0; i < 2; ++i)
     NLratios_d[i] = gpu::device_vector<CTS::ValueType>("DiracDeterminant::NLratios_d");
-  ClassName = "DiracDeterminantCUDA";
 }
 
 /////////////////////////////////////

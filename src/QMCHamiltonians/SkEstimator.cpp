@@ -13,10 +13,10 @@
 //////////////////////////////////////////////////////////////////////////////////////
 
 
-#include <QMCHamiltonians/SkEstimator.h>
-#include <LongRange/StructFact.h>
-#include <Utilities/IteratorUtility.h>
-#include <OhmmsData/AttributeSet.h>
+#include "SkEstimator.h"
+#include "LongRange/StructFact.h"
+#include "Utilities/IteratorUtility.h"
+#include "OhmmsData/AttributeSet.h"
 
 namespace qmcplusplus
 {
@@ -137,15 +137,16 @@ void SkEstimator::setParticlePropertyList(PropertySetType& plist, int offset)
 }
 
 
-void SkEstimator::registerCollectables(std::vector<observable_helper*>& h5desc, hid_t gid) const
+void SkEstimator::registerCollectables(std::vector<ObservableHelper>& h5desc, hid_t gid) const
 {
   if (hdf5_out)
   {
     std::vector<int> ndim(1, NumK);
-    observable_helper* h5o = new observable_helper(myName);
-    h5o->set_dimensions(ndim, myIndex);
-    h5o->open(gid);
-    h5desc.push_back(h5o);
+    h5desc.emplace_back(myName);
+    auto& h5o = h5desc.back();
+    h5o.set_dimensions(ndim, myIndex);
+    h5o.open(gid);
+
     hsize_t kdims[2];
     kdims[0]          = NumK;
     kdims[1]          = OHMMS_DIM;

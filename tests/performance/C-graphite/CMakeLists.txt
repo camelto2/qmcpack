@@ -7,14 +7,13 @@
 FUNCTION(ADD_C_GRAPHITE_TEST TEST_NAME TEST_DIR INPUT_FILE H5_FILE)
   MESSAGE_VERBOSE("Adding test ${TEST_NAME}")
   SET (WDIR "${qmcpack_BINARY_DIR}/tests/performance/C-graphite/${TEST_DIR}")
-  SET (SDIR "${CMAKE_SOURCE_DIR}/tests/performance/C-graphite/sample/${TEST_DIR}")
-
-  SET(QMC_APP "${qmcpack_BINARY_DIR}/bin/qmcpack")
+  SET (SDIR "${qmcpack_SOURCE_DIR}/tests/performance/C-graphite/sample/${TEST_DIR}")
+  SET ( QMC_APP $<TARGET_FILE:qmcpack> )
   IF (ENABLE_TIMERS)
     SET(PERF_ARGS "--enable-timers=fine")
   ENDIF()
 
-  SET (PPDIR "${CMAKE_SOURCE_DIR}/tests/performance/C-graphite")
+  SET (PPDIR "${qmcpack_SOURCE_DIR}/tests/performance/C-graphite")
 
   EXECUTE_PROCESS(COMMAND ${CMAKE_COMMAND} -E copy_directory ${SDIR} ${WDIR})
 
@@ -41,7 +40,7 @@ FUNCTION(ADD_C_GRAPHITE_TEST TEST_NAME TEST_DIR INPUT_FILE H5_FILE)
   SET_TESTS_PROPERTIES(${TEST_NAME} PROPERTIES PROCESSORS ${TOT_PROCS} PROCESSOR_AFFINITY TRUE)
 
   IF (ENABLE_TIMERS)
-    ADD_TEST(NAME "${TEST_NAME}-time" COMMAND python ../process_perf.py ${INPUT_FILE})
+    ADD_TEST(NAME "${TEST_NAME}-time" COMMAND ../process_perf.py ${INPUT_FILE})
     SET_TESTS_PROPERTIES("${TEST_NAME}-time" PROPERTIES LABELS "performance")
     SET_TESTS_PROPERTIES("${TEST_NAME}-time" PROPERTIES WORKING_DIRECTORY "${WDIR}")
     SET_TESTS_PROPERTIES("${TEST_NAME}-time" PROPERTIES DEPENDS ${TEST_NAME})

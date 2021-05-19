@@ -15,7 +15,7 @@
 //////////////////////////////////////////////////////////////////////////////////////
 
 
-#include "QMCHamiltonians/ForceBase.h"
+#include "ForceBase.h"
 #include "Particle/DistanceTableData.h"
 #include "Message/Communicate.h"
 #include "Utilities/ProgressReportEngine.h"
@@ -26,13 +26,12 @@
 
 namespace qmcplusplus
 {
-ForceBase::ForceBase(ParticleSet& ions, ParticleSet& elns)
-  : FirstForceIndex(-1), tries(0), addionion(true), Ions(ions)
+ForceBase::ForceBase(ParticleSet& ions, ParticleSet& elns) : FirstForceIndex(-1), tries(0), addionion(true), Ions(ions)
 {
   ReportEngine PRE("ForceBase", "ForceBase");
-  FirstTime    = true;
-  Nnuc         = ions.getTotalNum();
-  Nel          = elns.getTotalNum();
+  FirstTime = true;
+  Nnuc      = ions.getTotalNum();
+  Nel       = elns.getTotalNum();
   //Determines if ion-ion force will be added to electron-ion force in derived force estimators.
   //If false, forces_IonIon=0.0 .
   addionion = true;
@@ -71,15 +70,16 @@ void ForceBase::addObservablesStress(QMCTraits::PropertySetType& plist)
     }
 }
 
-void ForceBase::registerObservablesF(std::vector<observable_helper*>& h5list, hid_t gid) const
+void ForceBase::registerObservablesF(std::vector<ObservableHelper>& h5list, hid_t gid) const
 {
   std::vector<int> ndim(2);
-  ndim[0]                = Nnuc;
-  ndim[1]                = OHMMS_DIM;
-  observable_helper* h5o = new observable_helper(prefix);
-  h5o->set_dimensions(ndim, FirstForceIndex);
-  h5o->open(gid);
-  h5list.push_back(h5o);
+  ndim[0] = Nnuc;
+  ndim[1] = OHMMS_DIM;
+
+  h5list.emplace_back(prefix);
+  auto& h5o = h5list.back();
+  h5o.set_dimensions(ndim, FirstForceIndex);
+  h5o.open(gid);
 }
 
 void ForceBase::setObservablesF(QMCTraits::PropertySetType& plist)
@@ -135,9 +135,7 @@ void ForceBase::setParticleSetStress(QMCTraits::PropertySetType& plist, int offs
   }
 }
 
-BareForce::BareForce(ParticleSet& ions, ParticleSet& elns)
-  : ForceBase(ions, elns),
-  d_ei_ID(elns.addTable(ions, DT_SOA))
+BareForce::BareForce(ParticleSet& ions, ParticleSet& elns) : ForceBase(ions, elns), d_ei_ID(elns.addTable(ions))
 {
   myName = "HF_Force_Base";
   prefix = "HFBase";
@@ -156,7 +154,7 @@ void BareForce::addObservables(PropertySetType& plist, BufferType& collectables)
 BareForce::Return_t BareForce::evaluate(ParticleSet& P)
 {
   forces                                    = forces_IonIon;
-  const auto& d_ab             = P.getDistTable(d_ei_ID);
+  const auto& d_ab                          = P.getDistTable(d_ei_ID);
   const ParticleSet::Scalar_t* restrict Zat = Ions.Z.first_address();
   const ParticleSet::Scalar_t* restrict Qat = P.Z.first_address();
   //Loop over distinct eln-ion pairs
@@ -166,7 +164,7 @@ BareForce::Return_t BareForce::evaluate(ParticleSet& P)
     const auto& ab_displ = d_ab.getDisplRow(jat);
     for (int iat = 0; iat < d_ab.sources(); iat++)
     {
-      real_type rinv = 1.0/ab_dist[iat];
+      real_type rinv = 1.0 / ab_dist[iat];
       real_type r3zz = Qat[jat] * Zat[iat] * rinv * rinv * rinv;
       forces[iat] += r3zz * ab_displ[iat];
     }

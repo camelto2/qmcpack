@@ -14,7 +14,7 @@
 //////////////////////////////////////////////////////////////////////////////////////
 
 
-#include "QMCDrivers/DMC/DMC_CUDA.h"
+#include "DMC_CUDA.h"
 #include "QMCDrivers/DMC/DMCUpdatePbyP.h"
 #include "QMCDrivers/QMCUpdateBase.h"
 #include "OhmmsApp/RandomNumberControl.h"
@@ -37,24 +37,23 @@ using WP = WalkerProperties::Indexes;
 DMCcuda::DMCcuda(MCWalkerConfiguration& w,
                  TrialWaveFunction& psi,
                  QMCHamiltonian& h,
-                 WaveFunctionPool& ppool,
-                 Communicate* comm)
-    : QMCDriver(w, psi, h, ppool, comm),
+                 Communicate* comm,
+                 bool enable_profiling)
+    : QMCDriver(w, psi, h, comm, "DMCcuda", enable_profiling),
       myWarmupSteps(0),
       Mover(0),
       NLop(w.getTotalNum()),
-      ResizeTimer(*TimerManager.createTimer("DMCcuda::resize")),
-      DriftDiffuseTimer(*TimerManager.createTimer("DMCcuda::Drift_Diffuse")),
-      BranchTimer(*TimerManager.createTimer("DMCcuda::Branch")),
-      HTimer(*TimerManager.createTimer("DMCcuda::Hamiltonian"))
+      ResizeTimer(*timer_manager.createTimer("DMCcuda::resize")),
+      DriftDiffuseTimer(*timer_manager.createTimer("DMCcuda::Drift_Diffuse")),
+      BranchTimer(*timer_manager.createTimer("DMCcuda::Branch")),
+      HTimer(*timer_manager.createTimer("DMCcuda::Hamiltonian"))
 {
   RootName = "dmc";
-  QMCType  = "DMCcuda";
   qmc_driver_mode.set(QMC_UPDATE_MODE, 1);
   qmc_driver_mode.set(QMC_WARMUP, 0);
-  //m_param.add(myWarmupSteps,"warmupSteps","int");
-  //m_param.add(nTargetSamples,"targetWalkers","int");
-  m_param.add(ScaleWeight, "scaleweight", "string");
+  //m_param.add(myWarmupSteps,"warmupSteps");
+  //m_param.add(nTargetSamples,"targetWalkers");
+  m_param.add(ScaleWeight, "scaleweight");
 
   H.setRandomGenerator(&Random);
 }
@@ -108,9 +107,9 @@ bool DMCcuda::run()
   for (int iw = 0; iw < nw; iw++)
     W[iw]->Weight = 1.0;
 
-  LoopTimer dmc_loop;
-  RunTimeControl runtimeControl(RunTimeManager, MaxCPUSecs);
-  bool enough_time_for_next_iteration = true;
+  LoopTimer<> dmc_loop;
+  RunTimeControl<> runtimeControl(run_time_manager, MaxCPUSecs, myComm->getName(), myComm->rank() == 0);
+
   do
   {
     dmc_loop.start();
@@ -291,8 +290,8 @@ bool DMCcuda::run()
           v2 += dot(W.G[iat], W.G[iat]);
 #endif
         }
-        RealType scNew                       = std::sqrt(v2bar / (v2 * m_tauovermass * m_tauovermass));
-        RealType scOld                       = (CurrentStep == 1) ? scNew : W[iw]->getPropertyBase()[WP::DRIFTSCALE];
+        RealType scNew = std::sqrt(v2bar / (v2 * m_tauovermass * m_tauovermass));
+        RealType scOld = (CurrentStep == 1) ? scNew : W[iw]->getPropertyBase()[WP::DRIFTSCALE];
         W[iw]->getPropertyBase()[WP::DRIFTSCALE] = scNew;
         // fprintf (stderr, "iw = %d  scNew = %1.8f  scOld = %1.8f\n", iw, scNew, scOld);
         RealType tauRatio = R2acc[iw] / R2prop[iw];
@@ -324,14 +323,20 @@ bool DMCcuda::run()
     ++block;
     recordBlock(block);
     dmc_loop.stop();
-    enough_time_for_next_iteration = runtimeControl.enough_time_for_next_iteration(dmc_loop);
+
+    bool stop_requested = false;
     // Rank 0 decides whether the time limit was reached
-    myComm->bcast(enough_time_for_next_iteration);
-    if (!enough_time_for_next_iteration)
+    if (!myComm->rank())
+      stop_requested = runtimeControl.checkStop(dmc_loop);
+    myComm->bcast(stop_requested);
+    if (stop_requested)
     {
-      app_log() << runtimeControl.time_limit_message("DMC", block);
+      if (!myComm->rank())
+        app_log() << runtimeControl.generateStopMessage("DMC_CUDA", block);
+      run_time_manager.markStop();
+      break;
     }
-  } while (block < nBlocks && enough_time_for_next_iteration);
+  } while (block < nBlocks);
 #ifdef USE_NVTX_API
   nvtxRangePop();
 #endif
@@ -348,7 +353,7 @@ void DMCcuda::resetUpdateEngine()
     W.loadEnsemble();
     branchEngine->initWalkerController(W, false, false);
     Mover = new DMCUpdatePbyPWithRejectionFast(W, Psi, H, Random);
-    Mover->resetRun(branchEngine, Estimators, nullptr, DriftModifier);
+    Mover->resetRun(branchEngine.get(), Estimators, nullptr, DriftModifier);
     //Mover->initWalkersForPbyP(W.begin(),W.end());
   }
   else
@@ -414,11 +419,11 @@ bool DMCcuda::put(xmlNodePtr q)
 
   BranchInterval = -1;
   ParameterSet p;
-  p.add(BranchInterval, "branchInterval", "string");
-  p.add(BranchInterval, "branchinterval", "string");
-  p.add(BranchInterval, "substeps", "int");
-  p.add(BranchInterval, "subSteps", "int");
-  p.add(BranchInterval, "sub_steps", "int");
+  p.add(BranchInterval, "branchInterval");
+  p.add(BranchInterval, "branchinterval");
+  p.add(BranchInterval, "substeps");
+  p.add(BranchInterval, "subSteps");
+  p.add(BranchInterval, "sub_steps");
   p.put(q);
   return true;
 }

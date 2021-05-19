@@ -14,7 +14,7 @@
 //////////////////////////////////////////////////////////////////////////////////////
 
 
-#include "QMCHamiltonians/ForceCeperley.h"
+#include "ForceCeperley.h"
 #include "Particle/DistanceTableData.h"
 #include "Message/Communicate.h"
 #include "Utilities/ProgressReportEngine.h"
@@ -26,7 +26,7 @@
 namespace qmcplusplus
 {
 ForceCeperley::ForceCeperley(ParticleSet& ions, ParticleSet& elns)
-  : ForceBase(ions, elns), d_ei_ID(elns.addTable(ions, DT_SOA_PREFERRED))
+    : ForceBase(ions, elns), d_aa_ID(ions.addTable(ions)), d_ei_ID(elns.addTable(ions))
 {
   ReportEngine PRE("ForceCeperley", "ForceCeperley");
   myName = "Ceperley_Force_Base";
@@ -36,9 +36,28 @@ ForceCeperley::ForceCeperley(ParticleSet& ions, ParticleSet& elns)
   m_exp   = 2;
   N_basis = 4;
   forces  = 0.0;
-  forces_ShortRange.resize(Nnuc);
-  forces_ShortRange = 0.0;
   ///////////////////////////////////////////////////////////////
+  ions.update();
+  evaluate_IonIon(forces_IonIon);
+}
+
+void ForceCeperley::evaluate_IonIon(ParticleSet::ParticlePos_t& forces) const
+{
+  forces = 0.0;
+  const DistanceTableData& d_aa(Ions.getDistTable(d_aa_ID));
+  const ParticleScalar_t* restrict Zat = Ions.Z.first_address();
+  for (size_t ipart = 1; ipart < Nnuc; ipart++)
+  {
+    const auto& dist  = d_aa.getDistRow(ipart);
+    const auto& displ = d_aa.getDisplRow(ipart);
+    for (size_t jpart = 0; jpart < ipart; ++jpart)
+    {
+      RealType rinv = 1.0 / dist[jpart];
+      RealType r3zz = Zat[jpart] * Zat[ipart] * rinv * rinv * rinv;
+      forces[jpart] += r3zz * displ[jpart];
+      forces[ipart] -= r3zz * displ[jpart];
+    }
+  }
 }
 
 void ForceCeperley::InitMatrix()
@@ -62,9 +81,11 @@ void ForceCeperley::InitMatrix()
 
 ForceCeperley::Return_t ForceCeperley::evaluate(ParticleSet& P)
 {
-  forces                               = forces_IonIon;
-  forces_ShortRange                    = forces_IonIon;
-  const auto& d_ab        = P.getDistTable(d_ei_ID);
+  if (addionion == true)
+    forces = forces_IonIon;
+  else
+    forces = 0.0;
+  const auto& d_ab                     = P.getDistTable(d_ei_ID);
   const ParticleScalar_t* restrict Zat = Ions.Z.first_address();
   const ParticleScalar_t* restrict Qat = P.Z.first_address();
   for (int jat = 0; jat < Nel; jat++)
@@ -89,8 +110,7 @@ ForceCeperley::Return_t ForceCeperley::evaluate(ParticleSet& P)
         }
         g_q *= zoverr3;
         // negative sign accounts for definition of target as electrons
-        forces[iat]            += g_q * displ[iat];
-        forces_ShortRange[iat] += g_q * displ[iat];
+        forces[iat] += g_q * displ[iat];
       }
     }
   }
@@ -109,9 +129,9 @@ bool ForceCeperley::put(xmlNodePtr cur)
   app_log() << "addionion=" << addionion << std::endl;
   app_log() << "FirstTime= " << FirstTime << std::endl;
   ParameterSet fcep_param_set;
-  fcep_param_set.add(Rcut, "rcut", "real");
-  fcep_param_set.add(N_basis, "nbasis", "int");
-  fcep_param_set.add(m_exp, "weight_exp", "int");
+  fcep_param_set.add(Rcut, "rcut");
+  fcep_param_set.add(N_basis, "nbasis");
+  fcep_param_set.add(m_exp, "weight_exp");
   fcep_param_set.put(cur);
   app_log() << "    ForceCeperley Parameters" << std::endl;
   app_log() << "        ForceCeperley::Rcut=" << Rcut << std::endl;
@@ -121,10 +141,7 @@ bool ForceCeperley::put(xmlNodePtr cur)
   return true;
 }
 
-OperatorBase* ForceCeperley::makeClone(ParticleSet& qp, TrialWaveFunction& psi)
-{
-  return new ForceCeperley(*this);
-}
+OperatorBase* ForceCeperley::makeClone(ParticleSet& qp, TrialWaveFunction& psi) { return new ForceCeperley(*this); }
 } // namespace qmcplusplus
 
 //  void ForceCeperley::addObservables(PropertySetType& plist) {

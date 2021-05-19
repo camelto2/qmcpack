@@ -17,8 +17,8 @@
 #include "QMCWaveFunctions/WaveFunctionComponent.h"
 #endif
 #include "Particle/DistanceTableData.h"
-#include <CPU/SIMD/aligned_allocator.hpp>
-#include <CPU/SIMD/algorithm.hpp>
+#include "CPU/SIMD/aligned_allocator.hpp"
+#include "CPU/SIMD/algorithm.hpp"
 #include <map>
 #include <numeric>
 
@@ -110,13 +110,15 @@ public:
   ///alias FuncType
   using FuncType = FT;
 
-  JeeIOrbitalSoA(const ParticleSet& ions, ParticleSet& elecs, bool is_master = false)
-      : ee_Table_ID_(elecs.addTable(elecs, DT_SOA)),
-        ei_Table_ID_(elecs.addTable(ions, DT_SOA, true)),
+  JeeIOrbitalSoA(const std::string& obj_name, const ParticleSet& ions, ParticleSet& elecs, bool is_master = false)
+      : WaveFunctionComponent("JeeIOrbitalSoA", obj_name),
+        ee_Table_ID_(elecs.addTable(elecs)),
+        ei_Table_ID_(elecs.addTable(ions, true)),
         Ions(ions),
         NumVars(0)
   {
-    ClassName = "JeeIOrbitalSoA";
+    if (myName.empty())
+      throw std::runtime_error("JeeIOrbitalSoA object name cannot be empty!");
     init(elecs);
   }
 
@@ -124,7 +126,7 @@ public:
 
   WaveFunctionComponentPtr makeClone(ParticleSet& elecs) const
   {
-    JeeIOrbitalSoA<FT>* eeIcopy = new JeeIOrbitalSoA<FT>(Ions, elecs, false);
+    JeeIOrbitalSoA<FT>* eeIcopy = new JeeIOrbitalSoA<FT>(myName, Ions, elecs, false);
     std::map<const FT*, FT*> fcmap;
     for (int iG = 0; iG < iGroups; iG++)
       for (int eG1 = 0; eG1 < eGroups; eG1++)
@@ -302,10 +304,6 @@ public:
     }
   }
 
-
-  //evaluate the distance table with els
-  void resetTargetParticleSet(ParticleSet& P) {}
-
   /** check in an optimizable parameter
    * @param o a super set of optimizable variables
    */
@@ -384,7 +382,7 @@ public:
     }
   }
 
-  void build_compact_list(ParticleSet& P)
+  void build_compact_list(const ParticleSet& P)
   {
     const auto& eI_dists  = P.getDistTable(ei_Table_ID_).getDistances();
     const auto& eI_displs = P.getDistTable(ei_Table_ID_).getDisplacements();
@@ -408,10 +406,9 @@ public:
           }
   }
 
-  LogValueType evaluateLog(ParticleSet& P, ParticleSet::ParticleGradient_t& G, ParticleSet::ParticleLaplacian_t& L)
+  LogValueType evaluateLog(const ParticleSet& P, ParticleSet::ParticleGradient_t& G, ParticleSet::ParticleLaplacian_t& L)
   {
-    evaluateGL(P, G, L, true);
-    return LogValue;
+    return evaluateGL(P, G, L, true);
   }
 
   PsiValueType ratio(ParticleSet& P, int iat)
@@ -504,7 +501,7 @@ public:
       valT* restrict save_g      = dUat.data(idim);
       const valT* restrict new_g = newdUk.data(idim);
       const valT* restrict old_g = olddUk.data(idim);
-#pragma omp simd aligned(save_g, new_g, old_g)
+#pragma omp simd aligned(save_g, new_g, old_g: QMC_SIMD_ALIGNMENT)
       for (int jel = 0; jel < Nelec; jel++)
         save_g[jel] += new_g[jel] - old_g[jel];
     }
@@ -570,7 +567,7 @@ public:
     }
   }
 
-  inline void recompute(ParticleSet& P)
+  inline void recompute(const ParticleSet& P)
   {
     const DistanceTableData& eI_table = P.getDistTable(ei_Table_ID_);
     const DistanceTableData& ee_table = P.getDistTable(ee_Table_ID_);
@@ -594,7 +591,7 @@ public:
       {
         valT* restrict save_g      = dUat.data(idim);
         const valT* restrict new_g = newdUk.data(idim);
-#pragma omp simd aligned(save_g, new_g)
+#pragma omp simd aligned(save_g, new_g: QMC_SIMD_ALIGNMENT)
         for (int kel = 0; kel < jel; kel++)
           save_g[kel] += new_g[kel];
       }
@@ -694,7 +691,7 @@ public:
       valT* restrict jI = Disp_jI_Compressed.data(idim);
       valT* restrict kI = Disp_kI_Compressed.data(idim);
       valT dUj_x(0);
-#pragma omp simd aligned(gradF0, gradF1, gradF2, hessF11, jk, jI, kI) reduction(+ : dUj_x)
+#pragma omp simd aligned(gradF0, gradF1, gradF2, hessF11, jk, jI, kI: QMC_SIMD_ALIGNMENT) reduction(+ : dUj_x)
       for (int kel_index = 0; kel_index < kel_counter; kel_index++)
       {
         // recycle hessF11
@@ -711,7 +708,7 @@ public:
       valT* restrict jk0 = Disp_jk_Compressed.data(0);
       if (idim > 0)
       {
-#pragma omp simd aligned(jk, jk0)
+#pragma omp simd aligned(jk, jk0: QMC_SIMD_ALIGNMENT)
         for (int kel_index = 0; kel_index < kel_counter; kel_index++)
           jk0[kel_index] += jk[kel_index];
       }
@@ -722,12 +719,12 @@ public:
     }
     valT sum(0);
     valT* restrict jk0 = Disp_jk_Compressed.data(0);
-#pragma omp simd aligned(jk0, hessF01) reduction(+ : sum)
+#pragma omp simd aligned(jk0, hessF01: QMC_SIMD_ALIGNMENT) reduction(+ : sum)
     for (int kel_index = 0; kel_index < kel_counter; kel_index++)
       sum += hessF01[kel_index] * jk0[kel_index];
     d2Uj -= ctwo * sum;
 
-#pragma omp simd aligned(hessF00, hessF22, gradF0, gradF2, hessF02, hessF11)
+#pragma omp simd aligned(hessF00, hessF22, gradF0, gradF2, hessF02, hessF11: QMC_SIMD_ALIGNMENT)
     for (int kel_index = 0; kel_index < kel_counter; kel_index++)
       hessF00[kel_index] = hessF00[kel_index] + hessF22[kel_index] + lapfac * (gradF0[kel_index] + gradF2[kel_index]) -
           ctwo * hessF02[kel_index] * hessF11[kel_index];
@@ -849,10 +846,10 @@ public:
     build_compact_list(P);
   }
 
-  void evaluateGL(ParticleSet& P,
-                  ParticleSet::ParticleGradient_t& G,
-                  ParticleSet::ParticleLaplacian_t& L,
-                  bool fromscratch = false)
+  LogValueType evaluateGL(const ParticleSet& P,
+                          ParticleSet::ParticleGradient_t& G,
+                          ParticleSet::ParticleLaplacian_t& L,
+                          bool fromscratch = false)
   {
     if (fromscratch)
       recompute(P);
@@ -864,7 +861,7 @@ public:
       L[iat] += d2Uat[iat];
     }
 
-    LogValue = -LogValue * 0.5;
+    return LogValue = -LogValue * 0.5;
   }
 
   void evaluateDerivatives(ParticleSet& P,
@@ -994,8 +991,8 @@ public:
     tempG.resize(P.getTotalNum());
     tempL.resize(P.getTotalNum());
     QTFull::RealType delta = 0.00001;
-    QTFull::RealType c1   = 1.0 / delta / 2.0;
-    QTFull::RealType c2   = 1.0 / delta / delta;
+    QTFull::RealType c1    = 1.0 / delta / 2.0;
+    QTFull::RealType c2    = 1.0 / delta / delta;
 
     GradType g_return(0.0);
     // GRAD TEST COMPUTATION
@@ -1014,9 +1011,9 @@ public:
       LogValueType log_m = evaluateLog(P, tempG, tempL);
 
       QTFull::RealType log_p_r(0.0), log_m_r(0.0);
-      
-      log_p_r=log_p.real();
-      log_m_r=log_m.real();
+
+      log_p_r = log_p.real();
+      log_m_r = log_m.real();
       //symmetric finite difference formula for gradient.
       g_return[iondim] = c1 * (log_p_r - log_m_r);
 
@@ -1046,8 +1043,8 @@ public:
     dL.resize(P.getTotalNum());
 
     QTFull::RealType delta = 0.00001;
-    QTFull::RealType c1   = 1.0 / delta / 2.0;
-    QTFull::RealType c2   = 1.0 / delta / delta; 
+    QTFull::RealType c1    = 1.0 / delta / 2.0;
+    QTFull::RealType c2    = 1.0 / delta / delta;
     GradType g_return(0.0);
     // GRAD TEST COMPUTATION
     PosType rI = source.R[isrc];
@@ -1068,11 +1065,11 @@ public:
       P.update();
       LogValueType log_m = evaluateLog(P, Gm, Lm);
       QTFull::RealType log_p_r(0.0), log_m_r(0.0);
-      
-      log_p_r=log_p.real();
-      log_m_r=log_m.real();
-      dG=Gp-Gm;
-      dL=Lp-Lm;
+
+      log_p_r = log_p.real();
+      log_m_r = log_m.real();
+      dG      = Gp - Gm;
+      dL      = Lp - Lm;
       //symmetric finite difference formula for gradient.
       g_return[iondim] = c1 * (log_p_r - log_m_r);
       grad_grad[iondim] += c1 * dG;

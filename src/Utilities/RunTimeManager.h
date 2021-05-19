@@ -16,69 +16,100 @@
 #ifndef QMCPLUSPLUS_RUNTIME_MANAGER_H
 #define QMCPLUSPLUS_RUNTIME_MANAGER_H
 
-#include <Utilities/Clock.h>
+#include "Utilities/Clock.h"
 #include <string>
 
 
 namespace qmcplusplus
 {
-class RunTimeManagerClass
+template<class CLOCK = CPUClock>
+class RunTimeManager
 {
 public:
-  void start() { start_time = cpu_clock(); }
-  double elapsed() { return cpu_clock() - start_time; }
+  inline double elapsed() { return CLOCK()() - start_time; }
   // Initialize the start time at static class initialization time
-  RunTimeManagerClass() { start(); }
+  RunTimeManager() : start_time(CLOCK()()) {}
+
+  bool isStopNeeded() const { return need_to_stop_; }
+  void markStop() { need_to_stop_ = true; }
 
 private:
-  double start_time;
+  const double start_time;
+  bool need_to_stop_;
 };
 
-extern RunTimeManagerClass RunTimeManager;
+extern RunTimeManager<CPUClock> run_time_manager;
 
+extern template class RunTimeManager<CPUClock>;
+extern template class RunTimeManager<FakeCPUClock>;
+
+template<class CLOCK = CPUClock>
 class LoopTimer
 {
 public:
-  void start() { start_time = cpu_clock(); }
-  void stop()
-  {
-    nloop++;
-    total_time += cpu_clock() - start_time;
-  }
-  double get_time_per_iteration();
-
-  LoopTimer() : nloop(0), start_time(0.0), total_time(0.0) {}
+  LoopTimer();
+  void start();
+  void stop();
+  double get_time_per_iteration() const;
 
 private:
   int nloop;
+  bool ticking;
   double start_time;
   double total_time;
 };
 
+extern template class LoopTimer<CPUClock>;
+extern template class LoopTimer<FakeCPUClock>;
+
+template<class CLOCK = CPUClock>
 class RunTimeControl
 {
-  int MaxCPUSecs;
+  const int MaxCPUSecs;
   double m_runtime_safety_padding;
   double m_loop_margin;
   double m_loop_time;
   double m_elapsed;
   double m_remaining;
-  RunTimeManagerClass& runtimeManager;
+  RunTimeManager<CLOCK>& runtimeManager;
+  /// the prefix of the stop file (stop_file_prefix + ".STOP")
+  const std::string stop_filename_;
+
+  enum class StopStatus
+  {
+    CONTINUE,           // keep running
+    MAX_SECONDS_PASSED, // all already passed max_seconds
+    NOT_ENOUGH_TIME,    // not enough time for next iteration
+    STOP_FILE,          // reqsuted stop from a file
+  } stop_status_;
+
+  bool enough_time_for_next_iteration(LoopTimer<CLOCK>& loop_timer);
+  bool stop_file_requested();
 
 public:
-  RunTimeControl(RunTimeManagerClass& rm, int maxCPUSecs) : MaxCPUSecs(maxCPUSecs), runtimeManager(rm)
-  {
-    m_runtime_safety_padding = 10.0; // 10 seconds - enough to shut down?
-    m_loop_margin            = 1.1;  // 10% margin on average loop time?
-  }
+  /** constructor
+   * @param rm the RunTimeManager attached to
+   * @param maxCPUSecs maxmimal allowed seconds from the beginning of the simulation
+   * @param stop_file_prefix the prefix of the stop file
+   * @param cleanup if true, clean up stop files left from previous simulations. Rank 0 handle this.
+   */
+  RunTimeControl(RunTimeManager<CLOCK>& rm, int maxCPUSecs, const std::string& stop_file_prefix, bool cleanup = true);
 
+  /** check if the run needs to stop because of walltime or stop control file.
+   * it should be called at the end of each block in a driver.
+   */
+  bool checkStop(LoopTimer<CLOCK>& loop_timer);
+
+  /// generate stop message explaining why
+  std::string generateStopMessage(const std::string& driverName, int block) const;
+
+  // for testing
   void runtime_padding(int runtime_padding) { m_runtime_safety_padding = runtime_padding; }
   void loop_margin(int loopMargin) { m_loop_margin = loopMargin; }
-
-  bool enough_time_for_next_iteration(LoopTimer& loop_timer);
-  std::string time_limit_message(const std::string& driverName, int block);
 };
 
+extern template class RunTimeControl<CPUClock>;
+extern template class RunTimeControl<FakeCPUClock>;
 
 } // namespace qmcplusplus
 #endif

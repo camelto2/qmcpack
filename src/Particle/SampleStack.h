@@ -26,7 +26,7 @@ namespace qmcplusplus
 {
 class MCWalkerConfiguration;
 class HDFWalkerOutput;
-class MCSample;
+struct MCSample;
 
 class SampleStack
 {
@@ -50,7 +50,7 @@ public:
   ///save the position of current walkers
   void saveEnsemble(std::vector<MCSample>& walker_list);
   /// load a single sample from SampleStack
-  void loadSample(ParticleSet::ParticlePos_t& Pos, size_t iw) const;
+  void loadSample(ParticleSet& pset, size_t iw) const;
 
   void appendSample(MCSample&& sample);
 
@@ -58,6 +58,10 @@ public:
   ///clear the ensemble
   void clearEnsemble();
   //@}
+  ///  Set the sample count to zero but preserve the storage
+  void resetSampleCount();
+
+  ~SampleStack();
 
 private:
   int total_num_;

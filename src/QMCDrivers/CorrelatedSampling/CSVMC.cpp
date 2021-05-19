@@ -14,7 +14,7 @@
 //////////////////////////////////////////////////////////////////////////////////////
 
 
-#include "QMCDrivers/CorrelatedSampling/CSVMC.h"
+#include "CSVMC.h"
 #include "QMCDrivers/CorrelatedSampling/CSVMCUpdateAll.h"
 #include "QMCDrivers/CorrelatedSampling/CSVMCUpdatePbyP.h"
 #include "Estimators/CSEnergyEstimator.h"
@@ -23,7 +23,7 @@
 #include "Message/OpenMP.h"
 #include "Message/CommOperators.h"
 #include "Utilities/FairDivide.h"
-#include <qmc_common.h>
+#include "Utilities/qmc_common.h"
 //#define ENABLE_VMC_OMP_MASTER
 #if !defined(REMOVE_TRACEMANAGER)
 #include "Estimators/TraceManager.h"
@@ -37,17 +37,15 @@ namespace qmcplusplus
 CSVMC::CSVMC(MCWalkerConfiguration& w,
              TrialWaveFunction& psi,
              QMCHamiltonian& h,
-             WaveFunctionPool& ppool,
              Communicate* comm)
-    : QMCDriver(w, psi, h, ppool, comm), UseDrift("yes"), multiEstimator(0), Mover(0)
+    : QMCDriver(w, psi, h, comm, "CSVMC"), UseDrift("yes"), multiEstimator(0), Mover(0)
 {
   RootName = "csvmc";
-  QMCType  = "CSVMC";
-  m_param.add(UseDrift, "useDrift", "string");
-  m_param.add(UseDrift, "usedrift", "string");
-  m_param.add(UseDrift, "use_drift", "string");
+  m_param.add(UseDrift, "useDrift");
+  m_param.add(UseDrift, "usedrift");
+  m_param.add(UseDrift, "use_drift");
   equilBlocks = -1;
-  m_param.add(equilBlocks, "equilBlocks", "int");
+  m_param.add(equilBlocks, "equilBlocks");
   qmc_driver_mode.set(QMC_MULTIPLE, 1);
 }
 
@@ -60,8 +58,8 @@ bool CSVMC::put(xmlNodePtr q)
 {
   int target_min = -1;
   ParameterSet p;
-  p.add(target_min, "minimumtargetwalkers", "int");
-  p.add(target_min, "minimumsamples", "int");
+  p.add(target_min, "minimumtargetwalkers");
+  p.add(target_min, "minimumsamples");
   p.put(q);
 
   app_log() << "\n<vmc function=\"put\">"
@@ -160,10 +158,10 @@ bool CSVMC::run()
       int ip                 = omp_get_thread_num();
       IndexType updatePeriod = (qmc_driver_mode[QMC_UPDATE_MODE]) ? Period4CheckProperties : 0;
       //assign the iterators and resuse them
-      MCWalkerConfiguration::iterator wit(W.begin() + wPerNode[ip]), wit_end(W.begin() + wPerNode[ip + 1]);
+      MCWalkerConfiguration::iterator wit(W.begin() + wPerRank[ip]), wit_end(W.begin() + wPerRank[ip + 1]);
       CSMovers[ip]->startBlock(nSteps);
       int now_loc    = CurrentStep;
-      RealType cnorm = 1.0 / static_cast<RealType>(wPerNode[ip + 1] - wPerNode[ip]);
+      RealType cnorm = 1.0 / static_cast<RealType>(wPerRank[ip + 1] - wPerRank[ip]);
       for (int step = 0; step < nSteps; ++step)
       {
         CSMovers[ip]->set_step(now_loc);
@@ -218,13 +216,13 @@ void CSVMC::resetRun()
 
 
   makeClones(W, Psi1, H1);
-  FairDivideLow(W.getActiveWalkers(), NumThreads, wPerNode);
+  FairDivideLow(W.getActiveWalkers(), NumThreads, wPerRank);
 
   if (NumThreads > 1)
     APP_ABORT("OpenMP Parallelization for CSVMC not working at the moment");
 
   app_log() << "  Initial partition of walkers ";
-  copy(wPerNode.begin(), wPerNode.end(), std::ostream_iterator<int>(app_log(), " "));
+  copy(wPerRank.begin(), wPerRank.end(), std::ostream_iterator<int>(app_log(), " "));
   app_log() << std::endl;
 
 
@@ -278,7 +276,7 @@ void CSVMC::resetRun()
         app_log() << os.str() << std::endl;
 
       CSMovers[ip]->put(qmcNode);
-      CSMovers[ip]->resetRun(branchEngine, estimatorClones[ip], traceClones[ip], DriftModifier);
+      CSMovers[ip]->resetRun(branchEngine.get(), estimatorClones[ip], traceClones[ip], DriftModifier);
     }
   }
 #if !defined(REMOVE_TRACEMANAGER)
@@ -294,7 +292,7 @@ void CSVMC::resetRun()
 
   app_log() << "  Total Sample Size   =" << nTargetSamples << std::endl;
   app_log() << "  Walker distribution on root = ";
-  copy(wPerNode.begin(), wPerNode.end(), std::ostream_iterator<int>(app_log(), " "));
+  copy(wPerRank.begin(), wPerRank.end(), std::ostream_iterator<int>(app_log(), " "));
   app_log() << std::endl;
   app_log().flush();
 
@@ -303,15 +301,15 @@ void CSVMC::resetRun()
   {
     //int ip=omp_get_thread_num();
     CSMovers[ip]->put(qmcNode);
-    CSMovers[ip]->resetRun(branchEngine, estimatorClones[ip], traceClones[ip], DriftModifier);
+    CSMovers[ip]->resetRun(branchEngine.get(), estimatorClones[ip], traceClones[ip], DriftModifier);
     if (qmc_driver_mode[QMC_UPDATE_MODE])
-      CSMovers[ip]->initCSWalkersForPbyP(W.begin() + wPerNode[ip], W.begin() + wPerNode[ip + 1], nWarmupSteps > 0);
+      CSMovers[ip]->initCSWalkersForPbyP(W.begin() + wPerRank[ip], W.begin() + wPerRank[ip + 1], nWarmupSteps > 0);
     else
-      CSMovers[ip]->initCSWalkers(W.begin() + wPerNode[ip], W.begin() + wPerNode[ip + 1], nWarmupSteps > 0);
+      CSMovers[ip]->initCSWalkers(W.begin() + wPerRank[ip], W.begin() + wPerRank[ip + 1], nWarmupSteps > 0);
 
     for (int prestep = 0; prestep < nWarmupSteps; ++prestep)
     {
-      CSMovers[ip]->advanceWalkers(W.begin() + wPerNode[ip], W.begin() + wPerNode[ip + 1], true);
+      CSMovers[ip]->advanceWalkers(W.begin() + wPerRank[ip], W.begin() + wPerRank[ip + 1], true);
       if (prestep == nWarmupSteps - 1)
         CSMovers[ip]->updateNorms();
     }

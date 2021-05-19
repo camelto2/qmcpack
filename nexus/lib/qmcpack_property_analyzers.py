@@ -105,7 +105,7 @@ class Bspline(QAobject):
         d2v = zeros(r.shape)
         for p in range(len(r)):               
             ri = r[p]*odr
-            i = floor(ri)
+            i = int(floor(ri))
             if i<ni:
                 t = ri - i
                 tp[0,0] = t*t*t
@@ -253,7 +253,7 @@ class WavefunctionAnalyzer(PropertyAnalyzer):
                         else:
                             rcut = rcut_cell
                         #end if
-                        coeff = corr.coefficients.coeff
+                        coeff = corr.coefficients.coeff.flatten()
                         jastrows[jname][jn] = Jastrow1B(func,coeff,rcut)
                     #end for
                 #end if
@@ -270,7 +270,7 @@ class WavefunctionAnalyzer(PropertyAnalyzer):
                         #end if
                         s1 = corr.speciesa
                         s2 = corr.speciesb
-                        coeff = corr.coefficients.coeff
+                        coeff = corr.coefficients.coeff.flatten()
                         jastrows[jname][jn] = Jastrow2B(func,coeff,s1,s2,rcut)
                     #end for
                 #end if

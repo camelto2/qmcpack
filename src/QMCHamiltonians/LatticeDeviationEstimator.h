@@ -16,7 +16,7 @@
 #include "Particle/WalkerSetRef.h"
 #include "QMCHamiltonians/OperatorBase.h"
 #include "ParticleBase/ParticleAttribOps.h"
-#include <Particle/DistanceTableData.h>
+#include "Particle/DistanceTableData.h"
 
 namespace qmcplusplus
 {
@@ -54,11 +54,11 @@ public:
   //void setParticlePropertyList(PropertySetType& plist, int offset); // is this method ever used?
 
   // make room in hdf5 observable registry
-  void registerCollectables(std::vector<observable_helper*>& h5desc, hid_t gid) const;
+  void registerCollectables(std::vector<ObservableHelper>& h5desc, hid_t gid) const;
   //void addObservables(PropertySetType& plist, BufferType& collectables); // also used for multiple scalars
 
   // pure virtual functions require overrider
-  void resetTargetParticleSet(ParticleSet& P);                            // required
+  void resetTargetParticleSet(ParticleSet& P);                      // required
   OperatorBase* makeClone(ParticleSet& qp, TrialWaveFunction& psi); // required
 
 private:
@@ -74,7 +74,7 @@ private:
   xmlNodePtr input_xml;       // original xml
   // distance table ID
   const int myTableID_;
-};                            // LatticeDeviationEstimator
+}; // LatticeDeviationEstimator
 
 } // namespace qmcplusplus
 #endif

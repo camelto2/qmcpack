@@ -15,10 +15,10 @@
 #define QMCPLUSPLUS_SPACEGRID_H
 
 #include <Configuration.h>
-#include <OhmmsPETE/Tensor.h>
-#include <OhmmsPETE/OhmmsMatrix.h>
-#include <Utilities/PooledData.h>
-#include <QMCHamiltonians/observable_helper.h>
+#include "OhmmsPETE/Tensor.h"
+#include "OhmmsPETE/OhmmsMatrix.h"
+#include "Utilities/PooledData.h"
+#include "QMCHamiltonians/ObservableHelper.h"
 #include "Particle/DistanceTableData.h"
 
 namespace qmcplusplus
@@ -36,19 +36,20 @@ public:
            ParticlePos_t& R,
            std::vector<RealType>& Z,
            int ndp,
+           bool is_periodic,
            bool abort_on_fail = true)
   {
     Rptcl       = &R;
     Zptcl       = &Z;
     ndparticles = ndp;
-    return put(cur, points, abort_on_fail);
+    return put(cur, points, is_periodic, abort_on_fail);
   }
-  bool put(xmlNodePtr cur, std::map<std::string, Point>& points, bool abort_on_fail = true);
+  bool put(xmlNodePtr cur, std::map<std::string, Point>& points, bool is_periodic, bool abort_on_fail = true);
   bool initialize_rectilinear(xmlNodePtr cur, std::string& coord, std::map<std::string, Point>& points);
   bool initialize_voronoi(std::map<std::string, Point>& points);
   void write_description(std::ostream& os, std::string& indent);
   int allocate_buffer_space(BufferType& buf);
-  void registerCollectables(std::vector<observable_helper*>& h5desc, hid_t gid, int grid_index) const;
+  void registerCollectables(std::vector<ObservableHelper>& h5desc, hid_t gid, int grid_index) const;
   void evaluate(const ParticlePos_t& R,
                 const Matrix<RealType>& values,
                 BufferType& buf,
@@ -106,6 +107,7 @@ public:
   RealType umax[DIM];
   int dimensions[DIM];
   int dm[DIM];
+  bool periodic;
 
   //voronoi grids
   ParticlePos_t* Rptcl;

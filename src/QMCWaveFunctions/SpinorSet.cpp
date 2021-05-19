@@ -9,13 +9,13 @@
 // File created by:  Raymond Clay III, rclay@sandia.gov, Sandia National Laboratories
 //////////////////////////////////////////////////////////////////////////////////////
 
-#include "QMCWaveFunctions/SpinorSet.h"
+#include "SpinorSet.h"
 
 namespace qmcplusplus
 {
 SpinorSet::SpinorSet() : SPOSet(), className("SpinorSet"), spo_up(nullptr), spo_dn(nullptr) {}
 
-void SpinorSet::set_spos(std::shared_ptr<SPOSet> up, std::shared_ptr<SPOSet> dn)
+void SpinorSet::set_spos(std::unique_ptr<SPOSet>&& up, std::unique_ptr<SPOSet>&& dn)
 {
   //Sanity check for input SPO's.  They need to be the same size or
   IndexType spo_size_up   = up->getOrbitalSetSize();
@@ -26,8 +26,8 @@ void SpinorSet::set_spos(std::shared_ptr<SPOSet> up, std::shared_ptr<SPOSet> dn)
 
   setOrbitalSetSize(spo_size_up);
 
-  spo_up = up;
-  spo_dn = dn;
+  spo_up = std::move(up);
+  spo_dn = std::move(dn);
 
   psi_work_up.resize(OrbitalSetSize);
   psi_work_down.resize(OrbitalSetSize);
@@ -40,8 +40,6 @@ void SpinorSet::set_spos(std::shared_ptr<SPOSet> up, std::shared_ptr<SPOSet> dn)
 }
 
 void SpinorSet::resetParameters(const opt_variables_type& optVariables){};
-
-void SpinorSet::resetTargetParticleSet(ParticleSet& P){};
 
 void SpinorSet::setOrbitalSetSize(int norbs) { OrbitalSetSize = norbs; };
 
@@ -93,6 +91,40 @@ void SpinorSet::evaluateVGL(const ParticleSet& P, int iat, ValueVector_t& psi, G
   psi   = eis * psi_work_up + emis * psi_work_down;
   dpsi  = eis * dpsi_work_up + emis * dpsi_work_down;
   d2psi = eis * d2psi_work_up + emis * d2psi_work_down;
+}
+
+void SpinorSet::evaluateVGL_spin(const ParticleSet& P,
+                                 int iat,
+                                 ValueVector_t& psi,
+                                 GradVector_t& dpsi,
+                                 ValueVector_t& d2psi,
+                                 ValueVector_t& dspin)
+{
+  psi_work_up     = 0.0;
+  psi_work_down   = 0.0;
+  dpsi_work_up    = 0.0;
+  dpsi_work_down  = 0.0;
+  d2psi_work_up   = 0.0;
+  d2psi_work_down = 0.0;
+
+  spo_up->evaluateVGL(P, iat, psi_work_up, dpsi_work_up, d2psi_work_up);
+  spo_dn->evaluateVGL(P, iat, psi_work_down, dpsi_work_down, d2psi_work_down);
+
+  ParticleSet::Scalar_t s = P.activeSpin(iat);
+
+  RealType coss(0.0), sins(0.0);
+
+  coss = std::cos(s);
+  sins = std::sin(s);
+
+  ValueType eis(coss, sins);
+  ValueType emis(coss, -sins);
+  ValueType eye(0, 1.0);
+
+  psi   = eis * psi_work_up + emis * psi_work_down;
+  dpsi  = eis * dpsi_work_up + emis * dpsi_work_down;
+  d2psi = eis * d2psi_work_up + emis * d2psi_work_down;
+  dspin = eye * (eis * psi_work_up - emis * psi_work_down);
 }
 
 void SpinorSet::evaluate_notranspose(const ParticleSet& P,
@@ -165,9 +197,9 @@ void SpinorSet::evaluate_spin(const ParticleSet& P, int iat, ValueVector_t& psi,
 SPOSet* SpinorSet::makeClone() const
 {
   SpinorSet* myclone = new SpinorSet();
-  std::shared_ptr<SPOSet> cloneup(spo_up->makeClone());
-  std::shared_ptr<SPOSet> clonedn(spo_dn->makeClone());
-  myclone->set_spos(cloneup, clonedn);
+  std::unique_ptr<SPOSet> cloneup(spo_up->makeClone());
+  std::unique_ptr<SPOSet> clonedn(spo_dn->makeClone());
+  myclone->set_spos(std::move(cloneup), std::move(clonedn));
   return myclone;
 }
 

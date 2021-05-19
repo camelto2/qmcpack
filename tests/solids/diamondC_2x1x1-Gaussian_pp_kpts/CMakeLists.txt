@@ -1,4 +1,7 @@
 
+ IF (NOT QMC_CUDA)
+   IF (QMC_COMPLEX)
+
 # Reference VMC run in qmc_ref_long.s000.scalar.dat
 # VMC short run with No Jastrow. Compare directly to Hartree Fock Energy of: E=-21.20673553792076
 #Data generated using utils/make_ref_data.sh DIAMOND qmc_short.s000.scalar.dat ../qmc-ref/qmc_ref_long.s000.scalar.dat
@@ -13,7 +16,7 @@ LIST(APPEND DIAMOND_SCALARS "nonlocalecp" "2.030854168240 0.050570571341")
 LIST(APPEND DIAMOND_SCALARS "ionion" "-25.551326757000 0.001000000000")
 
   QMC_RUN_AND_CHECK(short-diamondC_2x1x1_pp_kpts-vmc_gaussian_sdj
-                    "${CMAKE_SOURCE_DIR}/tests/solids/diamondC_2x1x1-Gaussian_pp_kpts"
+                    "${qmcpack_SOURCE_DIR}/tests/solids/diamondC_2x1x1-Gaussian_pp_kpts"
                     qmc_short
                     qmc_short.in.xml
                     1 16
@@ -38,7 +41,7 @@ LIST(APPEND LONG_DIAMOND_SCALARS "localecp" "-13.135076417429 0.057750691393")
 LIST(APPEND LONG_DIAMOND_SCALARS "nonlocalecp" "2.030854168240 0.034268032958")
 LIST(APPEND LONG_DIAMOND_SCALARS "ionion" "-25.551326757000 0.001000000000")
   QMC_RUN_AND_CHECK(long-diamondC_2x1x1_pp_kpts-vmc_gaussian_sdj
-                    "${CMAKE_SOURCE_DIR}/tests/solids/diamondC_2x1x1-Gaussian_pp_kpts"
+                    "${qmcpack_SOURCE_DIR}/tests/solids/diamondC_2x1x1-Gaussian_pp_kpts"
                     qmc_long
                     qmc_long.in.xml
                     1 16
@@ -57,7 +60,7 @@ LIST(APPEND LONG_DIAMOND_DMC_SCALARS "localecp" "-13.228959467675 0.114648569345
 LIST(APPEND LONG_DIAMOND_DMC_SCALARS "nonlocalecp" "1.990917122865 0.045023816102")
 LIST(APPEND LONG_DIAMOND_DMC_SCALARS "ionion" "-25.551326757000 0.001000000000")
   QMC_RUN_AND_CHECK(long-diamondC_2x1x1_pp_kpts-dmc_gaussian_sdj
-                    "${CMAKE_SOURCE_DIR}/tests/solids/diamondC_2x1x1-Gaussian_pp_kpts"
+                    "${qmcpack_SOURCE_DIR}/tests/solids/diamondC_2x1x1-Gaussian_pp_kpts"
                     qmc_long_vmc_dmc
                     qmc_long_vmc_dmc.in.xml
                     1 16
@@ -65,3 +68,11 @@ LIST(APPEND LONG_DIAMOND_DMC_SCALARS "ionion" "-25.551326757000 0.001000000000")
                     1 LONG_DIAMOND_DMC_SCALARS # DMC
                     )
 
+
+
+    ELSE()
+      MESSAGE_VERBOSE("Skipping Complex Periodic LCAO  if Complex code not build (QMC_COMPLEX=0)")
+    ENDIF()
+  ELSE()
+    MESSAGE_VERBOSE("Skipping Periodic LCAO as not supported by CUDA build (QMC_CUDA=1)")
+  ENDIF()

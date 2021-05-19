@@ -51,23 +51,23 @@ public:
     const DriftModifierBase& drift_modifier;
     const MCPopulation& population;
     IndexType recalculate_properties_period;
-    IndexType step;
-    int block;
-    bool recomputing_blocks;
+    IndexType step            = -1;
+    bool is_recomputing_block = false;
 
-    StateForThread(QMCDriverInput& qmci, VMCDriverInput& vmci, DriftModifierBase& drift_mod, MCPopulation& pop)
+    StateForThread(const QMCDriverInput& qmci,
+                   const VMCDriverInput& vmci,
+                   DriftModifierBase& drift_mod,
+                   MCPopulation& pop)
         : qmcdrv_input(qmci), vmcdrv_input(vmci), drift_modifier(drift_mod), population(pop)
     {}
   };
 
 public:
   /// Constructor.
-  VMCBatched(QMCDriverInput&& qmcdriver_input,
+  VMCBatched(const ProjectData& project_data,
+             QMCDriverInput&& qmcdriver_input,
              VMCDriverInput&& input,
-             MCPopulation& pop,
-             TrialWaveFunction& psi,
-             QMCHamiltonian& h,
-             WaveFunctionPool& ppool,
+             MCPopulation&& pop,
              SampleStack& samples_,
              Communicate* comm);
 
@@ -99,15 +99,18 @@ public:
    */
   auto getCDLW();
 
-  QMCDriverNew::AdjustedWalkerCounts calcDefaultLocalWalkers(QMCDriverNew::AdjustedWalkerCounts awc) const;
-
-  /// Compute the number of samples to collect and enable collecting samples during the VMC run
+  /** Enable collecting samples during the VMC run
+   *
+   *  strong assumption that VMCBatched driver has passed through process phase of
+   *  initialization.
+   *  A side effect of VMCBatched::process is that MCPopulation has created local walkers.
+   */
   void enable_sample_collection();
 
 private:
   int prevSteps;
   int prevStepsBetweenSamples;
-  VMCDriverInput vmcdriver_input_;
+  const VMCDriverInput vmcdriver_input_;
   QMCRunType getRunType() { return QMCRunType::VMC_BATCH; }
   ///Ways to set rn constant
   RealType logoffset, logepsilon;
@@ -116,13 +119,16 @@ private:
   /// Copy operator (disabled).
   VMCBatched& operator=(const VMCBatched&) = delete;
 
+
   /// Storage for samples (later used in optimizer)
   SampleStack& samples_;
   /// Sample collection flag
   bool collect_samples_;
+  /** function to calculate samples per MPI rank
+   */
+  static int compute_samples_per_rank(const QMCDriverInput& qmcdriver_input, const IndexType local_walkers);
 
   friend class qmcplusplus::testing::VMCBatchedTest;
-  ;
 };
 
 extern std::ostream& operator<<(std::ostream& o_stream, const VMCBatched& vmc_batched);

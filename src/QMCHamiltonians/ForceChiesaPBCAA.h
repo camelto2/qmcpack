@@ -38,7 +38,7 @@ struct ForceChiesaPBCAA : public OperatorBase, public ForceBase
   ///source particle set
   ParticleSet& PtclA;
   ///long-range Handler
-  LRHandlerType* dAB;
+  std::unique_ptr<LRHandlerType> dAB;
   ///number of species of A particle set
   int NumSpeciesA;
   ///number of species of B particle set
@@ -73,7 +73,7 @@ struct ForceChiesaPBCAA : public OperatorBase, public ForceBase
 
   Return_t g_filter(RealType r);
 
-  void registerObservables(std::vector<observable_helper*>& h5list, hid_t gid) const
+  void registerObservables(std::vector<ObservableHelper>& h5list, hid_t gid) const
   {
     registerObservablesF(h5list, gid);
   }

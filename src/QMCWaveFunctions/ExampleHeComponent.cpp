@@ -10,7 +10,7 @@
 //////////////////////////////////////////////////////////////////////////////////////
 
 
-#include "QMCWaveFunctions/ExampleHeComponent.h"
+#include "ExampleHeComponent.h"
 #include "OhmmsData/AttributeSet.h"
 
 /**@file ExampleHeComponent.cpp
@@ -61,7 +61,7 @@ bool ExampleHeComponent::put(xmlNodePtr cur)
   return true;
 }
 
-ExampleHeComponent::LogValueType ExampleHeComponent::evaluateLog(ParticleSet& P,
+ExampleHeComponent::LogValueType ExampleHeComponent::evaluateLog(const ParticleSet& P,
                                                                  ParticleSet::ParticleGradient_t& G,
                                                                  ParticleSet::ParticleLaplacian_t& L)
 {
@@ -106,7 +106,8 @@ ExampleHeComponent::LogValueType ExampleHeComponent::evaluateLog(ParticleSet& P,
 
   double u = A * r12 / (B * r12 + 1) - A / B;
 
-  return -Z * (r1 + r2) + std::log(norm * norm) - u;
+  LogValue = -Z * (r1 + r2) + std::log(norm * norm) - u;
+  return LogValue;
 }
 
 ExampleHeComponent::PsiValueType ExampleHeComponent::ratio(ParticleSet& P, int iat)

@@ -15,7 +15,7 @@
 
 
 #include "EwaldRef.h"
-#include "QMCHamiltonians/CoulombPBCAA.h"
+#include "CoulombPBCAA.h"
 #include "Particle/DistanceTableData.h"
 #include "Utilities/ProgressReportEngine.h"
 #include <numeric>
@@ -24,10 +24,8 @@ namespace qmcplusplus
 {
 CoulombPBCAA::CoulombPBCAA(ParticleSet& ref, bool active, bool computeForces)
     : ForceBase(ref, ref),
-      AA(0),
       myGrid(0),
       rVs(0),
-      dAA(0),
       myGridforce(0),
       rVsforce(0),
       is_active(active),
@@ -35,7 +33,7 @@ CoulombPBCAA::CoulombPBCAA(ParticleSet& ref, bool active, bool computeForces)
       myConst(0.0),
       ComputeForces(computeForces),
       Ps(ref),
-      d_aa_ID(ref.addTable(ref, DT_SOA_PREFERRED))
+      d_aa_ID(ref.addTable(ref))
 {
   ReportEngine PRE("CoulombPBCAA", "CoulombPBCAA");
   set_energy_domain(potential);
@@ -50,6 +48,7 @@ CoulombPBCAA::CoulombPBCAA(ParticleSet& ref, bool active, bool computeForces)
   }
   if (!is_active)
   {
+    ref.update();
     update_source(ref);
 
     ewaldref::RealMat A;
@@ -83,8 +82,7 @@ CoulombPBCAA::CoulombPBCAA(ParticleSet& ref, bool active, bool computeForces)
       msg << std::endl;
       msg << "Please try increasing the LR_dim_cutoff parameter in the <simulationcell/>" << std::endl;
       msg << "input.  Alternatively, the tolerance can be increased by setting the" << std::endl;
-      msg << "LR_tol parameter in <simulationcell/> to a value greater than " << Ps.Lattice.LR_tol << ". "
-                << std::endl;
+      msg << "LR_tol parameter in <simulationcell/> to a value greater than " << Ps.Lattice.LR_tol << ". " << std::endl;
       msg << "If you increase the tolerance, please perform careful checks of energy" << std::endl;
       msg << "differences to ensure this error is controlled for your application." << std::endl;
       msg << std::endl;
@@ -193,7 +191,7 @@ CoulombPBCAA::Return_t CoulombPBCAA::evaluate_sp(ParticleSet& P)
   mRealType Vsr              = 0.0;
   mRealType Vlr              = 0.0;
   mRealType& Vc              = myConst;
-  Array<RealType, 1>& V_samp = V_samp_tmp;
+  Array<RealType, 1>& V_samp = *V_sample;
   V_samp                     = 0.0;
   {
     //SR
@@ -285,7 +283,6 @@ void CoulombPBCAA::initBreakup(ParticleSet& P)
 
 #if !defined(REMOVE_TRACEMANAGER)
   V_const.resize(NumCenters);
-  V_samp_tmp.resize(NumCenters);
 #endif
 
   Zat.resize(NumCenters);
@@ -308,18 +305,16 @@ void CoulombPBCAA::initBreakup(ParticleSet& P)
   myRcut  = AA->get_rc(); //Basis.get_rc();
   if (rVs == 0)
   {
-    rVs = LRCoulombSingleton::createSpline4RbyVs(AA, myRcut, myGrid);
+    rVs = LRCoulombSingleton::createSpline4RbyVs(AA.get(), myRcut, myGrid);
   }
   if (ComputeForces)
   {
     dAA = LRCoulombSingleton::getDerivHandler(P);
     if (rVsforce == 0)
     {
-      rVsforce = LRCoulombSingleton::createSpline4RbyVs(dAA, myRcut, myGridforce);
+      rVsforce = LRCoulombSingleton::createSpline4RbyVs(dAA.get(), myRcut, myGridforce);
     }
   }
-
-  P.update();
 }
 
 
@@ -476,36 +471,19 @@ CoulombPBCAA::Return_t CoulombPBCAA::evalLR(ParticleSet& P)
   if (PtclRhoK.SuperCellEnum == SUPERCELL_SLAB)
   {
     const DistanceTableData& d_aa(P.getDistTable(d_aa_ID));
-    if (d_aa.DTType == DT_SOA)
+    //distance table handles jat<iat
+    for (int iat = 1; iat < NumCenters; ++iat)
     {
-      //distance table handles jat<iat
-      for (int iat = 1; iat < NumCenters; ++iat)
-      {
-        mRealType u = 0;
+      mRealType u = 0;
 #if !defined(USE_REAL_STRUCT_FACTOR)
-        const int slab_dir              = OHMMS_DIM - 1;
-        const RealType* restrict d_slab = d_aa.Displacements[iat].data(slab_dir);
-        for (int jat = 0; jat < iat; ++jat)
-          u += Zat[jat] *
-              AA->evaluate_slab(-d_slab[jat], //JK: Could be wrong. Check the SIGN
-                                PtclRhoK.KLists.kshell, PtclRhoK.eikr[iat], PtclRhoK.eikr[jat]);
+      const int slab_dir              = OHMMS_DIM - 1;
+      const RealType* restrict d_slab = d_aa.Displacements[iat].data(slab_dir);
+      for (int jat = 0; jat < iat; ++jat)
+        u += Zat[jat] *
+            AA->evaluate_slab(-d_slab[jat], //JK: Could be wrong. Check the SIGN
+                              PtclRhoK.KLists.kshell, PtclRhoK.eikr[iat], PtclRhoK.eikr[jat]);
 #endif
-        res += Zat[iat] * u;
-      }
-    }
-    else
-    {
-      //distance table handles jat>iat
-      for (int iat = 0; iat < NumCenters; ++iat)
-      {
-        mRealType u = 0;
-#if !defined(USE_REAL_STRUCT_FACTOR)
-        for (int nn = d_aa.M[iat], jat = iat + 1; nn < d_aa.M[iat + 1]; ++nn, ++jat)
-          u += Zat[jat] *
-              AA->evaluate_slab(d_aa.dr(nn)[slab_dir], PtclRhoK.KLists.kshell, PtclRhoK.eikr[iat], PtclRhoK.eikr[jat]);
-#endif
-        res += Zat[iat] * u;
-      }
+      res += Zat[iat] * u;
     }
   }
   else

@@ -42,7 +42,7 @@ class DiffTwoBodyJastrowOrbital : public DiffWaveFunctionComponent
   std::vector<FT*> F;
   /// e-e table ID
   const int my_table_ID_;
-  ///offset for the optimizable variables
+  /// Map indices from subcomponent variables to component variables
   std::vector<std::pair<int, int>> OffSet;
   Vector<RealType> dLogPsi;
   std::vector<GradVectorType*> gradLogPsi;
@@ -50,9 +50,11 @@ class DiffTwoBodyJastrowOrbital : public DiffWaveFunctionComponent
   std::map<std::string, FT*> J2Unique;
 
 public:
+  // return for testing
+  const std::vector<FT*>& getPairFunctions() const { return F; }
+
   ///constructor
-  DiffTwoBodyJastrowOrbital(ParticleSet& p)
-    : NumVars(0), my_table_ID_(p.addTable(p, DT_SOA_PREFERRED))
+  DiffTwoBodyJastrowOrbital(ParticleSet& p) : NumVars(0), my_table_ID_(p.addTable(p))
   {
     NumPtcls  = p.getTotalNum();
     NumGroups = p.groups();
@@ -64,6 +66,12 @@ public:
     delete_iter(gradLogPsi.begin(), gradLogPsi.end());
     delete_iter(lapLogPsi.begin(), lapLogPsi.end());
   }
+
+  // Accessors for unit testing
+  std::pair<int, int> getComponentOffset(int index) { return OffSet.at(index); }
+
+  opt_variables_type& getComponentVars() { return myVars; }
+
 
   void addFunc(int ia, int ib, FT* j)
   {
@@ -84,20 +92,14 @@ public:
     }
     else
     {
-      if (NumPtcls == 2)
-      {
-        // a very special case, 1 up + 1 down
-        // uu/dd was prevented by the builder
+      // a very special case, 1 particle of each type (e.g. 1 up + 1 down)
+      // uu/dd/etc. was prevented by the builder
+      if (NumPtcls == NumGroups)
         for (int ig = 0; ig < NumGroups; ++ig)
-          for (int jg = 0; jg < NumGroups; ++jg)
-            F[ig * NumGroups + jg] = j;
-      }
-      else
-      {
-        // generic case
-        F[ia * NumGroups + ib] = j;
-        F[ib * NumGroups + ia] = j;
-      }
+          F[ig * NumGroups + ig] = j;
+      // generic case
+      F[ia * NumGroups + ib] = j;
+      F[ib * NumGroups + ia] = j;
     }
     std::stringstream aname;
     aname << ia << ib;
@@ -114,9 +116,6 @@ public:
     }
   }
 
-  ///reset the distance table
-  void resetTargetParticleSet(ParticleSet& P) {}
-
   void checkOutVariables(const opt_variables_type& active)
   {
     myVars.clear();
@@ -127,6 +126,9 @@ public:
       myVars.insertFrom((*it).second->myVars);
       ++it;
     }
+    // Remove inactive variables so the mappings are correct
+    myVars.removeInactive();
+
     myVars.getIndex(active);
     NumVars = myVars.size();
 
@@ -143,7 +145,16 @@ public:
         lapLogPsi[i]  = new ValueVectorType(NumPtcls);
       }
       OffSet.resize(F.size());
-      int varoffset = myVars.Index[0];
+
+      // Find first active variable for the starting offset
+      int varoffset = -1;
+      for (int i = 0; i < myVars.size(); i++)
+      {
+        varoffset = myVars.Index[i];
+        if (varoffset != -1)
+          break;
+      }
+
       for (int i = 0; i < F.size(); ++i)
       {
         if (F[i] && F[i]->myVars.Index.size())
@@ -187,15 +198,13 @@ public:
           continue;
         if (rcsingles[k])
         {
-          dhpsioverpsi[kk] = - RealType(0.5) * ValueType(Sum(*lapLogPsi[k])) - ValueType(Dot(P.G, *gradLogPsi[k]));
+          dhpsioverpsi[kk] = -RealType(0.5) * ValueType(Sum(*lapLogPsi[k])) - ValueType(Dot(P.G, *gradLogPsi[k]));
         }
       }
     }
   }
 
-  void evaluateDerivativesWF(ParticleSet& P,
-                             const opt_variables_type& active,
-                             std::vector<ValueType>& dlogpsi)
+  void evaluateDerivativesWF(ParticleSet& P, const opt_variables_type& active, std::vector<ValueType>& dlogpsi)
   {
     if (myVars.size() == 0)
       return;
@@ -243,9 +252,9 @@ public:
       const size_t ng = P.groups();
       for (size_t i = 1; i < n; ++i)
       {
-        const size_t ig      = P.GroupID[i] * ng;
-        const auto& dist = d_table.getDistRow(i);
-        const auto& displ    = d_table.getDisplRow(i);
+        const size_t ig   = P.GroupID[i] * ng;
+        const auto& dist  = d_table.getDistRow(i);
+        const auto& displ = d_table.getDisplRow(i);
         for (size_t j = 0; j < i; ++j)
         {
           const size_t ptype = ig + P.GroupID[j];
@@ -265,8 +274,8 @@ public:
               dLogPsi[p] -= derivs[ip][0];
               (*gradLogPsi[p])[i] += gr;
               (*gradLogPsi[p])[j] -= gr;
-              (*lapLogPsi[p])[i]  -= lap;
-              (*lapLogPsi[p])[j]  -= lap;
+              (*lapLogPsi[p])[i] -= lap;
+              (*lapLogPsi[p])[j] -= lap;
             }
           }
         }
@@ -278,7 +287,7 @@ public:
           continue;
         if (rcsingles[k])
         {
-          dlogpsi[kk]      = dLogPsi[k];
+          dlogpsi[kk] = dLogPsi[k];
         }
         //optVars.setDeriv(p,dLogPsi[ip],-0.5*Sum(*lapLogPsi[ip])-Dot(P.G,*gradLogPsi[ip]));
       }

@@ -15,8 +15,8 @@
 
 #ifndef QMCPLUSPLUS_PAIRCOOR_HAMILTONIAN_H
 #define QMCPLUSPLUS_PAIRCOOR_HAMILTONIAN_H
-#include <QMCHamiltonians/OperatorBase.h>
-#include <OhmmsPETE/OhmmsMatrix.h>
+#include "QMCHamiltonians/OperatorBase.h"
+#include "OhmmsPETE/OhmmsMatrix.h"
 
 namespace qmcplusplus
 {
@@ -42,7 +42,7 @@ public:
 
   void addObservables(PropertySetType& plist) {}
   void addObservables(PropertySetType& plist, BufferType& collectables);
-  void registerCollectables(std::vector<observable_helper*>& h5list, hid_t gid) const;
+  void registerCollectables(std::vector<ObservableHelper>& h5list, hid_t gid) const;
   void setObservables(PropertySetType& plist);
   void setParticlePropertyList(PropertySetType& plist, int offset);
   bool put(xmlNodePtr cur);

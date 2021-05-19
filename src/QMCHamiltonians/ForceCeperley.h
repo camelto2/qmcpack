@@ -27,18 +27,17 @@ namespace qmcplusplus
 struct ForceCeperley : public OperatorBase, public ForceBase
 {
 private:
+  const int d_aa_ID;
   const int d_ei_ID;
 
 public:
-  double Rcut;                    // parameter: radial distance within which estimator is used
-  int m_exp;                      // parameter: exponent in polynomial fit
-  int N_basis;                    // parameter: size of polynomial basis set
+  double Rcut;                   // parameter: radial distance within which estimator is used
+  int m_exp;                     // parameter: exponent in polynomial fit
+  int N_basis;                   // parameter: size of polynomial basis set
   Matrix<FullPrecRealType> Sinv; // terms in fitting polynomial
   Vector<FullPrecRealType> h;    // terms in fitting polynomial
   Vector<FullPrecRealType> c;    // polynomial coefficients
   // container for short-range force estimator
-
-  ParticleSet::ParticlePos_t forces_ShortRange;
 
   ForceCeperley(ParticleSet& ions, ParticleSet& elns);
 
@@ -46,7 +45,7 @@ public:
 
   void InitMatrix();
 
-  void registerObservables(std::vector<observable_helper*>& h5list, hid_t gid) const
+  void registerObservables(std::vector<ObservableHelper>& h5list, hid_t gid) const
   {
     registerObservablesF(h5list, gid);
   }
@@ -56,6 +55,9 @@ public:
   void setObservables(PropertySetType& plist) { setObservablesF(plist); }
 
   void resetTargetParticleSet(ParticleSet& P) {}
+
+  // Compute ion-ion forces at construction to include in the total forces
+  void evaluate_IonIon(ParticleSet::ParticlePos_t& forces) const;
 
   void setParticlePropertyList(PropertySetType& plist, int offset) { setParticleSetF(plist, offset); }
   OperatorBase* makeClone(ParticleSet& qp, TrialWaveFunction& psi);

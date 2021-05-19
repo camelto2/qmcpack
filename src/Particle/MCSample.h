@@ -31,11 +31,15 @@ struct MCSample
   using Walker_t = ParticleSet::Walker_t;
 
   ParticleSet::ParticlePos_t R;
+  ParticleSet::ParticleScalar_t spins;
   ParticleSet::ParticleGradient_t G;
   ParticleSet::ParticleLaplacian_t L;
   ParticleSet::RealType LogPsi, Sign, PE, KE;
 
-  inline MCSample(const Walker_t& w) : R(w.R), G(w.G), L(w.L)
+  inline MCSample(const ParticleSet& pset) : R(pset.R), spins(pset.spins) {}
+
+  /// deprecated. Beyond w.R and w.spins, others are used perhaps somewhere but intended not to.
+  inline MCSample(const Walker_t& w) : R(w.R), spins(w.spins), G(w.G), L(w.L)
   {
     LogPsi = w.Properties(WP::LOGPSI);
     Sign   = w.Properties(WP::SIGN);
@@ -46,14 +50,15 @@ struct MCSample
   inline MCSample(int n)
   {
     R.resize(n);
+    spins.resize(n);
     G.resize(n);
     L.resize(n);
   }
 
-
   inline void convertToWalker(Walker_t& w) const
   {
     w.R                              = R;
+    w.spins                          = spins;
     w.G                              = G;
     w.L                              = L;
     w.Properties(WP::LOGPSI)         = LogPsi;

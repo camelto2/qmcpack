@@ -22,6 +22,7 @@ SET(HAMSRCS
   ACForce.cpp
   OperatorBase.cpp
   QMCHamiltonian.cpp
+  Hdispatcher.cpp
   CoulombPBCAA.cpp
   CoulombPBCAB.cpp
   NonLocalTOperator.cpp
@@ -42,6 +43,8 @@ SET(HAMSRCS
   SpinDensity.cpp
   SpeciesKineticEnergy.cpp
   LatticeDeviationEstimator.cpp
+  SpaceWarpTransformation.cpp
+  ObservableHelper.cpp
   )
 
 IF(OHMMS_DIM MATCHES 3)
@@ -49,6 +52,7 @@ IF(OHMMS_DIM MATCHES 3)
     ChiesaCorrection.cpp
     ForceCeperley.cpp
     ForceChiesaPBCAA.cpp
+    StressPBC.cpp
     LocalECPotential.cpp
     NonLocalECPComponent.cpp
     NonLocalECPotential.deriv.cpp
@@ -112,16 +116,11 @@ ENDIF(QMC_CUDA)
 USE_FAKE_RNG(qmcham_unit)
 TARGET_LINK_LIBRARIES(qmcham_unit PUBLIC qmcfakerng)
 
+TARGET_INCLUDE_DIRECTORIES(qmcham PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}")
+TARGET_INCLUDE_DIRECTORIES(qmcham_unit PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}")
+
 TARGET_LINK_LIBRARIES(qmcham PUBLIC qmcwfs)
 TARGET_LINK_LIBRARIES(qmcham_unit PUBLIC qmcwfs)
 
 TARGET_LINK_LIBRARIES(qmcham PRIVATE einspline Math::BLAS_LAPACK Math::FFTW3)
 TARGET_LINK_LIBRARIES(qmcham_unit PRIVATE einspline Math::BLAS_LAPACK Math::FFTW3)
-
-#IF(QMC_BUILD_STATIC)
-
-#IF(QMC_BUILD_STATIC)
-#  ADD_LIBRARY(qmcham STATIC ${HAMSRCS})
-#ELSE(QMC_BUILD_STATIC)
-#  ADD_LIBRARY(qmcham SHARED ${HAMSRCS})
-#ENDIF(QMC_BUILD_STATIC)

@@ -285,6 +285,19 @@ use a specific identifying file extension; instead they are simply
 suffixed with “``.xml``.” The tabular data format of CASINO is also
 supported.
 
+In addition to the semilocal pseudopotential above, spin-orbit 
+interactions can also be included through the use of spin-orbit
+pseudopotentials. The spin-orbit contribution can be written as
+
+.. math::
+  :label: eqn32
+
+  V^{\rm SO} = \sum_{ij} \left(\sum_{\ell = 1}^{\ell_{max}-1} \frac{2}{2\ell+1} V^{\rm SO}_\ell \left( \left|r_i - \tilde{r}_j \right| \right) \sum_{m,m'=-\ell}^{\ell} | Y_{\ell m} \rangle  \langle Y_{\ell m} | \vec{\ell} \cdot \vec{s} | Y_{\ell m'}\rangle\langle Y_{\ell m'}|\right)\:.
+
+Here, :math:`\vec{s}` is the spin operator. For each atom with a spin-orbit contribution,
+the radial functions :math:`V_{\ell}^{\rm SO}` can be included in the pseudopotential 
+“``.xml``” file.
+
 ``pairpot type=pseudo`` element:
 
   +------------------+-----------------+
@@ -295,29 +308,31 @@ supported.
 
 attributes:
 
-  +-----------------------------+--------------+-----------------------+------------------------+---------------------------------------------+
-  | **Name**                    | **Datatype** | **Values**            | **Default**            | **Description**                             |
-  +=============================+==============+=======================+========================+=============================================+
-  | ``type``:math:`^r`          | text         | **pseudo**            |                        | Must be pseudo                              |
-  +-----------------------------+--------------+-----------------------+------------------------+---------------------------------------------+
-  | ``name/id``:math:`^r`       | text         | *anything*            | PseudoPot              | *No current function*                       |
-  +-----------------------------+--------------+-----------------------+------------------------+---------------------------------------------+
-  | ``source``:math:`^r`        | text         | ``particleset.name``  | i                      | Ion ``particleset`` name                    |
-  +-----------------------------+--------------+-----------------------+------------------------+---------------------------------------------+
-  | ``target``:math:`^r`        | text         | ``particleset.name``  | ``hamiltonian.target`` | Electron ``particleset`` name               |
-  +-----------------------------+--------------+-----------------------+------------------------+---------------------------------------------+
-  | ``pbc``:math:`^o`           | boolean      | yes/no                | yes*                   | Use Ewald summation                         |
-  +-----------------------------+--------------+-----------------------+------------------------+---------------------------------------------+
-  | ``forces``                  | boolean      | yes/no                | no                     | *Deprecated*                                |
-  +-----------------------------+--------------+-----------------------+------------------------+---------------------------------------------+
-  | ``wavefunction``:math:`^r`  | text         | ``wavefunction.name`` | invalid                | Identify wavefunction                       |
-  +-----------------------------+--------------+-----------------------+------------------------+---------------------------------------------+
-  | ``format``:math:`^r`        | text         | xml/table             | table                  | Select file format                          |
-  +-----------------------------+--------------+-----------------------+------------------------+---------------------------------------------+
-  | ``algorithm``:math:`^o`     | text         | batched/default       | default                | Choose NLPP algorithm                       |
-  +-----------------------------+--------------+-----------------------+------------------------+---------------------------------------------+
-  | ``DLA``:math:`^o`           | text         | yes/no                | no                     | Use determinant localization approximation  |
-  +-----------------------------+--------------+-----------------------+------------------------+---------------------------------------------+
+  +-----------------------------+--------------+-----------------------+------------------------+--------------------------------------------------+
+  | **Name**                    | **Datatype** | **Values**            | **Default**            | **Description**                                  |
+  +=============================+==============+=======================+========================+==================================================+
+  | ``type``:math:`^r`          | text         | **pseudo**            |                        | Must be pseudo                                   |
+  +-----------------------------+--------------+-----------------------+------------------------+--------------------------------------------------+
+  | ``name/id``:math:`^r`       | text         | *anything*            | PseudoPot              | *No current function*                            |
+  +-----------------------------+--------------+-----------------------+------------------------+--------------------------------------------------+
+  | ``source``:math:`^r`        | text         | ``particleset.name``  | i                      | Ion ``particleset`` name                         |
+  +-----------------------------+--------------+-----------------------+------------------------+--------------------------------------------------+
+  | ``target``:math:`^r`        | text         | ``particleset.name``  | ``hamiltonian.target`` | Electron ``particleset`` name                    |
+  +-----------------------------+--------------+-----------------------+------------------------+--------------------------------------------------+
+  | ``pbc``:math:`^o`           | boolean      | yes/no                | yes*                   | Use Ewald summation                              |
+  +-----------------------------+--------------+-----------------------+------------------------+--------------------------------------------------+
+  | ``forces``                  | boolean      | yes/no                | no                     | *Deprecated*                                     |
+  +-----------------------------+--------------+-----------------------+------------------------+--------------------------------------------------+
+  | ``wavefunction``:math:`^r`  | text         | ``wavefunction.name`` | invalid                | Identify wavefunction                            |
+  +-----------------------------+--------------+-----------------------+------------------------+--------------------------------------------------+
+  | ``format``:math:`^r`        | text         | xml/table             | table                  | Select file format                               |
+  +-----------------------------+--------------+-----------------------+------------------------+--------------------------------------------------+
+  | ``algorithm``:math:`^o`     | text         | batched/non-batched   | depends                | Choose NLPP algorithm                            |
+  +-----------------------------+--------------+-----------------------+------------------------+--------------------------------------------------+
+  | ``DLA``:math:`^o`           | text         | yes/no                | no                     | Use determinant localization approximation       |
+  +-----------------------------+--------------+-----------------------+------------------------+--------------------------------------------------+
+  | ``physicalSO``:math:`^o`    | boolean      | yes/no                | no                     | Include the SO contribution in the local energy  |
+  +-----------------------------+--------------+-----------------------+------------------------+--------------------------------------------------+
 
 Additional information:
 
@@ -344,18 +359,25 @@ Additional information:
    These elements specify individual file names and formats (both the
    FSAtom XML and CASINO tabular data formats are supported).
 
--  **algorithm** The default algorithm evaluates the ratios of
+-  **algorithm** The default value is ``batched`` when OpenMP offload
+   is enabled and``non-batched`` otherwise.
+   The ``non-batched`` algorithm evaluates the ratios of
    wavefunction components together for each quadrature point and then
-   one point after another. The batched algorithm evaluates the ratios
+   one point after another. The ``batched`` algorithm evaluates the ratios
    of quadrature points together for each wavefunction component and
    then one component after another. Internally, it uses
    ``VirtualParticleSet`` for quadrature points. Hybrid orbital
    representation has an extra optimization enabled when using the
-   batched algorithm.
+   batched algorithm. When OpenMP offload build is enabled, the default
+   value is ``batched``. Otherwise, ``non-batched`` is the default.
 
 -  **DLA** Determinant localization approximation
    (DLA) :cite:`Zen2019DLA` uses only the fermionic part of
    the wavefunction when calculating NLPP.
+
+-  **physicalSO** If the spin-orbit components are included in the 
+   ``.xml`` file, this flag allows control over whether the SO contribution
+   is included in the local energy. 
 
 .. code-block::
   :caption: QMCPXML element for pseudopotential electron-ion interaction (psf files).
@@ -370,6 +392,14 @@ Additional information:
     <pairpot name="PseudoPot" type="pseudo"  source="i" wavefunction="psi0" format="xml">
       <pseudo elementType="Li" href="Li.xml"/>
       <pseudo elementType="H" href="H.xml"/>
+    </pairpot>
+
+.. code-block::
+  :caption: QMCPXML element for pseudopotential including the spin-orbit interaction.
+  :name: Listing 21
+  
+    <pairpot name="PseudoPot" type="pseudo" source="i" wavefunction="psi0" format="xml" physicalSO="yes">
+      <pseudo elementType="Pb" href="Pb.xml"/>
     </pairpot>
 
 Details of ``<pseudo/>`` input elements are shown in the following. It
@@ -405,7 +435,7 @@ attributes:
 
 .. code-block::
   :caption: QMCPXML element for pseudopotential of single ionic species.
-  :name: Listing 21
+  :name: Listing 21b
 
     <pseudo elementType="Li" href="Li.xml"/>
 
@@ -1178,23 +1208,26 @@ In QMCPACK, the energy density can be accumulated on piecewise uniform 3D grids 
 
 attributes:
 
-  +------------------------+--------------+----------------------+-------------+---------------------------+
-  | **Name**               | **Datatype** | **Values**           | **Default** | **Description**           |
-  +========================+==============+======================+=============+===========================+
-  | ``type``:math:`^r`     | text         | **EnergyDensity**    |             | Must be EnergyDensity     |
-  +------------------------+--------------+----------------------+-------------+---------------------------+
-  | ``name``:math:`^r`     | text         | *anything*           |             | Unique name for estimator |
-  +------------------------+--------------+----------------------+-------------+---------------------------+
-  | ``dynamic``:math:`^r`  | text         | ``particleset.name`` |             | Identify electrons        |
-  +------------------------+--------------+----------------------+-------------+---------------------------+
-  | ``static``:math:`^o`   | text         | ``particleset.name`` |             | Identify ions             |
-  +------------------------+--------------+----------------------+-------------+---------------------------+
+  +----------------------------+--------------+----------------------+-------------+----------------------------------------------+
+  | **Name**                   | **Datatype** | **Values**           | **Default** | **Description**                              |
+  +============================+==============+======================+=============+==============================================+
+  | ``type``:math:`^r`         | text         | **EnergyDensity**    |             | Must be EnergyDensity                        |
+  +----------------------------+--------------+----------------------+-------------+----------------------------------------------+
+  | ``name``:math:`^r`         | text         | *anything*           |             | Unique name for estimator                    |
+  +----------------------------+--------------+----------------------+-------------+----------------------------------------------+
+  | ``dynamic``:math:`^r`      | text         | ``particleset.name`` |             | Identify electrons                           |
+  +----------------------------+--------------+----------------------+-------------+----------------------------------------------+
+  | ``static``:math:`^o`       | text         | ``particleset.name`` |             | Identify ions                                |
+  +----------------------------+--------------+----------------------+-------------+----------------------------------------------+
+  | ``ion_points``:math:`^o`   | text         | yes/no               |  no         | Separate ion energy density onto point field |
+  +----------------------------+--------------+----------------------+-------------+----------------------------------------------+
 
 Additional information:
 
 -  ``name:`` Must be unique. A dataset with blocked statistical data for
    the energy density will appear in the ``stat.h5`` files labeled as
    ``name``.
+- **Important:** in order for the estimator to work, a traces XML input element (<traces array="yes" write="no"/>) must appear following the <qmcsystem/> element and prior to any <qmc/> element.
 
 .. code-block::
   :caption: Energy density estimator accumulated on a :math:`20 \times  10 \times 10` grid over the simulation cell.
@@ -1839,8 +1872,9 @@ Additional information:
    important to converge the lattice sum when calculating Coulomb
    contribution to the forces. As a quick test, increase the
    ``LR_dim_cutoff`` parameter until ion-ion forces are converged. The
-   Ewald method (``lrmethod``\ ="ewald") converges more slowly than
-   optimized method (``lrmethod``\ ="srcoul").
+   Ewald method converges more slowly than optimized method, but the
+   optimized method can break down in edge cases, eg. too large
+   ``LR_dim_cutoff``.
 
 -  **Miscellaneous**: Usually, the default choice of ``weightexp`` is
    sufficient. Different combinations of ``rcut`` and ``nbasis`` should
@@ -1854,12 +1888,68 @@ The following is an example use case.
 
   <simulationcell>
     ...
-    <parameter name="LR\_dim\_cutoff">  20  </parameter>
+    <parameter name="LR_handler">  opt_breakup_original  </parameter>
+    <parameter name="LR_dim_cutoff">  20  </parameter>
   </simulationcell>
-  <estimator name="myforce" type="Force" mode="cep" addionion="yes" lrmethod="srcoul">
+  <hamiltonian>
+    <estimator name="F" type="Force" mode="cep" addionion="yes">
       <parameter name="rcut">0.1</parameter>
       <parameter name="nbasis">4</parameter>
       <parameter name="weightexp">2</parameter>
-  </estimator>
+    </estimator>
+  </hamiltonian>
+
+.. _stress-est:
+
+Stress estimators
+------------------
+
+QMCPACK takes the following parameters.
+
+  +------------------+----------------------+
+  | parent elements: | ``hamiltonian``      |
+  +------------------+----------------------+
+
+  attributes:
+
+    +--------------------------+--------------+-----------------+-------------+--------------------------------------------------------------+
+    | **Name**                 | **Datatype** | **Values**      | **Default** | **Description**                                              |
+    +==========================+==============+=================+=============+==============================================================+
+    | ``mode``:math:`^r`       | text         | stress          | bare        | Must be "stress"                                             |
+    +--------------------------+--------------+-----------------+-------------+--------------------------------------------------------------+
+    | ``type``:math:`^r`       | text         | Force           |             | Must be "Force"                                              |
+    +--------------------------+--------------+-----------------+-------------+--------------------------------------------------------------+
+    | ``source``:math:`^r`     | text         | ion0            |             | Name of ion particleset                                      |
+    +--------------------------+--------------+-----------------+-------------+--------------------------------------------------------------+
+    | ``name``:math:`^o`       | text         | *Anything*      | ForceBase   | Unique name for this estimator                               |
+    +--------------------------+--------------+-----------------+-------------+--------------------------------------------------------------+
+    | ``addionion``:math:`^o`  | boolean      | yes/no          | no          | Add the ion-ion stress contribution to output                |
+    +--------------------------+--------------+-----------------+-------------+--------------------------------------------------------------+
+
+Additional information:
+
+-  **Naming Convention**: The unique identifier ``name`` is appended
+   with ``name_X_Y`` in the ``scalar.dat`` file, where ``X`` and ``Y``
+   are the component IDs (an integer with x=0, y=1, z=2).
+
+-  **Long-range breakup**: With periodic boundary conditions, it is
+   important to converge the lattice sum when calculating Coulomb
+   contribution to the forces. As a quick test, increase the
+   ``LR_dim_cutoff`` parameter until ion-ion stresses are converged.
+   Check using QE "Ewald contribution", for example. The stress
+   estimator is implemented only with the Ewald method.
+
+The following is an example use case.
+
+::
+
+  <simulationcell>
+    ...
+    <parameter name="LR_handler">  ewald  </parameter>
+    <parameter name="LR_dim_cutoff">  45  </parameter>
+  </simulationcell>
+  <hamiltonian>
+    <estimator name="S" type="Force" mode="stress" source="ion0"/>
+  </hamiltonian>
 
 .. bibliography:: /bibs/hamiltonianobservable.bib

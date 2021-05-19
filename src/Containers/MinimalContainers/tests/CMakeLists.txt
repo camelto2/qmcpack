@@ -14,10 +14,10 @@ SET(SRC_DIR MinimalContainers)
 SET(UTEST_EXE test_${SRC_DIR})
 SET(UTEST_NAME deterministic-unit_test_${SRC_DIR})
 
-SET(SRCS test_ConstantSizeMatrix.cpp)
+SET(SRCS test_ConstantSizeMatrix.cpp test_RecordArray.cpp)
 
 ADD_EXECUTABLE(${UTEST_EXE} ${SRCS})
 
 TARGET_LINK_LIBRARIES(${UTEST_EXE} catch_main containers)
 
-ADD_UNIT_TEST(${UTEST_NAME} "${QMCPACK_UNIT_TEST_DIR}/${UTEST_EXE}")
+ADD_UNIT_TEST(${UTEST_NAME} 1 1 "${QMCPACK_UNIT_TEST_DIR}/${UTEST_EXE}")

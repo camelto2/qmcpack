@@ -17,10 +17,10 @@
 #ifndef QMCPLUSPLUS_HYBRIDREP_CENTER_ORBITALS_H
 #define QMCPLUSPLUS_HYBRIDREP_CENTER_ORBITALS_H
 
-#include <Particle/DistanceTableData.h>
-#include <QMCWaveFunctions/lcao/SoaSphericalTensor.h>
-#include <spline2/MultiBspline1D.hpp>
-#include <Numerics/SmoothFunctions.hpp>
+#include "Particle/DistanceTableData.h"
+#include "QMCWaveFunctions/LCAO/SoaSphericalTensor.h"
+#include "spline2/MultiBspline1D.hpp"
+#include "Numerics/SmoothFunctions.hpp"
 
 namespace qmcplusplus
 {
@@ -140,17 +140,13 @@ public:
     einspline_engine<AtomicSplineType> bigtable(SplineInst->getSplinePtr());
     int lmax_in, spline_npoints_in;
     ST spline_radius_in;
-    bool success = true;
-    success      = success && h5f.readEntry(lmax_in, "l_max");
-    success      = success && h5f.readEntry(spline_radius_in, "spline_radius");
-    success      = success && h5f.readEntry(spline_npoints_in, "spline_npoints");
-    if (lmax_in != lmax)
+    if (!h5f.readEntry(lmax_in, "l_max") || lmax_in != lmax)
       return false;
-    if (spline_radius_in != spline_radius)
+    if (!h5f.readEntry(spline_radius_in, "spline_radius") || spline_radius_in != spline_radius)
       return false;
-    if (spline_npoints_in != spline_npoints)
+    if (!h5f.readEntry(spline_npoints_in, "spline_npoints") || spline_npoints_in != spline_npoints)
       return false;
-    return success && h5f.readEntry(bigtable, "radial_spline");
+    return h5f.readEntry(bigtable, "radial_spline");
   }
 
   bool write_splines(hdf_archive& h5f)
@@ -184,7 +180,7 @@ public:
 
     for (size_t lm = 0; lm < lm_tot; lm++)
     {
-#pragma omp simd aligned(val, local_val)
+#pragma omp simd aligned(val, local_val: QMC_SIMD_ALIGNMENT)
       for (size_t ib = 0; ib < myV.size(); ib++)
         val[ib] += Ylm_v[lm] * local_val[ib];
       local_val += Npad;
@@ -213,7 +209,7 @@ public:
       ST* restrict local_val = localV.data();
       for (size_t lm = 0; lm < lm_tot; lm++)
       {
-#pragma omp simd aligned(val, local_val)
+#pragma omp simd aligned(val, local_val: QMC_SIMD_ALIGNMENT)
         for (size_t ib = 0; ib < m; ib++)
           val[ib] += Ylm_v[lm] * local_val[ib];
         local_val += Npad;
@@ -282,7 +278,7 @@ public:
         const ST& r_power    = r_power_minus_l[lm];
         const ST Ylm_rescale = Ylm_v[lm] * r_power;
         const ST rhat_dot_G  = (rhatx * Ylm_gx[lm] + rhaty * Ylm_gy[lm] + rhatz * Ylm_gz[lm]) * r_power;
-#pragma omp simd aligned(val, g0, g1, g2, lapl, local_val, local_grad, local_lapl)
+#pragma omp simd aligned(val, g0, g1, g2, lapl, local_val, local_grad, local_lapl: QMC_SIMD_ALIGNMENT)
         for (size_t ib = 0; ib < myV.size(); ib++)
         {
           const ST local_v = local_val[ib];
@@ -328,7 +324,7 @@ public:
         const ST& r_power    = r_power_minus_l[lm];
         const ST Ylm_rescale = Ylm_v[lm] * r_power;
         const ST rhat_dot_G  = (Ylm_gx[lm] * rhatx + Ylm_gy[lm] * rhaty + Ylm_gz[lm] * rhatz) * r_power * r;
-#pragma omp simd aligned(val, g0, g1, g2, lapl, local_val, local_grad, local_lapl)
+#pragma omp simd aligned(val, g0, g1, g2, lapl, local_val, local_grad, local_lapl: QMC_SIMD_ALIGNMENT)
         for (size_t ib = 0; ib < myV.size(); ib++)
         {
           const ST local_v = local_val[ib];
@@ -359,7 +355,7 @@ public:
       std::cout << "Warning: an electron is on top of an ion!" << std::endl;
       // strictly zero
 
-#pragma omp simd aligned(val, lapl, local_val, local_lapl)
+#pragma omp simd aligned(val, lapl, local_val, local_lapl: QMC_SIMD_ALIGNMENT)
       for (size_t ib = 0; ib < myV.size(); ib++)
       {
         // value
@@ -376,7 +372,7 @@ public:
         //std::cout << std::endl;
         for (size_t lm = 1; lm < 4; lm++)
         {
-#pragma omp simd aligned(g0, g1, g2, local_grad)
+#pragma omp simd aligned(g0, g1, g2, local_grad: QMC_SIMD_ALIGNMENT)
           for (size_t ib = 0; ib < myV.size(); ib++)
           {
             const ST local_g = local_grad[ib];
@@ -442,7 +438,7 @@ public:
 
   void set_info(const ParticleSet& ions, ParticleSet& els, const std::vector<int>& mapping)
   {
-    myTableID  = els.addTable(ions, DT_SOA);
+    myTableID  = els.addTable(ions);
     Super2Prim = mapping;
   }
 

@@ -16,15 +16,19 @@
 
 #ifndef QMCPLUSPLUS_COULOMBPOTENTIAL_H
 #define QMCPLUSPLUS_COULOMBPOTENTIAL_H
-#include "Particle/ParticleSet.h"
-#include "Particle/WalkerSetRef.h"
-#include "Particle/DistanceTableData.h"
+#include "ParticleSet.h"
+#include "WalkerSetRef.h"
+#include "DistanceTableData.h"
+#include "MCWalkerConfiguration.h"
 #include "QMCHamiltonians/ForceBase.h"
+#include "QMCHamiltonians/OperatorBase.h"
 #include "QMCHamiltonians/OperatorBase.h"
 #include <numeric>
 
 namespace qmcplusplus
 {
+using WP = WalkerProperties::Indexes;
+
 /** CoulombPotential
  * @tparam T type of the elementary data
  *
@@ -35,6 +39,8 @@ struct CoulombPotential : public OperatorBase, public ForceBase
 {
   ///source particle set
   ParticleSet& Pa;
+  ///target particle set
+  ParticleSet& Pb;
   ///distance table index
   const int myTableIndex;
   ///true if the table is AA
@@ -45,8 +51,6 @@ struct CoulombPotential : public OperatorBase, public ForceBase
   int nCenters;
 #if !defined(REMOVE_TRACEMANAGER)
   ///single particle trace samples
-  Array<TraceReal, 1> Va_samp_tmp;
-  Array<TraceReal, 1> Vb_samp_tmp;
   Array<TraceReal, 1>* Va_sample;
   Array<TraceReal, 1>* Vb_sample;
 #endif
@@ -62,7 +66,8 @@ struct CoulombPotential : public OperatorBase, public ForceBase
   inline CoulombPotential(ParticleSet& s, bool active, bool computeForces, bool copy = false)
       : ForceBase(s, s),
         Pa(s),
-        myTableIndex(s.addTable(s, DT_SOA_PREFERRED)),
+        Pb(s),
+        myTableIndex(s.addTable(s)),
         is_AA(true),
         is_active(active),
         ComputeForces(computeForces)
@@ -70,16 +75,14 @@ struct CoulombPotential : public OperatorBase, public ForceBase
     set_energy_domain(potential);
     two_body_quantum_domain(s, s);
     nCenters = s.getTotalNum();
-    prefix = "F_AA";
-
-    Va_samp_tmp.resize(s.getTotalNum());
+    prefix   = "F_AA";
 
     if (!is_active) //precompute the value
     {
       if (!copy)
         s.update();
       Value = evaluateAA(s.getDistTable(myTableIndex), s.Z.first_address());
-      if ( ComputeForces )
+      if (ComputeForces)
         evaluateAAForces(s.getDistTable(myTableIndex), s.Z.first_address());
     }
   }
@@ -93,7 +96,8 @@ struct CoulombPotential : public OperatorBase, public ForceBase
   inline CoulombPotential(ParticleSet& s, ParticleSet& t, bool active, bool copy = false)
       : ForceBase(s, t),
         Pa(s),
-        myTableIndex(t.addTable(s, DT_SOA_PREFERRED)),
+        Pb(t),
+        myTableIndex(t.addTable(s)),
         is_AA(false),
         is_active(active),
         ComputeForces(false)
@@ -101,8 +105,6 @@ struct CoulombPotential : public OperatorBase, public ForceBase
     set_energy_domain(potential);
     two_body_quantum_domain(s, t);
     nCenters = s.getTotalNum();
-    Va_samp_tmp.resize(s.getTotalNum());
-    Vb_samp_tmp.resize(t.getTotalNum());
   }
 
 #if !defined(REMOVE_TRACEMANAGER)
@@ -116,9 +118,7 @@ struct CoulombPotential : public OperatorBase, public ForceBase
       Va_sample = tm.checkout_real<1>(myName, Pa);
       if (!is_AA)
       {
-        // Ye: the following line is intentionally made broken
-        //Vb_sample = tm.checkout_real<1>(myName, *Pb);
-        throw std::runtime_error("checkout_particle_quantities AB case need a fix");
+        Vb_sample = tm.checkout_real<1>(myName, Pb);
       }
       else if (!is_active)
         evaluate_spAA(Pa.getDistTable(myTableIndex), Pa.Z.first_address());
@@ -155,7 +155,7 @@ struct CoulombPotential : public OperatorBase, public ForceBase
       for (size_t iat = 1; iat < nCenters; ++iat)
       {
         const auto& dist = d.getDistRow(iat);
-        T q                           = Z[iat];
+        T q              = Z[iat];
         for (size_t j = 0; j < iat; ++j)
           res += q * Z[j] / dist[j];
       }
@@ -169,13 +169,13 @@ struct CoulombPotential : public OperatorBase, public ForceBase
     forces = 0.0;
     for (size_t iat = 1; iat < nCenters; ++iat)
     {
-      const auto& dist = d.getDistRow(iat);
+      const auto& dist  = d.getDistRow(iat);
       const auto& displ = d.getDisplRow(iat);
-      T q                           = Z[iat];
+      T q               = Z[iat];
       for (size_t j = 0; j < iat; ++j)
       {
         forces[iat] += -q * Z[j] * displ[j] / (dist[j] * dist[j] * dist[j]);
-        forces[j]   -= -q * Z[j] * displ[j] / (dist[j] * dist[j] * dist[j]);
+        forces[j] -= -q * Z[j] * displ[j] / (dist[j] * dist[j] * dist[j]);
       }
     }
   }
@@ -198,7 +198,7 @@ struct CoulombPotential : public OperatorBase, public ForceBase
       for (size_t b = 0; b < nTargets; ++b)
       {
         const auto& dist = d.getDistRow(b);
-        T e                           = czero;
+        T e              = czero;
         for (size_t a = 0; a < nCenters; ++a)
           e += Za[a] / dist[a];
         res += e * Zb[b];
@@ -212,34 +212,29 @@ struct CoulombPotential : public OperatorBase, public ForceBase
   /** evaluate AA-type interactions */
   inline T evaluate_spAA(const DistanceTableData& d, const ParticleScalar_t* restrict Z)
   {
-    T res                 = 0.0;
+    T res = 0.0;
     T pairpot;
-    Array<RealType, 1>& Va_samp = Va_samp_tmp;
+    Array<RealType, 1>& Va_samp = *Va_sample;
     Va_samp                     = 0.0;
     for (size_t iat = 1; iat < nCenters; ++iat)
     {
       const auto& dist = d.getDistRow(iat);
-      T q                           = Z[iat];
+      T q              = Z[iat];
       for (size_t j = 0; j < iat; ++j)
       {
-        pairpot = 0.5*q * Z[j] / dist[j];
+        pairpot = 0.5 * q * Z[j] / dist[j];
         Va_samp(iat) += pairpot;
-        Va_samp(j)   += pairpot;
-        res          += pairpot;
+        Va_samp(j) += pairpot;
+        res += pairpot;
       }
-      res *= 2.0;
     }
+    res *= 2.0;
 #if defined(TRACE_CHECK)
-    T Vnow  = res;
-    T Vsum  = Va_samp.sum();
-    T Vorig = evaluateAA_orig(d, Z);
-    if (std::abs(Vsum - Vnow) > TraceManager::trace_tol)
-    {
-      app_log() << "accumtest: CoulombPotential::evaluateAA()" << std::endl;
-      app_log() << "accumtest:   tot:" << Vnow << std::endl;
-      app_log() << "accumtest:   sum:" << Vsum << std::endl;
-      APP_ABORT("Trace check failed");
-    }
+    auto sptmp          = streaming_particles;
+    streaming_particles = false;
+    T Vnow              = res;
+    T Vsum              = Va_samp.sum();
+    T Vorig             = evaluateAA(d, Z);
     if (std::abs(Vorig - Vnow) > TraceManager::trace_tol)
     {
       app_log() << "versiontest: CoulombPotential::evaluateAA()" << std::endl;
@@ -247,6 +242,14 @@ struct CoulombPotential : public OperatorBase, public ForceBase
       app_log() << "versiontest:    mod:" << Vnow << std::endl;
       APP_ABORT("Trace check failed");
     }
+    if (std::abs(Vsum - Vnow) > TraceManager::trace_tol)
+    {
+      app_log() << "accumtest: CoulombPotential::evaluateAA()" << std::endl;
+      app_log() << "accumtest:   tot:" << Vnow << std::endl;
+      app_log() << "accumtest:   sum:" << Vsum << std::endl;
+      APP_ABORT("Trace check failed");
+    }
+    streaming_particles = sptmp;
 #endif
     return res;
   }
@@ -256,33 +259,42 @@ struct CoulombPotential : public OperatorBase, public ForceBase
                          const ParticleScalar_t* restrict Za,
                          const ParticleScalar_t* restrict Zb)
   {
-    T res                 = 0.0;
+    T res = 0.0;
     T pairpot;
-    Array<RealType, 1>& Va_samp = Va_samp_tmp;
-    Array<RealType, 1>& Vb_samp = Vb_samp_tmp;
+    Array<RealType, 1>& Va_samp = *Va_sample;
+    Array<RealType, 1>& Vb_samp = *Vb_sample;
     Va_samp                     = 0.0;
     Vb_samp                     = 0.0;
-    const size_t nTargets = d.targets();
+    const size_t nTargets       = d.targets();
     for (size_t b = 0; b < nTargets; ++b)
     {
       const auto& dist = d.getDistRow(b);
-      T z = 0.5*Zb[b];
+      T z              = 0.5 * Zb[b];
       for (size_t a = 0; a < nCenters; ++a)
       {
-        pairpot = z*Za[a] / dist[a];
+        pairpot = z * Za[a] / dist[a];
         Va_samp(a) += pairpot;
         Vb_samp(b) += pairpot;
-        res        += pairpot;
+        res += pairpot;
       }
     }
     res *= 2.0;
 
 #if defined(TRACE_CHECK)
-    T Vnow  = res;
-    T Vasum = Va_samp.sum();
-    T Vbsum = Vb_samp.sum();
-    T Vsum  = Vasum + Vbsum;
-    T Vorig = evaluateAB_orig(d, Za, Zb);
+    auto sptmp          = streaming_particles;
+    streaming_particles = false;
+    T Vnow              = res;
+    T Vasum             = Va_samp.sum();
+    T Vbsum             = Vb_samp.sum();
+    T Vsum              = Vasum + Vbsum;
+    T Vorig             = evaluateAB(d, Za, Zb);
+    if (std::abs(Vorig - Vnow) > TraceManager::trace_tol)
+    {
+      app_log() << "versiontest: CoulombPotential::evaluateAB()" << std::endl;
+      app_log() << "versiontest:   orig:" << Vorig << std::endl;
+      app_log() << "versiontest:    mod:" << Vnow << std::endl;
+      APP_ABORT("Trace check failed");
+    }
     if (std::abs(Vsum - Vnow) > TraceManager::trace_tol)
     {
       app_log() << "accumtest: CoulombPotential::evaluateAB()" << std::endl;
@@ -297,13 +309,7 @@ struct CoulombPotential : public OperatorBase, public ForceBase
       app_log() << "sharetest:   b share:" << Vbsum << std::endl;
       APP_ABORT("Trace check failed");
     }
-    if (std::abs(Vorig - Vnow) > TraceManager::trace_tol)
-    {
-      app_log() << "versiontest: CoulombPotential::evaluateAB()" << std::endl;
-      app_log() << "versiontest:   orig:" << Vorig << std::endl;
-      app_log() << "versiontest:    mod:" << Vnow << std::endl;
-      APP_ABORT("Trace check failed");
-    }
+    streaming_particles = sptmp;
 #endif
     return res;
   }
@@ -338,10 +344,10 @@ struct CoulombPotential : public OperatorBase, public ForceBase
   }
 
   inline Return_t evaluateWithIonDerivs(ParticleSet& P,
-                                 ParticleSet& ions,
-                                 TrialWaveFunction& psi,
-                                 ParticleSet::ParticlePos_t& hf_terms,
-                                 ParticleSet::ParticlePos_t& pulay_terms)
+                                        ParticleSet& ions,
+                                        TrialWaveFunction& psi,
+                                        ParticleSet::ParticlePos_t& hf_terms,
+                                        ParticleSet::ParticlePos_t& pulay_terms)
   {
     if (is_active)
       Value = evaluate(P); // No forces for the active
@@ -388,6 +394,29 @@ struct CoulombPotential : public OperatorBase, public ForceBase
     }
     else
       return new CoulombPotential(Pa, qp, true);
+  }
+
+  void addEnergy(MCWalkerConfiguration& W, std::vector<RealType>& LocalEnergy)
+  {
+    auto& walkers = W.WalkerList;
+    if (is_active)
+    {
+      for (int iw = 0; iw < W.getActiveWalkers(); iw++)
+      {
+        W.loadWalker(*walkers[iw], false);
+        W.update();
+        Value = evaluate(W);
+        walkers[iw]->getPropertyBase()[WP::NUMPROPERTIES + myIndex] = Value;
+        LocalEnergy[iw] += Value;
+      }
+    }
+    else
+      // assuminig the same results for all the walkers when the set is not active
+      for (int iw = 0; iw < LocalEnergy.size(); iw++)
+      {
+        walkers[iw]->getPropertyBase()[WP::NUMPROPERTIES + myIndex] = Value;
+        LocalEnergy[iw] += Value;
+      }
   }
 };
 

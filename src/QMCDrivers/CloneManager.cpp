@@ -15,13 +15,13 @@
 //////////////////////////////////////////////////////////////////////////////////////
 
 
-#include "Platforms/sysutil.h"
-#include "QMCDrivers/CloneManager.h"
+#include "CloneManager.h"
+#include "MemoryUsage.h"
 #include "QMCHamiltonians/HamiltonianPool.h"
 #include "Message/Communicate.h"
 #include "Message/OpenMP.h"
 #include "Utilities/IteratorUtility.h"
-#include <qmc_common.h>
+#include "Utilities/qmc_common.h"
 #if !defined(REMOVE_TRACEMANAGER)
 #include "Estimators/TraceManager.h"
 #else
@@ -56,7 +56,7 @@ std::vector<std::vector<QMCHamiltonian*>> CloneManager::HPoolClones;
 void CloneManager::clear_for_unit_tests() { wClones.clear(); }
 
 /// Constructor.
-CloneManager::CloneManager() : NumThreads(omp_get_max_threads()) { wPerNode.resize(NumThreads + 1, 0); }
+CloneManager::CloneManager() : NumThreads(omp_get_max_threads()) { wPerRank.resize(NumThreads + 1, 0); }
 
 ///cleanup non-static data members
 CloneManager::~CloneManager()

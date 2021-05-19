@@ -927,6 +927,11 @@ class Simulation(NexusCore):
     #end def load_analyzer_image
 
 
+    def save_analyzer_image(self,analyzer):
+        analyzer.save(os.path.join(self.imresdir,self.analyzer_image))
+    #end def save_analyzer_image
+
+
     def attempt_files(self):
         return (self.infile,self.outfile,self.errfile)
     #end def attempt_files
@@ -1384,7 +1389,7 @@ class Simulation(NexusCore):
             command = ('\n'+command).replace('\n','\n  '+pad)
             run_command = command
         #end if
-        if self.job is None:
+        if self.job is None or self.job.env is None:
             env = os.environ.copy()
         else:
             env = job.env
@@ -1405,6 +1410,18 @@ class Simulation(NexusCore):
         #end if
     #end def execute
 
+
+    def show_input(self,exit=True):
+        print()
+        print(80*'=')
+        print('Input file for simulation "{}"\nDirectory: {}'.format(self.identifier,self.locdir))
+        print(80*'-')
+        print(self.input.write())
+        print(80*'=')
+        if exit:
+            exit_call()
+        #end if
+    #end def show_input
 #end class Simulation
 
 

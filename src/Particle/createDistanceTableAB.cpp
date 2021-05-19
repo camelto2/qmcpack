@@ -26,7 +26,7 @@ namespace qmcplusplus
  *\param s source/target particle set
  *\return index of the distance table with the name
  */
-DistanceTableData* createDistanceTableAB(const ParticleSet& s, ParticleSet& t, int dt_type, std::ostream& description)
+DistanceTableData* createDistanceTableAB(const ParticleSet& s, ParticleSet& t, std::ostream& description)
 {
   using RealType = ParticleSet::RealType;
   enum
@@ -94,14 +94,7 @@ DistanceTableData* createDistanceTableAB(const ParticleSet& s, ParticleSet& t, i
     dt = new SoaDistanceTableAB<RealType, DIM, SUPERCELL_OPEN + SOA_OFFSET>(s, t);
   }
 
-  //set dt properties
-  dt->DTType = DT_SOA;
-  std::ostringstream p;
-  p << s.getName() << "_" << t.getName();
-  dt->setName(p.str()); //assign the table name
-
   description << o.str() << std::endl;
-
   return dt;
 }
 

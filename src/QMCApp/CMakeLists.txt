@@ -24,6 +24,7 @@ SET(QMCAPPDIR
     QMCMainState.cpp
     QMCMain.cpp
     CoupledMC.cpp
+    accelerators.cpp
 )
 IF(USE_OBJECT_TARGET)
   ADD_LIBRARY(qmc OBJECT ${QMCAPPDIR})
@@ -37,6 +38,10 @@ TARGET_LINK_LIBRARIES(qmc PUBLIC qmcdriver)
 ####################################
 ADD_EXECUTABLE(qmcpack qmcapp.cpp)
 
+IF(QMC_COMPLEX)
+  SET_TARGET_PROPERTIES(qmcpack PROPERTIES OUTPUT_NAME "qmcpack_complex")
+ENDIF(QMC_COMPLEX)
+
 # Clean up git-rev-tmp.h after the build is finished
 ADD_CUSTOM_COMMAND(TARGET qmcpack
                    POST_BUILD
@@ -44,7 +49,7 @@ ADD_CUSTOM_COMMAND(TARGET qmcpack
 
 TARGET_LINK_LIBRARIES(qmcpack qmc qmcdriver)
 IF(USE_OBJECT_TARGET)
-  TARGET_LINK_LIBRARIES(qmcpack qmcham qmcwfs qmcparticle qmcutil containers platform_device platform_omp)
+  TARGET_LINK_LIBRARIES(qmcpack qmcestimators qmcham qmcwfs qmcparticle qmcutil containers platform_device platform_omptarget)
 ENDIF()
 
 IF(BUILD_AFQMC)
