@@ -198,18 +198,14 @@ void DMCBatched::advanceWalkers(const StateForThread& sft,
           checkPhaseChanged(walker_twfs[iw], rejects[iw]);
           //This is just convenient to do here
           rr_proposed[iw] += rr[iw];
-
-          //old |gradpsi / psi|^2, need gradpsi/psi dot conj(gradpsi/psi). our dot doesn't conjugate for us for complex
-          TrialWaveFunction::GradType grad_conj;
-          std::transform(grads_now[iw].begin(), grads_now[iw].end(), grad_conj.begin(), [](auto& comp) { return std::conj(comp); });
-          auto v2 = dot(grads_now[iw], grad_conj);
-          assert(std::imag(std::abs(v2) < 1e-8)); //imaginary part of dot product should be zero
-          v2old[iw] += std::real(v2);
-          //new |gradpsi / psi|^2
-          std::transform(grads_new[iw].begin(), grads_new[iw].end(), grad_conj.begin(), [](auto& comp) { return std::conj(comp); });
-          v2 = dot(grads_new[iw], grad_conj);
-          assert(std::imag(std::abs(v2) < 1e-8)); //imaginary part of dot product should be zero
-          v2new[iw] += std::real(v2);
+          v2old[iw] += std::accumulate(grads_now[iw].begin(), grads_now[iw].end(), 0.0, [](auto& comp) {
+            auto x = std::abs(comp);
+            return x * x;
+          });
+          v2new[iw] += std::accumulate(grads_new[iw].begin(), grads_new[iw].end(), 0.0, [](auto& comp) {
+            auto x = std::abs(comp);
+            return x * x;
+          });
         }
 
         std::transform(delta_r_start, delta_r_end, log_gf.begin(), [](auto& delta_r) {
@@ -278,8 +274,8 @@ void DMCBatched::advanceWalkers(const StateForThread& sft,
     for (int iw = 0; iw < walkers.size(); ++iw)
     {
       resetSigNLocalEnergy(walkers[iw], walker_twfs[iw], new_energies[iw], rr_accepted[iw], rr_proposed[iw]);
-      FullPrecRealType branch_weight = sft.branch_engine.branchWeight(new_energies[iw], old_energies[iw], v2new[iw], v2old[iw],
-                                                                      sft.population.get_num_particles());
+      FullPrecRealType branch_weight = sft.branch_engine.branchWeight(new_energies[iw], old_energies[iw], v2new[iw],
+                                                                      v2old[iw], sft.population.get_num_particles());
       //        branch_weight = sft.branch_engine.branchWeight(new_energies[iw], old_energies[iw]);
       walkers[iw].get().Weight *= branch_weight;
       if (rr_proposed[iw] > 0)
