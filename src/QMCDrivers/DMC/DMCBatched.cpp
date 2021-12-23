@@ -198,13 +198,13 @@ void DMCBatched::advanceWalkers(const StateForThread& sft,
           checkPhaseChanged(walker_twfs[iw], rejects[iw]);
           //This is just convenient to do here
           rr_proposed[iw] += rr[iw];
-          v2old[iw] += std::accumulate(grads_now[iw].begin(), grads_now[iw].end(), 0.0, [](auto& comp) {
-            auto x = std::abs(comp);
-            return x * x;
+          v2old[iw] += std::accumulate(grads_now[iw].begin(), grads_now[iw].end(), 0.0, [](auto lhs, const auto& rhs) {
+            auto x = std::abs(rhs);
+            return lhs + x * x;
           });
-          v2new[iw] += std::accumulate(grads_new[iw].begin(), grads_new[iw].end(), 0.0, [](auto& comp) {
-            auto x = std::abs(comp);
-            return x * x;
+          v2new[iw] += std::accumulate(grads_new[iw].begin(), grads_new[iw].end(), 0.0, [](auto lhs, const auto& rhs) {
+            auto x = std::abs(rhs);
+            return lhs + x * x;
           });
         }
 
