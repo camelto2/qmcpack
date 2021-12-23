@@ -13,6 +13,7 @@
 #include <functional>
 #include <cassert>
 #include <cmath>
+#include <numeric>
 
 #include "DMCBatched.h"
 #include "QMCDrivers/GreenFunctionModifiers/DriftModifierBase.h"
