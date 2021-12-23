@@ -273,6 +273,34 @@ public:
     //return std::exp(TauEff*(p*0.5*(sp-sq)+sq));
   }
 
+  /** return the branch weight according to JCP2021 Anderson and Umrigar
+   * Note, the correct espression was updated in the erratum
+   * @param enew new energy
+   * @param eold old energy
+   * @param vnew new drift velocity
+   * @param vold old drift velocity
+   * @param numElec number of electrons
+   */
+  inline RealType branchWeight(FullPrecRealType enew,
+                               FullPrecRealType eold,
+                               RealType v2new,
+                               RealType v2old,
+                               IndexType numElec) const
+  {
+    FullPrecRealType eDiffOld = vParam[SBVP::EREF] - eold;
+    FullPrecRealType EcutOld  = std::min(std::abs(eDiffOld), 10 * std::sqrt(vParam[SBVP::SIGMA2]));
+    EcutOld *= (eDiffOld < 0) ? -1 : 1;
+    FullPrecRealType eDiffNew = vParam[SBVP::EREF] - enew;
+    FullPrecRealType EcutNew  = std::min(std::abs(eDiffNew), 10 * std::sqrt(vParam[SBVP::SIGMA2]));
+    EcutNew *= (eDiffNew < 0) ? -1 : 1;
+    FullPrecRealType vFactorOld = v2old * vParam[SBVP::TAU] / numElec;
+    FullPrecRealType vFactorNew = v2new * vParam[SBVP::TAU] / numElec;
+    FullPrecRealType SOld       = vParam[SBVP::ETRIAL] - vParam[SBVP::EREF] + EcutOld / (1 + vFactorOld * vFactorOld);
+    FullPrecRealType SNew       = vParam[SBVP::ETRIAL] - vParam[SBVP::EREF] + EcutNew / (1 + vFactorNew * vFactorNew);
+    return std::exp(0.5 * vParam[SBVP::TAUEFF] * (SOld + SNew));
+  }
+
+
   inline RealType getEref() const { return vParam[SBVP::EREF]; }
   inline RealType getEtrial() const { return vParam[SBVP::ETRIAL]; }
   inline RealType getTau() const { return vParam[SBVP::TAU]; }
