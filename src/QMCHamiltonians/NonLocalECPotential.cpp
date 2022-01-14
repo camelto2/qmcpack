@@ -513,15 +513,35 @@ int NonLocalECPotential::makeNonLocalMovesPbyP(ParticleSet& P)
       for (int iat = P.first(ig); iat < P.last(ig); ++iat)
       {
         computeOneElectronTxy(P, iat);
+        RealType numerator = 1.0;
+        for (auto tm : tmove_xy_)
+          numerator += tm.Weight;
         const NonLocalData* oneTMove = nonLocalOps.selectMove(RandomGen(), tmove_xy_);
         if (oneTMove)
         {
           if (P.makeMoveAndCheck(iat, oneTMove->Delta))
           {
+            auto Delta = oneTMove->Delta;
             Psi.calcRatioGrad(P, iat, grad_iat);
             Psi.acceptMove(P, iat, true);
             P.acceptMove(iat);
-            NonLocalMoveAccepted++;
+
+            //accumulate reverse moves
+            computeOneElectronTxy(P, iat);
+            RealType denominator = 1.0;
+            for (auto tm: tmove_xy_)
+              denominator += tm.Weight;
+            RealType ratio = numerator / denominator;
+            if (RandomGen() < ratio)
+              NonLocalMoveAccepted++;
+            else
+            {
+              //metropolis-hastings for current tmove is rejected. move electron back
+              P.makeMove(iat, -Delta);
+              Psi.calcRatioGrad(P, iat, grad_iat);
+              Psi.acceptMove(P, iat, true);
+              P.acceptMove(iat);
+            }
           }
         }
       }
