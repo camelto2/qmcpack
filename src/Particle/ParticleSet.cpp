@@ -451,13 +451,25 @@ void ParticleSet::mw_makeMove(const RefVectorWithLeader<ParticleSet>& p_list,
 
   for (int iw = 0; iw < p_list.size(); iw++)
   {
-    p_list[iw].active_ptcl_ = iat;
-    p_list[iw].active_pos_  = p_list[iw].R[iat] + displs[iw];
+    p_list[iw].active_ptcl_     = iat;
+    p_list[iw].active_pos_      = p_list[iw].R[iat] + displs[iw];
+    p_list[iw].active_spin_val_ = p_list[iw].spins[iat];
     new_positions.push_back(p_list[iw].active_pos_);
   }
 
   mw_computeNewPosDistTablesAndSK(p_list, iat, new_positions);
 }
+
+void ParticleSet::mw_makeMoveWithSpin(const RefVectorWithLeader<ParticleSet>& p_list,
+                                      Index_t iat,
+                                      const std::vector<SingleParticlePos_t>& displs,
+                                      const std::vector<Scalar_t>& sdispls)
+{
+  mw_makeMove(p_list, iat, displs);
+  for (int iw = 0; iw < p_list.size(); iw++)
+    p_list[iw].active_spin_val_ += sdispls[iw];
+}
+
 
 bool ParticleSet::makeMoveAndCheck(Index_t iat, const SingleParticlePos_t& displ)
 {
