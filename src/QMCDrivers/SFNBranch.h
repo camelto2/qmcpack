@@ -287,17 +287,22 @@ public:
                                RealType v2old,
                                IndexType numElec) const
   {
-    FullPrecRealType eDiffOld = vParam[SBVP::EREF] - eold;
-    FullPrecRealType EcutOld  = std::min(std::abs(eDiffOld), 10 * std::sqrt(vParam[SBVP::SIGMA2]));
-    EcutOld *= (eDiffOld < 0) ? -1 : 1;
-    FullPrecRealType eDiffNew = vParam[SBVP::EREF] - enew;
-    FullPrecRealType EcutNew  = std::min(std::abs(eDiffNew), 10 * std::sqrt(vParam[SBVP::SIGMA2]));
-    EcutNew *= (eDiffNew < 0) ? -1 : 1;
-    FullPrecRealType vFactorOld = v2old * vParam[SBVP::TAU] / numElec;
-    FullPrecRealType vFactorNew = v2new * vParam[SBVP::TAU] / numElec;
-    FullPrecRealType SOld       = vParam[SBVP::ETRIAL] - vParam[SBVP::EREF] + EcutOld / (1 + vFactorOld * vFactorOld);
-    FullPrecRealType SNew       = vParam[SBVP::ETRIAL] - vParam[SBVP::EREF] + EcutNew / (1 + vFactorNew * vFactorNew);
-    return std::exp(0.5 * vParam[SBVP::TAUEFF] * (SOld + SNew));
+    if (branching_cutoff_scheme != "AU")
+      return branchWeight(enew, eold);
+    else
+    {
+      FullPrecRealType eDiffOld = vParam[SBVP::EREF] - eold;
+      FullPrecRealType EcutOld  = std::min(std::abs(eDiffOld), 10 * std::sqrt(vParam[SBVP::SIGMA2]));
+      EcutOld *= (eDiffOld < 0) ? -1 : 1;
+      FullPrecRealType eDiffNew = vParam[SBVP::EREF] - enew;
+      FullPrecRealType EcutNew  = std::min(std::abs(eDiffNew), 10 * std::sqrt(vParam[SBVP::SIGMA2]));
+      EcutNew *= (eDiffNew < 0) ? -1 : 1;
+      FullPrecRealType vFactorOld = v2old * vParam[SBVP::TAU] / numElec;
+      FullPrecRealType vFactorNew = v2new * vParam[SBVP::TAU] / numElec;
+      FullPrecRealType SOld       = vParam[SBVP::ETRIAL] - vParam[SBVP::EREF] + EcutOld / (1 + vFactorOld * vFactorOld);
+      FullPrecRealType SNew       = vParam[SBVP::ETRIAL] - vParam[SBVP::EREF] + EcutNew / (1 + vFactorNew * vFactorNew);
+      return std::exp(0.5 * vParam[SBVP::TAUEFF] * (SOld + SNew));
+    }
   }
 
 

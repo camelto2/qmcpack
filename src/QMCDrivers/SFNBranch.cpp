@@ -306,7 +306,7 @@ void SFNBranch::setBranchCutoff(FullPrecRealType variance,
     // a scheme from Ye Luo.
     vParam[SBVP::BRANCHCUTOFF] = std::sqrt(variance) * std::min(targetSigma, std::sqrt(1.0 / vParam[SBVP::TAU]));
   }
-  else if (branching_cutoff_scheme == "classic")
+  else if (branching_cutoff_scheme == "classic" || branching_cutoff_scheme == "AU")
   {
     // default QMCPACK choice which is the same as v3.0.0 and before.
     vParam[SBVP::BRANCHCUTOFF] = std::min(std::max(variance * targetSigma, maxSigma), 2.5 / vParam[SBVP::TAU]);

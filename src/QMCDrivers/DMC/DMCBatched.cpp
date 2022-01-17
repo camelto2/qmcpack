@@ -217,7 +217,9 @@ void DMCBatched::advanceWalkers(const StateForThread& sft,
         sft.drift_modifier.getDrifts(tauovermass, grads_new, drifts);
 
         std::transform(crowd.beginElectrons(), crowd.endElectrons(), drifts.begin(), drifts.begin(),
-                       [iat](auto& elecs, auto& drift) { return elecs.get().R[iat] - elecs.get().getActivePos() - drift; });
+                       [iat](auto& elecs, auto& drift) {
+                         return elecs.get().R[iat] - elecs.get().getActivePos() - drift;
+                       });
 
         std::transform(drifts.begin(), drifts.end(), log_gb.begin(),
                        [oneover2tau](auto& drift) { return -oneover2tau * dot(drift, drift); });
@@ -275,9 +277,9 @@ void DMCBatched::advanceWalkers(const StateForThread& sft,
     for (int iw = 0; iw < walkers.size(); ++iw)
     {
       resetSigNLocalEnergy(walkers[iw], walker_twfs[iw], new_energies[iw], rr_accepted[iw], rr_proposed[iw]);
-      FullPrecRealType branch_weight = sft.branch_engine.branchWeight(new_energies[iw], old_energies[iw], v2new[iw],
-                                                                      v2old[iw], sft.population.get_num_particles());
-      //        branch_weight = sft.branch_engine.branchWeight(new_energies[iw], old_energies[iw]);
+      FullPrecRealType branch_weight = branch_weight = sft.branch_engine.branchWeight(new_energies[iw], old_energies[iw], v2new[iw], v2old[iw],
+                                                       sft.population.get_num_particles());
+      //branch_weight = sft.branch_engine.branchWeight(new_energies[iw], old_energies[iw]);
       walkers[iw].get().Weight *= branch_weight;
       if (rr_proposed[iw] > 0)
         walkers[iw].get().Age = 0;
