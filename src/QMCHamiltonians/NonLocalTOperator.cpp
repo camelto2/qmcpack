@@ -64,6 +64,11 @@ int NonLocalTOperator::put(xmlNodePtr cur)
     v_tmove = TMOVE_V3;
     o << "  Using Non-local T-moves v3, an approximation to v1";
   }
+  else if (use_tmove == "v4")
+  {
+    v_tmove = TMOVE_V4;
+    o << "  Using Non-local T-moves v4, from Anderson and Umrigar. Adds Metropolis-Hastings accept/reject after V1 move";
+  }
   else
     throw std::runtime_error("NonLocalTOperator::put unknown nonlocalmove option " + use_tmove);
 
@@ -93,6 +98,8 @@ int NonLocalTOperator::thingsThatShouldBeInMyConstructor(const std::string& non_
     v_tmove = TMOVE_V1;
   else if (non_local_move_option == "v3")
     v_tmove = TMOVE_V3;
+  else if (non_local_move_option == "v4")
+    v_tmove = TMOVE_V4;
   else
     throw std::runtime_error("NonLocalTOperator::put unknown nonlocalmove option " + non_local_move_option);
   return v_tmove;
