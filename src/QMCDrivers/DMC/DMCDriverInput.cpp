@@ -20,8 +20,8 @@ void DMCDriverInput::readXML(xmlNodePtr node)
   ParameterSet parameter_set_;
   std::string reconfig_str;
   parameter_set_.add(reconfig_str, "reconfiguration", {"no", "yes", "runwhileincorrect"});
-  parameter_set_.add(NonLocalMove, "nonlocalmove", {"no", "yes", "v0", "v1", "v3"});
-  parameter_set_.add(NonLocalMove, "nonlocalmoves", {"no", "yes", "v0", "v1", "v3"});
+  parameter_set_.add(NonLocalMove, "nonlocalmove", {"no", "yes", "v0", "v1", "v3", "v4"});
+  parameter_set_.add(NonLocalMove, "nonlocalmoves", {"no", "yes", "v0", "v1", "v3", "v4"});
   parameter_set_.add(max_age_, "MaxAge");
 
   // from DMC.cpp put(xmlNodePtr)
@@ -52,6 +52,8 @@ void DMCDriverInput::readXML(xmlNodePtr node)
     app_summary() << "  Using Non-local T-moves v1, M. Casula et al., JCP 132, 154113 (2010)";
   else if (NonLocalMove == "v3")
     app_summary() << "  Using Non-local T-moves v3, an approximation to v1";
+  else if (NonLocalMove == "v4")
+    app_summary() << "  Using Non-local T-moves from Anderson and Umrigar. This adds a Metropolis-Hastings accept/reject after V1 move.";
   else
     app_summary() << "  Using Locality Approximation";
   app_summary() << std::endl;
