@@ -428,4 +428,10 @@ std::unique_ptr<SPOSet> SpinorSet::makeClone() const
   return myclone;
 }
 
+void SpinorSet::applyRotation(const ValueMatrix& rot_mat, bool use_stored_copy)
+{
+  spo_up->applyRotation(rot_mat, use_stored_copy);
+  spo_dn->applyRotation(rot_mat, use_stored_copy);
+}
+
 } // namespace qmcplusplus

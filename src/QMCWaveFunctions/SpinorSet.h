@@ -131,6 +131,8 @@ public:
 
   std::unique_ptr<SPOSet> makeClone() const override;
 
+  void applyRotation(const ValueMatrix& rot_mat, bool use_stored_copy = false) override;
+
 private:
   //Sposet for the up and down channels of our spinors.
   std::unique_ptr<SPOSet> spo_up;
