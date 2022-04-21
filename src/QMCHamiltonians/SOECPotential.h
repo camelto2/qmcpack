@@ -20,7 +20,7 @@ namespace qmcplusplus
 class SOECPotential : public OperatorBase
 {
 public:
-  SOECPotential(ParticleSet& ions, ParticleSet& els, TrialWaveFunction& psi);
+  SOECPotential(ParticleSet& ions, ParticleSet& els, TrialWaveFunction& psi, bool compute_forces);
 
   void resetTargetParticleSet(ParticleSet& P) override;
 
@@ -40,12 +40,38 @@ public:
 
   void setRandomGenerator(RandomGenerator* rng) override { myRNG = rng; }
 
+  /** Set flag to decide if computing forces
+   * param[in] val true if computing forces
+   */
+  inline void setComputeForces(bool val) override { compute_forces_ = val; }
+
+  void evalIonDerivsImpl(ParticleSet& P,
+                         ParticleSet& ions,
+                         TrialWaveFunction& psi,
+                         ParticleSet::ParticlePos& hf_terms,
+                         ParticleSet::ParticlePos& pulay_terms,
+                         bool keep_grid = false);
+
+  Return_t evaluateWithIonDerivs(ParticleSet& P,
+                                 ParticleSet& ions,
+                                 TrialWaveFunction& psi,
+                                 ParticleSet::ParticlePos& hf_terms,
+                                 ParticleSet::ParticlePos& pulay_terms) override;
+
+  Return_t evaluateWithIonDerivsDeterministic(ParticleSet& P,
+                                              ParticleSet& ions,
+                                              TrialWaveFunction& psi,
+                                              ParticleSet::ParticlePos& hf_terms,
+                                              ParticleSet::ParticlePos& pulay_terms) override;
+
 protected:
   RandomGenerator* myRNG;
   std::vector<SOECPComponent*> PP;
   std::vector<std::unique_ptr<SOECPComponent>> PPset;
   ParticleSet& IonConfig;
   TrialWaveFunction& Psi;
+  ///true if computing forces
+  bool compute_forces_;
 
 private:
   ///number of ions
@@ -58,6 +84,8 @@ private:
   NeighborLists ElecNeighborIons;
   ///neighborlist of ions
   NeighborLists IonNeighborElecs;
+  ///pulay force vector
+  ParticleSet::ParticlePos pulay_term_;
 };
 } // namespace qmcplusplus
 

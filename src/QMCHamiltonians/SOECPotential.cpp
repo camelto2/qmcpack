@@ -20,8 +20,14 @@ namespace qmcplusplus
  *\param els electronic poitions
  *\param psi Trial wave function
 */
-SOECPotential::SOECPotential(ParticleSet& ions, ParticleSet& els, TrialWaveFunction& psi)
-    : myRNG(nullptr), IonConfig(ions), Psi(psi), Peln(els), ElecNeighborIons(els), IonNeighborElecs(ions)
+SOECPotential::SOECPotential(ParticleSet& ions, ParticleSet& els, TrialWaveFunction& psi, bool compute_forces)
+    : myRNG(nullptr),
+      IonConfig(ions),
+      Psi(psi),
+      compute_forces_(compute_forces),
+      Peln(els),
+      ElecNeighborIons(els),
+      IonNeighborElecs(ions)
 {
   setEnergyDomain(POTENTIAL);
   twoBodyQuantumDomain(ions, els);
@@ -62,9 +68,37 @@ SOECPotential::Return_t SOECPotential::evaluate(ParticleSet& P)
   return value_;
 }
 
+void SOECPotential::evalIonDerivsImpl(ParticleSet& P,
+                                      ParticleSet& ions,
+                                      TrialWaveFunction& psi,
+                                      ParticleSet::ParticlePos& hf_terms,
+                                      ParticleSet::ParticlePos& pulay_terms,
+                                      bool keep_grid)
+{}
+
+SOECPotential::Return_t SOECPotential::evaluateWithIonDerivs(ParticleSet& P,
+                                                             ParticleSet& ions,
+                                                             TrialWaveFunction& psi,
+                                                             ParticleSet::ParticlePos& hf_terms,
+                                                             ParticleSet::ParticlePos& pulay_terms)
+{
+  evalIonDerivsImpl(P, ions, psi, hf_terms, pulay_terms);
+  return value_;
+}
+
+SOECPotential::Return_t SOECPotential::evaluateWithIonDerivsDeterministic(ParticleSet& P,
+                                                                          ParticleSet& ions,
+                                                                          TrialWaveFunction& psi,
+                                                                          ParticleSet::ParticlePos& hf_terms,
+                                                                          ParticleSet::ParticlePos& pulay_terms)
+{
+  evalIonDerivsImpl(P, ions, psi, hf_terms, pulay_terms, true);
+  return value_;
+}
+
 std::unique_ptr<OperatorBase> SOECPotential::makeClone(ParticleSet& qp, TrialWaveFunction& psi)
 {
-  std::unique_ptr<SOECPotential> myclone = std::make_unique<SOECPotential>(IonConfig, qp, psi);
+  std::unique_ptr<SOECPotential> myclone = std::make_unique<SOECPotential>(IonConfig, qp, psi, compute_forces_);
   for (int ig = 0; ig < PPset.size(); ++ig)
     if (PPset[ig])
       myclone->addComponent(ig, std::unique_ptr<SOECPComponent>(PPset[ig]->makeClone(qp)));

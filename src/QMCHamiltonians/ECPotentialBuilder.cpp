@@ -165,7 +165,7 @@ bool ECPotentialBuilder::put(xmlNodePtr cur)
     else
       APP_ABORT("physicalSO must be set to yes/no. Unknown option given\n");
 
-    std::unique_ptr<SOECPotential> apot = std::make_unique<SOECPotential>(IonConfig, targetPtcl, targetPsi);
+    std::unique_ptr<SOECPotential> apot = std::make_unique<SOECPotential>(IonConfig, targetPtcl, targetPsi, doForces);
     int nknot_max                       = 0;
     int sknot_max                       = 0;
     for (int i = 0; i < soPot.size(); i++)
