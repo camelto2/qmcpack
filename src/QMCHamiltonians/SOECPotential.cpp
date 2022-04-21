@@ -21,7 +21,8 @@ namespace qmcplusplus
  *\param psi Trial wave function
 */
 SOECPotential::SOECPotential(ParticleSet& ions, ParticleSet& els, TrialWaveFunction& psi, bool compute_forces)
-    : myRNG(nullptr),
+    : ForceBase(ions, els),
+      myRNG(nullptr),
       IonConfig(ions),
       Psi(psi),
       compute_forces_(compute_forces),
@@ -35,6 +36,7 @@ SOECPotential::SOECPotential(ParticleSet& ions, ParticleSet& els, TrialWaveFunct
   NumIons      = ions.getTotalNum();
   PP.resize(NumIons, nullptr);
   PPset.resize(IonConfig.getSpeciesSet().getTotalNum());
+  pulay_term_.resize(NumIons);
 }
 
 void SOECPotential::resetTargetParticleSet(ParticleSet& P) {}
@@ -74,7 +76,44 @@ void SOECPotential::evalIonDerivsImpl(ParticleSet& P,
                                       ParticleSet::ParticlePos& hf_terms,
                                       ParticleSet::ParticlePos& pulay_terms,
                                       bool keep_grid)
-{}
+{
+  forces      = 0.0;
+  pulay_term_ = 0.0;
+  value_      = 0.0;
+  if (!keep_grid)
+  {
+    for (int ipp = 0; ipp < PPset.size(); ipp++)
+      if (PPset[ipp])
+        PPset[ipp]->randomize_grid(*myRNG);
+  }
+  const auto& myTable = P.getDistTableAB(myTableIndex);
+  for (int iat = 0; iat < NumIons; iat++)
+    IonNeighborElecs.getNeighborList(iat).clear();
+  for (int jel = 0; jel < P.getTotalNum(); jel++)
+    ElecNeighborIons.getNeighborList(jel).clear();
+
+  for (int ig = 0; ig < P.groups(); ig++)
+  {
+    Psi.prepareGroup(P, ig);
+    for (int jel = P.first(ig); jel < P.last(ig); jel++)
+    {
+      const auto& dist               = myTable.getDistRow(jel);
+      const auto& displ              = myTable.getDisplRow(jel);
+      std::vector<int>& NeighborIons = ElecNeighborIons.getNeighborList(jel);
+      for (int iat = 0; iat < NumIons; iat++)
+        if (PP[iat] != nullptr && dist[iat] < PP[iat]->getRmax())
+        {
+          value_ +=
+              PP[iat]->evaluateOneWithForces(P, ions, iat, Psi, jel, dist[iat], -displ[iat], forces[iat], pulay_term_);
+          NeighborIons.push_back(iat);
+          IonNeighborElecs.getNeighborList(iat).push_back(jel);
+        }
+    }
+  }
+
+  hf_terms -= forces;
+  pulay_terms -= pulay_term_;
+}
 
 SOECPotential::Return_t SOECPotential::evaluateWithIonDerivs(ParticleSet& P,
                                                              ParticleSet& ions,

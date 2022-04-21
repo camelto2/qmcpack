@@ -200,6 +200,20 @@ SOECPComponent::RealType SOECPComponent::evaluateOne(ParticleSet& W,
   return pairpot;
 }
 
+SOECPComponent::RealType SOECPComponent::evaluateOneWithForces(ParticleSet& W,
+                                                               ParticleSet& ions,
+                                                               int iat,
+                                                               TrialWaveFunction& Psi,
+                                                               int iel,
+                                                               RealType r,
+                                                               const PosType& dr,
+                                                               PosType& force_iat,
+                                                               ParticleSet::ParticlePos& pulay_terms)
+{
+  RealType pairpot = 0.0;
+  return pairpot;
+}
+
 void SOECPComponent::randomize_grid(RandomGenerator& myRNG)
 {
   RealType phi(TWOPI * myRNG()), psi(TWOPI * myRNG()), cth(myRNG() - 0.5);

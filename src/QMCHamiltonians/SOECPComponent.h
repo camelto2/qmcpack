@@ -101,6 +101,31 @@ public:
    */
   RealType evaluateOne(ParticleSet& W, int iat, TrialWaveFunction& Psi, int iel, RealType r, const PosType& dr);
 
+  /** @brief Evaluate the socecp energy, Hellman-Feynman force, and "Pulay" force contribution
+   * via randomized quadrature grid from ion "iat" and electron "iel".
+   *
+   * @param W electron particle set.
+   * @param ions ion particle set.
+   * @param iat index of ion.
+   * @param Psi trial wave function object
+   * @param iel index of electron
+   * @param r the distance between ion iat and electron iel.
+   * @param dr displacement from ion iat to electron iel.
+   * @param force_iat 3d vector for Hellman-Feynman contribution.  This gets modified.
+   * @param pulay_terms Nion x 3 object, holding a contribution for each ionic gradient from \Psi_T.
+   *
+   * @return RealType Contribution to $\frac{V\Psi_T}{\Psi_T}$ from ion iat and electron iel.
+   */
+  RealType evaluateOneWithForces(ParticleSet& W,
+                                 ParticleSet& ions,
+                                 int iat,
+                                 TrialWaveFunction& Psi,
+                                 int iel,
+                                 RealType r,
+                                 const PosType& dr,
+                                 PosType& force_iat,
+                                 ParticleSet::ParticlePos& pulay_terms);
+
   // This function needs to be updated to SoA. myTableIndex is introduced temporarily.
   inline RealType evaluateValueAndDerivatives(ParticleSet& P,
                                               int iat,

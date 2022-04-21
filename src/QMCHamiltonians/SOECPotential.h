@@ -13,11 +13,12 @@
 #define QMCPLUSPLUS_SO_ECPOTENTIAL_H
 
 #include "QMCHamiltonians/SOECPComponent.h"
+#include "QMCHamiltonians/ForceBase.h"
 #include "Particle/NeighborLists.h"
 
 namespace qmcplusplus
 {
-class SOECPotential : public OperatorBase
+class SOECPotential : public OperatorBase, public ForceBase
 {
 public:
   SOECPotential(ParticleSet& ions, ParticleSet& els, TrialWaveFunction& psi, bool compute_forces);
