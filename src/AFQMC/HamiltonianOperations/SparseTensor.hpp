@@ -192,13 +192,13 @@ public:
     assert(k >= 0 && k < haj.size());
     assert(k >= 0 && k < Vakbl_view.size());
     if (Gcloc.num_elements() < Gc.size(1) * Vakbl_view[k].size(0))
-      Gcloc.reextent(iextensions<1u>{Vakbl_view[k].size(0) * Gc.size(1)});
+      Gcloc.reextent(iextensions<1u>(Vakbl_view[k].size(0) * Gc.size(1)));
     boost::multi::array_ref<SPComplexType, 2> buff(Gcloc.data(), {long(Vakbl_view[k].size(0)), long(Gc.size(1))});
 
     int nwalk = Gc.size(1);
     int getKr = Kr != nullptr;
     int getKl = Kl != nullptr;
-    if (E.size(0) != nwalk || E.size(1) < 3)
+    if (std::get<0>(E.sizes()) != nwalk || std::get<1>(E.sizes()) < 3)
       APP_ABORT(" Error in AFQMC/HamiltonianOperations/sparse_matrix_energy::calculate_energy(). Incorrect matrix "
                 "dimensions \n");
     for (int n = 0; n < nwalk; n++)
@@ -208,7 +208,7 @@ public:
     if (addEJ and getKr)
       assert(Kr->size(0) == nwalk && Kr->size(1) == SpvnT[k].size(0));
 
-#if MIXED_PRECISION
+#if defined(MIXED_PRECISION)
     size_t mem_needs = Gc.num_elements();
     set_buffer(mem_needs);
     boost::multi::array_ref<SPComplexType, 2> Gsp(to_address(SM_TMats.origin()), Gc.extensions());
@@ -240,7 +240,7 @@ public:
     {
       using ma::T;
       if (Gcloc.num_elements() < SpvnT[k].size(0) * Gc.size(1))
-        Gcloc.reextent(iextensions<1u>{SpvnT[k].size(0) * Gc.size(1)});
+        Gcloc.reextent(iextensions<1u>(SpvnT[k].size(0) * Gc.size(1)));
       assert(SpvnT_view[k].size(1) == Gc.size(0));
       RealType scl = (walker_type == CLOSED ? 4.0 : 1.0);
       // SpvnT*G
@@ -269,7 +269,7 @@ public:
       for (int wi = 0; wi < Gc.size(1); wi++)
         E[wi][2] = 0.5 * scl * static_cast<ComplexType>(ma::dot(v_(v_.extension(0), wi), v_(v_.extension(0), wi)));
     }
-#if MIXED_PRECISION
+#if defined(MIXED_PRECISION)
 #endif
   }
 
@@ -511,7 +511,7 @@ private:
   {
     if (SM_TMats.num_elements() < N)
     {
-      SM_TMats.reextent(iextensions<1u>{N});
+      SM_TMats.reextent(iextensions<1u>(N));
       using std::fill_n;
       fill_n(SM_TMats.origin(), N, SPComplexType(0.0));
       comm->barrier();

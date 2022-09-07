@@ -20,7 +20,8 @@
 #include "QMCWaveFunctions/Jastrow/JeeIOrbitalSoA.h"
 #include "QMCWaveFunctions/Jastrow/eeI_JastrowBuilder.h"
 #include "ParticleBase/ParticleAttribOps.h"
-
+#include <ResourceCollection.h>
+#include "QMCHamiltonians/NLPPJob.h"
 
 #include <stdio.h>
 #include <string>
@@ -29,28 +30,29 @@ using std::string;
 
 namespace qmcplusplus
 {
+using RealType     = WaveFunctionComponent::RealType;
 using LogValueType = WaveFunctionComponent::LogValueType;
 using PsiValueType = WaveFunctionComponent::PsiValueType;
 
 TEST_CASE("PolynomialFunctor3D functor zero", "[wavefunction]")
 {
-  PolynomialFunctor3D functor;
+  PolynomialFunctor3D functor("test_functor");
 
   double r = 1.2;
   double u = functor.evaluate(r, r, r);
   REQUIRE(u == 0.0);
 }
 
-TEST_CASE("PolynomialFunctor3D Jastrow", "[wavefunction]")
+void test_J3_polynomial3D(const DynamicCoordinateKind kind_selected)
 {
-  Communicate* c;
-  c = OHMMS::Controller;
+  Communicate* c = OHMMS::Controller;
 
-  ParticleSet ions_;
-  ParticleSet elec_;
+  const SimulationCell simulation_cell;
+  ParticleSet ions_(simulation_cell, kind_selected);
+  ParticleSet elec_(simulation_cell, kind_selected);
 
   ions_.setName("ion");
-  ions_.create(2);
+  ions_.create({2});
   ions_.R[0][0] = 2.0;
   ions_.R[0][1] = 0.0;
   ions_.R[0][2] = 0.0;
@@ -59,13 +61,10 @@ TEST_CASE("PolynomialFunctor3D Jastrow", "[wavefunction]")
   ions_.R[1][2] = 0.0;
   SpeciesSet& source_species(ions_.getSpeciesSet());
   source_species.addSpecies("O");
-  ions_.setCoordinates(ions_.R);
-  //ions_.resetGroups();
+  ions_.update();
 
   elec_.setName("elec");
-  std::vector<int> ud(2);
-  ud[0] = ud[1] = 2;
-  elec_.create(ud);
+  elec_.create({2, 2});
   elec_.R[0][0] = 1.00;
   elec_.R[0][1] = 0.0;
   elec_.R[0][2] = 0.0;
@@ -109,8 +108,9 @@ TEST_CASE("PolynomialFunctor3D Jastrow", "[wavefunction]")
   eeI_JastrowBuilder jastrow(c, elec_, ions_);
   std::unique_ptr<WaveFunctionComponent> jas(jastrow.buildComponent(jas_eeI));
 
-  typedef JeeIOrbitalSoA<PolynomialFunctor3D> J3Type;
-  std::unique_ptr<WaveFunctionComponent> j3(dynamic_cast<J3Type*>(jastrow.buildComponent(jas_eeI)));
+  using J3Type              = JeeIOrbitalSoA<PolynomialFunctor3D>;
+  auto j3_uptr              = jastrow.buildComponent(jas_eeI);
+  WaveFunctionComponent* j3 = dynamic_cast<J3Type*>(j3_uptr.get());
   REQUIRE(j3 != nullptr);
 
   // update all distance tables
@@ -122,8 +122,8 @@ TEST_CASE("PolynomialFunctor3D Jastrow", "[wavefunction]")
   double KE = -0.5 * (Dot(elec_.G, elec_.G) + Sum(elec_.L));
   REQUIRE(KE == Approx(-0.058051245)); // note: number not validated
 
-  typedef QMCTraits::ValueType ValueType;
-  typedef QMCTraits::PosType PosType;
+  using ValueType = QMCTraits::ValueType;
+  using PosType   = QMCTraits::PosType;
 
   // set virtutal particle position
   PosType newpos(0.3, 0.2, 0.5);
@@ -158,11 +158,16 @@ TEST_CASE("PolynomialFunctor3D Jastrow", "[wavefunction]")
   REQUIRE(std::real(ratio_2) == Approx(0.8302245609));
   REQUIRE(std::real(ratio_3) == Approx(0.7987703724));
 
-  opt_variables_type optvars;
-  std::vector<WaveFunctionComponent::ValueType> dlogpsi;
-  std::vector<WaveFunctionComponent::ValueType> dhpsioverpsi;
+  UniqueOptObjRefs opt_obj_refs;
+  j3->extractOptimizableObjectRefs(opt_obj_refs);
+  REQUIRE(opt_obj_refs.size() == 2);
 
-  j3->checkInVariables(optvars);
+  opt_variables_type optvars;
+  Vector<WaveFunctionComponent::ValueType> dlogpsi;
+  Vector<WaveFunctionComponent::ValueType> dhpsioverpsi;
+
+  for (OptimizableObject& obj : opt_obj_refs)
+    obj.checkInVariablesExclusive(optvars);
   optvars.resetIndex();
   const int NumOptimizables(optvars.size());
   j3->checkOutVariables(optvars);
@@ -170,10 +175,10 @@ TEST_CASE("PolynomialFunctor3D Jastrow", "[wavefunction]")
   dhpsioverpsi.resize(NumOptimizables);
   j3->evaluateDerivatives(elec_, optvars, dlogpsi, dhpsioverpsi);
 
-  std::cout << std::endl << "reporting dlogpsi and dhpsioverpsi" << std::scientific << std::endl;
+  app_log() << std::endl << "reporting dlogpsi and dhpsioverpsi" << std::scientific << std::endl;
   for (int iparam = 0; iparam < NumOptimizables; iparam++)
-    std::cout << "param=" << iparam << " : " << dlogpsi[iparam] << "  " << dhpsioverpsi[iparam] << std::endl;
-  std::cout << std::endl;
+    app_log() << "param=" << iparam << " : " << dlogpsi[iparam] << "  " << dhpsioverpsi[iparam] << std::endl;
+  app_log() << std::endl;
 
   REQUIRE(std::real(dlogpsi[43]) == Approx(1.3358726814e+05));
   REQUIRE(std::real(dhpsioverpsi[43]) == Approx(-2.3246270644e+05));
@@ -188,5 +193,74 @@ TEST_CASE("PolynomialFunctor3D Jastrow", "[wavefunction]")
 
   REQUIRE(std::real(ratios2[0]) == Approx(1.0357541137));
   REQUIRE(std::real(ratios2[1]) == Approx(1.0257141422));
+
+  std::fill(ratios2.begin(), ratios2.end(), 0);
+  Matrix<ValueType> dratio(2, NumOptimizables);
+  j3->evaluateDerivRatios(VP, optvars, ratios2, dratio);
+
+  REQUIRE(std::real(ratios2[0]) == Approx(1.0357541137));
+  REQUIRE(std::real(ratios2[1]) == Approx(1.0257141422));
+  CHECK(std::real(dratio[0][43]) == Approx(-1.4282569e+03));
+
+  // testing batched interfaces
+  ResourceCollection pset_res("test_pset_res");
+  ResourceCollection wfc_res("test_wfc_res");
+
+  elec_.createResource(pset_res);
+  j3->createResource(wfc_res);
+
+  // make a clones
+  ParticleSet elec_clone(elec_);
+  auto j3_clone = j3->makeClone(elec_clone);
+
+  // testing batched interfaces
+  RefVectorWithLeader<ParticleSet> p_ref_list(elec_, {elec_, elec_clone});
+  RefVectorWithLeader<WaveFunctionComponent> j3_ref_list(*j3, {*j3, *j3_clone});
+
+  ResourceCollectionTeamLock<ParticleSet> mw_pset_lock(pset_res, p_ref_list);
+  ResourceCollectionTeamLock<WaveFunctionComponent> mw_wfc_lock(wfc_res, j3_ref_list);
+
+  std::vector<bool> isAccepted(2, true);
+  ParticleSet::mw_update(p_ref_list);
+  j3->mw_recompute(j3_ref_list, p_ref_list, isAccepted);
+
+  // test NLPP related APIs
+  const int nknot = 3;
+  VirtualParticleSet vp(elec_, nknot), vp_clone(elec_clone, nknot);
+  RefVectorWithLeader<VirtualParticleSet> vp_list(vp, {vp, vp_clone});
+  ResourceCollection vp_res("test_vp_res");
+  vp.createResource(vp_res);
+  ResourceCollectionTeamLock<VirtualParticleSet> mw_vp_lock(vp_res, vp_list);
+
+  const int ei_table_index = elec_.addTable(ions_);
+  const auto& ei_table1    = elec_.getDistTableAB(ei_table_index);
+  // make virtual move of elec 0, reference ion 1
+  NLPPJob<RealType> job1(1, 0, elec_.R[0], ei_table1.getDistances()[0][1], -ei_table1.getDisplacements()[0][1]);
+  const auto& ei_table2 = elec_clone.getDistTableAB(ei_table_index);
+  // make virtual move of elec 1, reference ion 3
+  NLPPJob<RealType> job2(3, 1, elec_clone.R[1], ei_table2.getDistances()[1][3], -ei_table2.getDisplacements()[1][3]);
+
+  std::vector<PosType> deltaV1{{0.1, 0.2, 0.3}, {0.1, 0.3, 0.2}, {0.2, 0.1, 0.3}};
+  std::vector<PosType> deltaV2{{0.02, 0.01, 0.03}, {0.02, 0.03, 0.01}, {0.03, 0.01, 0.02}};
+
+  VirtualParticleSet::mw_makeMoves(vp_list, {deltaV1, deltaV2}, {job1, job2}, false);
+
+  std::vector<std::vector<ValueType>> nlpp_ratios(2);
+  nlpp_ratios[0].resize(nknot);
+  nlpp_ratios[1].resize(nknot);
+  j3->mw_evaluateRatios(j3_ref_list, RefVectorWithLeader<const VirtualParticleSet>(vp, {vp, vp_clone}), nlpp_ratios);
+
+  CHECK(ValueApprox(nlpp_ratios[0][0]) == ValueType(1.0273599625));
+  CHECK(ValueApprox(nlpp_ratios[0][1]) == ValueType(1.0227555037));
+  CHECK(ValueApprox(nlpp_ratios[0][2]) == ValueType(1.0473958254));
+  CHECK(ValueApprox(nlpp_ratios[1][0]) == ValueType(1.0013145208));
+  CHECK(ValueApprox(nlpp_ratios[1][1]) == ValueType(1.0011137724));
+  CHECK(ValueApprox(nlpp_ratios[1][2]) == ValueType(1.0017225742));
+}
+
+TEST_CASE("PolynomialFunctor3D Jastrow", "[wavefunction]")
+{
+  test_J3_polynomial3D(DynamicCoordinateKind::DC_POS);
+  test_J3_polynomial3D(DynamicCoordinateKind::DC_POS_OFFLOAD);
 }
 } // namespace qmcplusplus

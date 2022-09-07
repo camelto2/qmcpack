@@ -17,24 +17,29 @@
 #ifndef QMCPLUSPLUS_NONLOCAL_ECPOTENTIAL_COMPONENT_H
 #define QMCPLUSPLUS_NONLOCAL_ECPOTENTIAL_COMPONENT_H
 #include "QMCHamiltonians/OperatorBase.h"
-#include "QMCHamiltonians/NLPPJob.h"
-#include "QMCWaveFunctions/TrialWaveFunction.h"
+#include <ResourceCollection.h>
+#include <TrialWaveFunction.h>
 #include "Numerics/OneDimGridBase.h"
 #include "Numerics/OneDimGridFunctor.h"
 #include "Numerics/OneDimLinearSpline.h"
 #include "Numerics/OneDimCubicSpline.h"
+#include "NLPPJob.h"
 
 namespace qmcplusplus
 {
-
 /** Contains a set of radial grid potentials around a center.
 */
 class NonLocalECPComponent : public QMCTraits
 {
 private:
-  typedef std::vector<PosType> SpherGridType;
-  typedef OneDimGridBase<RealType> GridType;
-  typedef OneDimCubicSpline<RealType> RadialPotentialType;
+  using SpherGridType       = std::vector<PosType>;
+  using GridType            = OneDimGridBase<RealType>;
+  using RadialPotentialType = OneDimCubicSpline<RealType>;
+
+  /** For fast derivative evaluation
+   */
+  using ValueMatrix = SPOSet::ValueMatrix;
+  using GradMatrix  = SPOSet::GradMatrix;
 
   ///Non Local part: angular momentum, potential and grid
   int lmax;
@@ -61,7 +66,7 @@ private:
   ///weight of the spherical grid
   std::vector<RealType> sgridweight_m;
   ///Working arrays
-  std::vector<ValueType> wvec, Amat, dAmat;
+  std::vector<ValueType> wvec;
 
   //Position delta for virtual moves.
   std::vector<PosType> deltaV;
@@ -70,7 +75,7 @@ private:
   //Array for P'_l[cos(theta)]
   std::vector<RealType> dlpol;
   //Array for v_l(r).
-  std::vector<ValueType> vrad;
+  std::vector<RealType> vrad;
   //Array for (2l+1)*v'_l(r)/r.
   std::vector<RealType> dvrad;
   //$\Psi(...q...)/\Psi(...r...)$ for all quadrature points q.
@@ -89,16 +94,16 @@ private:
 
   /// scratch spaces used by evaluateValueAndDerivatives
   Matrix<ValueType> dratio;
-  std::vector<ValueType> dlogpsi_vp;
+  Vector<ValueType> dlogpsi_vp;
 
   // For Pulay correction to the force
   std::vector<RealType> WarpNorm;
-  ParticleSet::ParticleGradient_t dG;
-  ParticleSet::ParticleLaplacian_t dL;
+  ParticleSet::ParticleGradient dG;
+  ParticleSet::ParticleLaplacian dL;
   /// First index is knot, second is electron
   Matrix<PosType> Gnew;
   ///The gradient of the wave function w.r.t. the ion position
-  ParticleSet::ParticleGradient_t Gion;
+  ParticleSet::ParticleGradient Gion;
 
   ///virtual particle set: delayed initialization
   VirtualParticleSet* VP;
@@ -130,9 +135,9 @@ public:
 
   void resize_warrays(int n, int m, int l);
 
-  void randomize_grid(RandomGenerator_t& myRNG);
+  void randomize_grid(RandomGenerator& myRNG);
   template<typename T>
-  void randomize_grid(std::vector<T>& sphere, RandomGenerator_t& myRNG);
+  void randomize_grid(std::vector<T>& sphere, RandomGenerator& myRNG);
 
   /** contribute local non-local move data
    * @param iel reference electron id.
@@ -168,20 +173,19 @@ public:
    * @param p_list a list of electron particle set.
    * @param psi_list a list of trial wave function object
    * @param joblist a list of ion-electron pairs
-   * @param psi_leader the batch leader of psi_list
    * @param pairpots a list of contribution to $\frac{V\Psi_T}{\Psi_T}$ from ion iat and electron iel.
    * @param use_DLA if ture, use determinant localization approximation (DLA).
    *
    * Note: ecp_component_list allows including different NLPP component for different walkers.
    * electrons in iel_list must be of the same group (spin)
    */
-  static void flex_evaluateOne(const RefVector<NonLocalECPComponent>& ecp_component_list,
-                               const RefVector<ParticleSet>& p_list,
-                               const RefVector<TrialWaveFunction>& psi_list,
-                               const RefVector<const NLPPJob<RealType>>& joblist,
-                               TrialWaveFunction& psi_leader,
-                               std::vector<RealType>& pairpots,
-                               bool use_DLA);
+  static void mw_evaluateOne(const RefVectorWithLeader<NonLocalECPComponent>& ecp_component_list,
+                             const RefVectorWithLeader<ParticleSet>& p_list,
+                             const RefVectorWithLeader<TrialWaveFunction>& psi_list,
+                             const RefVector<const NLPPJob<RealType>>& joblist,
+                             std::vector<RealType>& pairpots,
+                             ResourceCollection& collection,
+                             bool use_DLA);
 
   /** @brief Evaluate the nonlocal pp contribution via randomized quadrature grid
    * to total energy from ion "iat" and electron "iel".
@@ -227,7 +231,7 @@ public:
                                  RealType r,
                                  const PosType& dr,
                                  PosType& force_iat,
-                                 ParticleSet::ParticlePos_t& pulay_terms);
+                                 ParticleSet::ParticlePos& pulay_terms);
 
   // This function needs to be updated to SoA. myTableIndex is introduced temporarily.
   RealType evaluateValueAndDerivatives(ParticleSet& P,
@@ -237,18 +241,66 @@ public:
                                        RealType r,
                                        const PosType& dr,
                                        const opt_variables_type& optvars,
-                                       const std::vector<ValueType>& dlogpsi,
-                                       std::vector<ValueType>& dhpsioverpsi);
+                                       const Vector<ValueType>& dlogpsi,
+                                       Vector<ValueType>& dhpsioverpsi);
+
+  /** 
+   * @brief Evaluate contribution to B of election iel and ion iat.  Filippi scheme for computing fast derivatives.
+   *        Sum over ions and electrons occurs at the NonLocalECPotential level.  
+
+   * @param[in] P, target particle set (electrons)
+   * @param[in] iat, ion ID
+   * @param[in] psi, Trial Wavefunction wrapper for fast derivatives.
+   * @param[in] iel, electron ID
+   * @param[in] r, distance between iat and iel. 
+   * @param[in] dr, displacement vector between iat and iel. 
+   * @param[in,out] B. Adds the contribution of iel and iat to the B matrix. Dimensions:  [group][particle][orb] 
+   * @return Void
+   */
+  void evaluateOneBodyOpMatrixContribution(ParticleSet& P,
+                                           const int iat,
+                                           const TWFFastDerivWrapper& psi,
+                                           const int iel,
+                                           const RealType r,
+                                           const PosType& dr,
+                                           std::vector<ValueMatrix>& B);
+
+  /** 
+   * @brief Evaluate contribution to dB/dR of election iel and ion iat.  Filippi scheme for computing fast derivatives.
+   *        Sum over ions and electrons occurs at the NonLocalECPotential level.  
+
+   * @param[in] P, target particle set (electrons)
+   * @param[in] source, ion particle set
+   * @param[in] iat, ion ID
+   * @param[in] iat_src, this is the ion ID w.r.t. which the ion derivatives are taken.  NOT ALWAYS EQUAL TO IAT
+   * @param[in] psi, Trial Wavefunction wrapper for fast derivatives.
+   * @param[in] iel, electron ID
+   * @param[in] r, distance between iat and iel. 
+   * @param[in] dr, displacement vector between iat and iel. 
+   * @param[in,out] dB. Adds the contribution of iel and iat to the dB/dR_iat_src matrix. Dimension [xyz_component][group][particle][orb]   
+   * @return Void
+   */
+  void evaluateOneBodyOpMatrixdRContribution(ParticleSet& P,
+                                             ParticleSet& source,
+                                             const int iat,
+                                             const int iat_src,
+                                             const TWFFastDerivWrapper& psi,
+                                             const int iel,
+                                             const RealType r,
+                                             const PosType& dr,
+                                             std::vector<std::vector<ValueMatrix>>& dB);
 
   void print(std::ostream& os);
 
   void initVirtualParticle(const ParticleSet& qp);
+  void deleteVirtualParticle();
 
   inline void setRmax(int rmax) { Rmax = rmax; }
   inline RealType getRmax() const { return Rmax; }
   inline int getNknot() const { return nknot; }
   inline void setLmax(int Lmax) { lmax = Lmax; }
   inline int getLmax() const { return lmax; }
+  const VirtualParticleSet* getVP() const { return VP; };
 
   // copy sgridxyz_m to rrotsgrid_m without rotation. For testing only.
   friend void copyGridUnrotatedForTest(NonLocalECPComponent& nlpp);

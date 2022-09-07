@@ -15,12 +15,11 @@
 
 
 #include "VMC_CUDA.h"
-#include "OhmmsApp/RandomNumberControl.h"
+#include "RandomNumberControl.h"
 #include "Utilities/RandomGenerator.h"
 #include "ParticleBase/RandomSeqGenerator.h"
 #include "Message/CommOperators.h"
 #include "QMCDrivers/DriftOperators.h"
-#include "type_traits/scalar_traits.h"
 #include "Utilities/RunTimeManager.h"
 #include "Utilities/qmc_common.h"
 #ifdef USE_NVTX_API
@@ -37,21 +36,14 @@ VMCcuda::VMCcuda(MCWalkerConfiguration& w,
                  bool enable_profiling)
     : QMCDriver(w, psi, h, comm, "VMCcuda", enable_profiling),
       UseDrift("yes"),
-      myPeriod4WalkerDump(0),
-      w_beta(0.0),
-      w_alpha(0.0),
-      GEVtype("mixed"),
-      forOpt(false)
+      myPeriod4WalkerDump(0)
 {
   RootName = "vmc";
   qmc_driver_mode.set(QMC_UPDATE_MODE, 1);
   qmc_driver_mode.set(QMC_WARMUP, 0);
-  m_param.add(UseDrift, "useDrift", "string");
-  m_param.add(UseDrift, "usedrift", "string");
-  m_param.add(nTargetSamples, "targetWalkers", "int");
-  m_param.add(w_beta, "beta", "double");
-  m_param.add(w_alpha, "alpha", "double");
-  m_param.add(GEVtype, "GEVMethod", "string");
+  m_param.add(UseDrift, "useDrift");
+  m_param.add(UseDrift, "usedrift");
+  m_param.add(nTargetSamples, "targetWalkers");
 
   H.setRandomGenerator(&Random);
 }
@@ -60,8 +52,8 @@ bool VMCcuda::checkBounds(std::vector<PosType>& newpos, std::vector<bool>& valid
 {
   for (int iw = 0; iw < newpos.size(); iw++)
   {
-    PosType red = W.Lattice.toUnit(newpos[iw]);
-    valid[iw]   = W.Lattice.isValid(red);
+    PosType red = W.getLattice().toUnit(newpos[iw]);
+    valid[iw]   = W.getLattice().isValid(red);
   }
   return true;
 }
@@ -199,19 +191,15 @@ bool VMCcuda::run()
 #endif
   resetRun();
   IndexType block        = 0;
-  IndexType nAcceptTot   = 0;
-  IndexType nRejectTot   = 0;
   IndexType updatePeriod = (qmc_driver_mode[QMC_UPDATE_MODE]) ? Period4CheckProperties : (nBlocks + 1) * nSteps;
   int nat                = W.getTotalNum();
   int nw                 = W.getActiveWalkers();
   std::vector<RealType> LocalEnergy(nw);
   Matrix<ValueType> lapl(nw, nat);
   Matrix<GradType> grad(nw, nat);
-  double Esum;
 
   LoopTimer<> vmc_loop;
-  RunTimeControl<> runtimeControl(run_time_manager, MaxCPUSecs);
-  bool enough_time_for_next_iteration = true;
+  RunTimeControl<> runtimeControl(run_time_manager, MaxCPUSecs, myComm->getName(), myComm->rank() == 0);
 
   // First do warmup steps
   for (int step = 0; step < nWarmupSteps; step++)
@@ -229,7 +217,6 @@ bool VMCcuda::run()
     vmc_loop.start();
     IndexType step = 0;
     nAccept = nReject = 0;
-    Esum              = 0.0;
     Estimators->startBlock(nSteps);
     do
     {
@@ -254,70 +241,28 @@ bool VMCcuda::run()
     } while (step < nSteps);
     if (nBlocksBetweenRecompute && (1 + block) % nBlocksBetweenRecompute == 0)
       Psi.recompute(W);
-    if (forOpt)
-    {
-      d_logpsi_dalpha      = 0.0;
-      d_hpsioverpsi_dalpha = 0.0;
-      W.copyWalkerGradToGPU();
-      Psi.evaluateDerivatives(W, dummy, d_logpsi_dalpha, d_hpsioverpsi_dalpha);
-      std::vector<RealType> g_stats(5, 0);
-      for (int ip = 0; ip < nw; ip++)
-      {
-        RealType E_L  = LocalEnergy[ip];
-        RealType E_L2 = E_L * E_L;
-        sE += E_L;
-        sE2 += E_L2;
-        sE4 += E_L2 * E_L2;
-        sW += 1;
-        sN += 1;
-        for (int i = 0; i < numParams; i++)
-        {
-          RealType di  = d_logpsi_dalpha(ip, i);
-          RealType hdi = d_hpsioverpsi_dalpha(ip, i);
-          //             vectors
-          D_E[i] += di * E_L;
-          HD[i] += hdi;
-          HD2[i] += E_L * (hdi + di * E_L);
-          D[i] += di;
-          for (int j = 0; j < numParams; j++)
-          {
-            RealType dj  = d_logpsi_dalpha(ip, j);
-            RealType hdj = d_hpsioverpsi_dalpha(ip, j);
-            Olp(i, j) += di * dj;
-            Ham(i, j) += di * (hdj + dj * E_L);
-            Ham2(i, j) += (hdj + dj * E_L) * (hdi + di * E_L);
-          }
-        }
-      }
-      g_stats[0] = sE;
-      g_stats[1] = sE2;
-      g_stats[2] = sE4;
-      g_stats[3] = sW;
-      g_stats[4] = sN;
-      myComm->allreduce(g_stats);
-      RealType nrm = 1.0 / g_stats[3];
-      E_avg        = nrm * g_stats[0];
-      V_avg        = nrm * g_stats[1] - E_avg * E_avg;
-    }
     // std::vector<RealType> logPsi(W.WalkerList.size(), 0.0);
     // Psi.evaluateLog(W, logPsi);
     double accept_ratio = (double)nAccept / (double)(nAccept + nReject);
     Estimators->stopBlock(accept_ratio);
-    nAcceptTot += nAccept;
-    nRejectTot += nReject;
     ++block;
     recordBlock(block);
-
     vmc_loop.stop();
-    enough_time_for_next_iteration = runtimeControl.enough_time_for_next_iteration(vmc_loop);
+
+    bool stop_requested = false;
     // Rank 0 decides whether the time limit was reached
-    myComm->bcast(enough_time_for_next_iteration);
-    if (!enough_time_for_next_iteration)
+    if (!myComm->rank())
+      stop_requested = runtimeControl.checkStop(vmc_loop);
+    myComm->bcast(stop_requested);
+    if (stop_requested)
     {
-      app_log() << runtimeControl.time_limit_message("VMC", block);
+      if (!myComm->rank())
+        app_log() << runtimeControl.generateStopMessage("VMC_CUDA", block);
+      run_time_manager.markStop();
+      break;
     }
 
-  } while (block < nBlocks && enough_time_for_next_iteration);
+  } while (block < nBlocks);
   //Mover->stopRun();
   //finalize a qmc section
   if (!myComm->rank())
@@ -442,11 +387,9 @@ bool VMCcuda::runWithDrift()
   nvtxRangePushA("VMC:runWithDrift");
 #endif
   resetRun();
-  IndexType block      = 0;
-  IndexType nAcceptTot = 0;
-  IndexType nRejectTot = 0;
-  int nat              = W.getTotalNum();
-  int nw               = W.getActiveWalkers();
+  IndexType block = 0;
+  int nat         = W.getTotalNum();
+  int nw          = W.getActiveWalkers();
   std::vector<RealType> LocalEnergy(nw);
   Matrix<ValueType> lapl(nw, nat);
   Matrix<GradType> grad(nw, nat);
@@ -475,58 +418,9 @@ bool VMCcuda::runWithDrift()
     } while (step < nSteps);
     if (nBlocksBetweenRecompute && (1 + block) % nBlocksBetweenRecompute == 0)
       Psi.recompute(W);
-    if (forOpt)
-    {
-      d_logpsi_dalpha      = 0.0;
-      d_hpsioverpsi_dalpha = 0.0;
-      W.copyWalkerGradToGPU();
-      Psi.evaluateDerivatives(W, dummy, d_logpsi_dalpha, d_hpsioverpsi_dalpha);
-      std::vector<RealType> g_stats(5, 0);
-      for (int ip = 0; ip < nw; ip++)
-      {
-        RealType E_L  = LocalEnergy[ip];
-        RealType E_L2 = E_L * E_L;
-        sE += E_L;
-        sE2 += E_L2;
-        sE4 += E_L2 * E_L2;
-        sW += 1;
-        sN += 1;
-        for (int i = 0; i < numParams; i++)
-        {
-          RealType di  = d_logpsi_dalpha(ip, i);
-          RealType hdi = d_hpsioverpsi_dalpha(ip, i);
-          //             vectors
-          D_E[i] += di * E_L;
-          HD[i] += hdi;
-          HD2[i] += E_L * (hdi + di * E_L);
-          D[i] += di;
-          for (int j = 0; j < numParams; j++)
-          {
-            RealType dj  = d_logpsi_dalpha(ip, j);
-            RealType hdj = d_hpsioverpsi_dalpha(ip, j);
-            Olp(i, j) += di * dj;
-            Ham(i, j) += di * (hdj + dj * E_L);
-            Ham2(i, j) += (hdj + dj * E_L) * (hdi + di * E_L);
-          }
-        }
-      }
-      g_stats[0] = sE;
-      g_stats[1] = sE2;
-      g_stats[2] = sE4;
-      g_stats[3] = sW;
-      g_stats[4] = sN;
-      myComm->allreduce(g_stats);
-      RealType nrm = 1.0 / g_stats[3];
-      E_avg        = nrm * g_stats[0];
-      V_avg        = nrm * g_stats[1] - E_avg * E_avg;
-      //for (int i=0; i<numParams; i++) app_log()<<HD[i]<<" ";
-      //  app_log()<< std::endl;
-    }
     //      Psi.recompute(W);
     double accept_ratio = (double)nAccept / (double)(nAccept + nReject);
     Estimators->stopBlock(accept_ratio);
-    nAcceptTot += nAccept;
-    nRejectTot += nReject;
     ++block;
     recordBlock(block);
   } while (block < nBlocks);
@@ -603,20 +497,6 @@ void VMCcuda::resetRun()
     samples_this_node += 1;
   app_log() << "  Node zero will generate " << samples_this_node << " samples.\n";
   W.setNumSamples(samples_this_node);
-  if (forOpt)
-  {
-    dummy.clear();
-    Psi.checkInVariables(dummy);
-    dummy.resetIndex();
-    Psi.checkOutVariables(dummy);
-    numParams = dummy.size();
-    resizeForOpt(numParams);
-    int nw = W.getActiveWalkers();
-    d_logpsi_dalpha.resize(nw, numParams);
-    d_hpsioverpsi_dalpha.resize(nw, numParams);
-    d_logpsi_dalpha      = 0.0;
-    d_hpsioverpsi_dalpha = 0.0;
-  }
 }
 
 bool VMCcuda::put(xmlNodePtr q)
@@ -678,105 +558,6 @@ bool VMCcuda::put(xmlNodePtr q)
   app_log().flush();
   //nothing to add
   return true;
-}
-
-VMCcuda::RealType VMCcuda::fillOverlapHamiltonianMatrices(Matrix<RealType>& LeftM, Matrix<RealType>& RightM)
-{
-  RealType b1, b2;
-  if (GEVtype == "H2")
-  {
-    b1 = w_beta;
-    b2 = w_alpha;
-  }
-  else
-  {
-    b2 = w_beta;
-    b1 = 0;
-  }
-  std::vector<RealType> g_stats(5, 0);
-  g_stats[0] = sE;
-  g_stats[1] = sE2;
-  g_stats[2] = sE4;
-  g_stats[3] = sW;
-  g_stats[4] = sN;
-  myComm->allreduce(g_stats);
-  RealType g_nrm  = 1.0 / g_stats[3];
-  E_avg           = g_nrm * g_stats[0];
-  RealType E_avg2 = E_avg * E_avg;
-  RealType E2_avg = g_nrm * g_stats[1];
-  V_avg           = E2_avg - E_avg2;
-  myComm->allreduce(Ham2);
-  Ham2 *= g_nrm;
-  myComm->allreduce(Ham);
-  Ham *= g_nrm;
-  myComm->allreduce(Olp);
-  Olp *= g_nrm;
-  myComm->allreduce(D_E);
-  myComm->allreduce(D);
-  myComm->allreduce(HD);
-  myComm->allreduce(HD2);
-  for (int i = 0; i < numParams; i++)
-  {
-    D_E[i] *= g_nrm;
-    D[i] *= g_nrm;
-    HD[i] *= g_nrm;
-    HD2[i] *= g_nrm;
-  }
-  for (int i = 0; i < numParams; i++)
-    for (int j = 0; j < numParams; j++)
-      Ham(i, j) += -D[i] * (HD[j] + D_E[j] - D[j] * E_avg) - D[j] * D_E[i];
-  for (int i = 0; i < numParams; i++)
-    for (int j = 0; j < numParams; j++)
-      Olp(i, j) -= D[i] * D[j];
-  for (int i = 0; i < numParams; i++)
-    for (int j = 0; j < numParams; j++)
-      Ham2(i, j) += D[i] * D[j] * E2_avg - D[i] * HD2[j] - D[j] * HD2[i] - E_avg * (Ham(i, j) + Ham(j, i)) +
-          2.0 * E_avg2 * Olp(i, j);
-  RealType b1_rat = b1 / E_avg2;
-  for (int i = 1; i < numParams + 1; i++)
-    for (int j = 1; j < numParams + 1; j++)
-    {
-      LeftM(i, j)  = (1 - b2) * Ham(i - 1, j - 1) + b2 * (Ham2(i - 1, j - 1) - E_avg2 * Olp(i - 1, j - 1));
-      RightM(i, j) = (1.0 - b1) * Olp(i - 1, j - 1) + b1_rat * Ham2(i - 1, j - 1);
-    }
-  RightM(0, 0) = 1.0 - b1 + b1_rat * E_avg2;
-  LeftM(0, 0)  = (1 - b2) * E_avg + b2 * V_avg;
-  for (int i = 1; i < numParams + 1; i++)
-  {
-    RightM(0, i) = RightM(i, 0) =
-        b1_rat * (HD2[i - 1] - E_avg * (HD[i - 1] + 2.0 * (D_E[i - 1] - D[i - 1] * E_avg)) - D[i - 1] * E2_avg);
-    //       RightM(0,i)= RightM(i,0) = b1_rat*(HD2[i-1] -  E_avg*HD[i-1] -  D[i-1]*E2_avg  - 2.0*E_avg*(D_E[i-1]-D[i-1]*E_avg ));
-    LeftM(i, 0) = (1 - b2) * (D_E[i - 1] - E_avg * D[i - 1]) +
-        b2 * (HD2[i - 1] - E_avg * (HD[i - 1] + 2.0 * (D_E[i - 1] - D[i - 1] * E_avg)) - D[i - 1] * E2_avg);
-    LeftM(0, i) = (1 - b2) * (HD[i - 1] + D_E[i - 1] - E_avg * D[i - 1]) +
-        b2 * (HD2[i - 1] - E_avg * (HD[i - 1] + 2.0 * (D_E[i - 1] - D[i - 1] * E_avg)) - D[i - 1] * E2_avg);
-  }
-  /*
-      for (int i=0; i<numParams; i++) app_log()<<D[i]<<" ";
-      app_log()<< std::endl;
-      for (int i=0; i<numParams; i++) app_log()<<D_E[i]<<" ";
-      app_log()<< std::endl;
-      for (int i=0; i<numParams; i++) app_log()<<HD[i]<<" ";
-      app_log()<< std::endl;
-      for (int i=0; i<numParams; i++) app_log()<<HD2[i]<<" ";
-      app_log()<< std::endl;
-
-      for (int i=0; i<numParams+1; i++)
-      {
-        for (int j=0; j<numParams+1; j++)
-          app_log()<<LeftM(i,j)<<" ";
-        app_log()<< std::endl;
-      }
-      app_log()<< std::endl;
-      for (int i=0; i<numParams+1; i++)
-      {
-        for (int j=0; j<numParams+1; j++)
-          app_log()<<RightM(i,j)<<" ";
-        app_log()<< std::endl;
-      }
-      app_log()<< std::endl;
-  */
-  return 1.0;
 }
 
 } // namespace qmcplusplus

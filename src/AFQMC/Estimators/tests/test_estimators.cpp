@@ -14,7 +14,7 @@
 #include "Configuration.h"
 
 #include "OhmmsData/Libxml2Doc.h"
-#include "OhmmsApp/ProjectData.h"
+#include "ProjectData.h"
 #include "Utilities/TimerManager.h"
 #include "hdf/hdf_archive.h"
 
@@ -61,12 +61,7 @@ void reduced_density_matrix(boost::mpi3::communicator& world)
 {
   using pointer = typename Allocator::pointer;
 
-  if (not file_exists(UTEST_HAMIL) || not file_exists(UTEST_WFN))
-  {
-    app_log() << " Skipping ham_ops_basic_serial. Hamiltonian or wavefunction file not found. \n";
-    app_log() << " Run unit test with --hamil /path/to/hamil.h5 and --wfn /path/to/wfn.dat.\n";
-  }
-  else
+  if (check_hamil_wfn_for_utest("reduced_density_matrix", UTEST_WFN, UTEST_HAMIL))
   {
     timer_manager.set_timer_threshold(timer_level_coarse);
     setup_timers(AFQMCTimers, AFQMCTimerNames, timer_level_coarse);
@@ -129,7 +124,7 @@ void reduced_density_matrix(boost::mpi3::communicator& world)
     auto TG                   = TaskGroup_(gTG, std::string("WfnTG"), 1, gTG.getTotalCores());
     Allocator alloc_(make_localTG_allocator<ComplexType>(TG));
     int nwalk = 1; // choose prime number to force non-trivial splits in shared routines
-    RandomGenerator_t rng;
+    RandomGenerator rng;
     Libxml2Document doc2;
     okay = doc2.parseFromString(wfn_xml_block);
     REQUIRE(okay);

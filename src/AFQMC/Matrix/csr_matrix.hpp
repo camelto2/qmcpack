@@ -59,7 +59,7 @@ struct is_root
 {
   mpi3::shared_communicator& comm_;
   template<class Allocator>
-  is_root(Allocator& a) : comm_(a.comm_)
+  is_root(Allocator& a) : comm_(*a.commP_)
   {}
   bool root() { return comm_.root(); }
   int size() { return comm_.size(); }
@@ -773,7 +773,7 @@ public:
     *this = csr;
   }
   // right now, this routine is limited to transfers from host-host, or host-device.
-  // Will fail if transfering device-to-host, since I need to use to_address on source
+  // Will fail if transferring device-to-host, since I need to use to_address on source
   template<class ValType_,
            class IndxType_,
            class IntType_,

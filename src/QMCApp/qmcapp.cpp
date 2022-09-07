@@ -17,16 +17,16 @@
 //////////////////////////////////////////////////////////////////////////////////////
 
 #include <stdexcept>
-
+#include <memory>
 #include "Configuration.h"
 #include "Message/Communicate.h"
 #include "Utilities/SimpleParser.h"
 #include "Utilities/ProgressReportEngine.h"
 #include "Platforms/Host/OutputManager.h"
 #include "OhmmsData/FileUtility.h"
-#include "Platforms/sysutil.h"
-#include "Platforms/devices.h"
-#include "OhmmsApp/ProjectData.h"
+#include "Host/sysutil.h"
+#include "Platforms/CUDA_legacy/devices.h"
+#include "ProjectData.h"
 #include "QMCApp/QMCMain.h"
 #include "Utilities/qmc_common.h"
 
@@ -206,19 +206,25 @@ int main(int argc, char** argv)
     //  MPI_Bcast(fname.c_str(),fname.size(),MPI_CHAR,0,OHMMS::Controller->getID());
     //#endif
 
-    QMCMain* qmc    = 0;
     bool validInput = false;
     app_log() << "  Input file(s): ";
     for (int k = 0; k < inputs.size(); ++k)
       app_log() << inputs[k] << " ";
     app_log() << std::endl;
-    qmc = new QMCMain(qmcComm);
+
+    auto qmc = std::make_unique<QMCMain>(qmcComm);
+
     if (inputs.size() > 1)
       validInput = qmc->parse(inputs[qmcComm->getGroupID()]);
     else
       validInput = qmc->parse(inputs[0]);
-    if (validInput)
-      qmc->execute();
+
+    if (!validInput)
+      qmcComm->barrier_and_abort("main(). Input invalid.");
+
+    bool qmcSuccess = qmc->execute();
+    if (!qmcSuccess)
+      qmcComm->barrier_and_abort("main(). QMC Execution failed.");
 
     Libxml2Document timingDoc;
     timingDoc.newDoc("resources");
@@ -230,8 +236,9 @@ int main(int argc, char** argv)
       timingDoc.dump(qmc->getTitle() + ".info.xml");
     }
     timer_manager.print(qmcComm);
-    if (qmc)
-      delete qmc;
+
+    qmc.reset();
+
     if (useGPU)
       Finalize_CUDA();
   }
@@ -246,7 +253,11 @@ int main(int argc, char** argv)
     APP_ABORT("Unhandled Exception");
   }
 
+  if (OHMMS::Controller->rank() == 0)
+    std::cout << std::endl << "QMCPACK execution completed successfully" << std::endl;
+
   OHMMS::Controller->finalize();
+
   return 0;
 }
 
@@ -262,7 +273,7 @@ void output_hardware_info(Communicate* comm, Libxml2Document& doc, xmlNodePtr ro
   doc.addChild(hardware, "mpi", using_mpi);
 
   bool using_openmp = false;
-#ifdef ENABLE_OPENMP
+#ifdef _OPENMP
   using_openmp = true;
   doc.addChild(hardware, "openmp_threads", omp_get_max_threads());
 #endif

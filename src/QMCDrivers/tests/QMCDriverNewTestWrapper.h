@@ -16,6 +16,7 @@
 #include "Particle/SampleStack.h"
 #include "Concurrency/ParallelExecutor.hpp"
 #include "Message/UniformCommunicateError.h"
+#include "ProjectData.h"
 
 namespace qmcplusplus
 {
@@ -28,33 +29,34 @@ class QMCDriverNewTestWrapper : public QMCDriverNew
 {
 public:
   using Base = QMCDriverNew;
-  QMCDriverNewTestWrapper(QMCDriverInput&& input,
+  QMCDriverNewTestWrapper(const ProjectData& test_project,
+                          QMCDriverInput&& input,
+                          WalkerConfigurations& wc,
                           MCPopulation&& population,
-                          TrialWaveFunction& psi,
-                          QMCHamiltonian& h,
                           SampleStack samples,
                           Communicate* comm)
-      : QMCDriverNew(std::move(input),
+      : QMCDriverNew(test_project,
+                     std::move(input),
+                     std::nullopt,
+                     wc,
                      std::move(population),
-                     psi,
-                     h,
                      "QMCDriverTestWrapper::",
                      comm,
                      "QMCDriverNewTestWrapper")
   {}
 
-  ~QMCDriverNewTestWrapper() {}
+  ~QMCDriverNewTestWrapper() override {}
 
-  QMCRunType getRunType() { return QMCRunType::DUMMY; }
+  QMCRunType getRunType() override { return QMCRunType::DUMMY; }
 
-  void process(xmlNodePtr node)
+  void process(xmlNodePtr node) override
   {
     // We want to test the reserve ability as well
     AdjustedWalkerCounts awc =
         adjustGlobalWalkerCount(myComm->size(), myComm->rank(), qmcdriver_input_.get_total_walkers(),
                                 qmcdriver_input_.get_walkers_per_rank(), 1.0, qmcdriver_input_.get_num_crowds());
 
-    Base::startup(node, awc);
+    Base::initializeQMC(awc);
   }
 
   void testAdjustGlobalWalkerCount()
@@ -125,7 +127,7 @@ public:
     CHECK_THROWS_AS(adjustGlobalWalkerCount(16, 0, 14, 0, 0, 0), UniformCommunicateError);
   }
 
-  bool run() { return false; }
+  bool run() override { return false; }
 
   int get_num_crowds() { return crowds_.size(); }
 
@@ -135,7 +137,7 @@ public:
     void operator()(int num_crowds);
   };
 
-private:
+  void testMeasureImbalance() { measureImbalance("Test"); }
 };
 
 template<class CONCURRENCY>

@@ -23,17 +23,13 @@ TEST_CASE("WaveFunctionFactory", "[wavefunction]")
 {
   Communicate* c = OHMMS::Controller;
 
-  auto qp = std::make_unique<ParticleSet>();
-  std::vector<int> agroup(1);
-  agroup[0] = 2;
+  const SimulationCell simulation_cell;
+  auto qp = std::make_unique<ParticleSet>(simulation_cell);
+  std::vector<int> agroup(2, 1);
   qp->setName("e");
   qp->create(agroup);
-  qp->R[0][0] = 1.0;
-  qp->R[0][1] = 2.0;
-  qp->R[0][2] = 3.0;
-  qp->R[1][0] = 0.0;
-  qp->R[1][1] = 1.1;
-  qp->R[1][2] = 2.2;
+  qp->R[0] = {1.0, 2.0, 3.0};
+  qp->R[1] = {0.0, 1.1, 2.2};
 
   SpeciesSet& tspecies       = qp->getSpeciesSet();
   int upIdx                  = tspecies.addSpecies("u");
@@ -44,14 +40,13 @@ TEST_CASE("WaveFunctionFactory", "[wavefunction]")
 
   qp->update();
 
-  WaveFunctionFactory::PtclPoolType particle_set_map;
-  particle_set_map["e"] = qp.get();
+  WaveFunctionFactory::PSetMap particle_set_map;
+  particle_set_map.emplace("e", std::move(qp));
 
-
-  WaveFunctionFactory wff("psi0", *qp, particle_set_map, c);
+  WaveFunctionFactory wff(*particle_set_map["e"], particle_set_map, c);
 
   const char* wavefunction_xml = "<wavefunction> \
-         <jastrow type=\"Two-Body\" name=\"J2\" function=\"bspline\" print=\"yes\"> \
+         <jastrow type=\"Two-Body\" name=\"J2\" function=\"bspline\" print=\"yes\" gpu=\"no\"> \
             <correlation speciesA=\"u\" speciesB=\"d\" size=\"8\" cutoff=\"10.0\"> \
                <coefficients id=\"ud\" type=\"Array\"> \
 0.5954603818 0.5062051797 0.3746940461 0.2521010502 0.1440163317 0.07796688253 \
@@ -65,12 +60,12 @@ TEST_CASE("WaveFunctionFactory", "[wavefunction]")
   REQUIRE(okay);
 
   xmlNodePtr root = doc.getRoot();
-  wff.put(root);
+  auto twf_ptr = wff.buildTWF(root);
 
-  REQUIRE(wff.getTWF() != nullptr);
-  REQUIRE(wff.getTWF()->size() == 1);
+  REQUIRE(twf_ptr != nullptr);
+  REQUIRE(twf_ptr->size() == 1);
 
-  WaveFunctionComponent* j2_base = wff.getTWF()->getOrbitals()[0];
+  auto& j2_base = twf_ptr->getOrbitals()[0];
   REQUIRE(j2_base != nullptr);
 }
 } // namespace qmcplusplus

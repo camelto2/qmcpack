@@ -71,10 +71,7 @@ void QMCAppBase::saveXml()
 {
   if (!XmlDocStack.empty())
   {
-    std::string newxml(myProject.CurrentMainRoot());
-    //string newxml(myProject.CurrentRoot());
-    //myProject.PreviousRoot(newxml);
-    //myProject.rewind();
+    std::string newxml(myProject.currentMainRoot());
     newxml.append(".cont.xml");
     app_log() << "\n========================================================="
               << "\n  A new xml input file : " << newxml << std::endl;
@@ -82,5 +79,5 @@ void QMCAppBase::saveXml()
   }
 }
 
-std::string& QMCAppBase::getTitle() { return myProject.m_title; }
+const std::string& QMCAppBase::getTitle() const { return myProject.getTitle(); }
 } // namespace qmcplusplus

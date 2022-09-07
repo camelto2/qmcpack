@@ -27,7 +27,7 @@ LCAOSpinorBuilder::LCAOSpinorBuilder(ParticleSet& els, ParticleSet& ions, Commun
     myComm->barrier_and_abort("LCAOSpinorBuilder only works with href");
 }
 
-SPOSet* LCAOSpinorBuilder::createSPOSetFromXML(xmlNodePtr cur)
+std::unique_ptr<SPOSet> LCAOSpinorBuilder::createSPOSetFromXML(xmlNodePtr cur)
 {
   ReportEngine PRE(ClassName, "createSPO(xmlNodePtr)");
   std::string spo_name(""), optimize("no");
@@ -47,15 +47,16 @@ SPOSet* LCAOSpinorBuilder::createSPOSetFromXML(xmlNodePtr cur)
   if (optimize == "yes")
     app_log() << "  SPOSet " << spo_name << " is optimizable\n";
 
-  std::unique_ptr<LCAOrbitalSet> upspo = std::make_unique<LCAOrbitalSet>(std::unique_ptr<BasisSet_t>(myBasisSet->makeClone()), optimize == "yes");
-  std::unique_ptr<LCAOrbitalSet> dnspo = std::make_unique<LCAOrbitalSet>(std::unique_ptr<BasisSet_t>(myBasisSet->makeClone()), optimize == "yes");
+  std::unique_ptr<LCAOrbitalSet> upspo =
+      std::make_unique<LCAOrbitalSet>(spo_name + "_up", std::unique_ptr<BasisSet_t>(myBasisSet->makeClone()));
+  std::unique_ptr<LCAOrbitalSet> dnspo =
+      std::make_unique<LCAOrbitalSet>(spo_name + "_dn", std::unique_ptr<BasisSet_t>(myBasisSet->makeClone()));
 
   loadMO(*upspo, *dnspo, cur);
 
   //create spinor and register up/dn
-  SpinorSet* spinor_set = new SpinorSet();
+  auto spinor_set = std::make_unique<SpinorSet>(spo_name);
   spinor_set->set_spos(std::move(upspo), std::move(dnspo));
-
   return spinor_set;
 }
 
@@ -116,7 +117,6 @@ bool LCAOSpinorBuilder::loadMO(LCAOrbitalSet& up, LCAOrbitalSet& dn, xmlNodePtr 
 bool LCAOSpinorBuilder::putFromH5(LCAOrbitalSet& up, LCAOrbitalSet& dn, xmlNodePtr occ_ptr)
 {
 #ifdef QMC_COMPLEX
-#if defined(HAVE_LIBHDF5)
   if (up.getBasisSetSize() == 0 || dn.getBasisSetSize() == 0)
   {
     myComm->barrier_and_abort("LCASpinorBuilder::loadMO  detected ZERO BasisSetSize");
@@ -133,9 +133,9 @@ bool LCAOSpinorBuilder::putFromH5(LCAOrbitalSet& up, LCAOrbitalSet& dn, xmlNodeP
     std::string setname;
     Matrix<RealType> upReal;
     Matrix<RealType> upImag;
-    setname = "/KPTS_0/eigenset_0";
+    setname = "/Super_Twist/eigenset_0";
     readRealMatrixFromH5(hin, setname, upReal);
-    setname = "/KPTS_0/eigenset_0_imag";
+    setname = "/Super_Twist/eigenset_0_imag";
     readRealMatrixFromH5(hin, setname, upImag);
 
     assert(upReal.rows() == upImag.rows());
@@ -152,9 +152,9 @@ bool LCAOSpinorBuilder::putFromH5(LCAOrbitalSet& up, LCAOrbitalSet& dn, xmlNodeP
 
     Matrix<RealType> dnReal;
     Matrix<RealType> dnImag;
-    setname = "/KPTS_0/eigenset_1";
+    setname = "/Super_Twist/eigenset_1";
     readRealMatrixFromH5(hin, setname, dnReal);
-    setname = "/KPTS_0/eigenset_1_imag";
+    setname = "/Super_Twist/eigenset_1_imag";
     readRealMatrixFromH5(hin, setname, dnImag);
 
     assert(dnReal.rows() == dnImag.rows());
@@ -195,10 +195,6 @@ bool LCAOSpinorBuilder::putFromH5(LCAOrbitalSet& up, LCAOrbitalSet& dn, xmlNodeP
 #ifdef HAVE_MPI
   myComm->comm.broadcast_n(up.C->data(), up.C->size());
   myComm->comm.broadcast_n(dn.C->data(), dn.C->size());
-#endif
-
-#else
-  myComm->barrier_and_abort("LCAOSpinorBuilder::putFromH5 HDF5 is disabled");
 #endif
 
 #else

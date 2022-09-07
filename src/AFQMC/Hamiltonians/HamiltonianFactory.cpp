@@ -71,11 +71,11 @@ Hamiltonian HamiltonianFactory::fromHDF5(GlobalTaskGroup& gTG, xmlNodePtr cur)
   std::string alt      = "";
 
   ParameterSet m_param;
-  m_param.add(cutoff1bar, "cutoff_1bar", "double");
-  m_param.add(fileName, "filename", "std::string");
-  m_param.add(number_of_TGs, "nblocks", "int");
-  m_param.add(n_reading_cores, "num_io_cores", "int");
-  m_param.add(alt, "alternate", "std::string");
+  m_param.add(cutoff1bar, "cutoff_1bar");
+  m_param.add(fileName, "filename");
+  m_param.add(number_of_TGs, "nblocks");
+  m_param.add(n_reading_cores, "num_io_cores");
+  m_param.add(alt, "alternate");
   m_param.put(cur);
 
   // make or get TG
@@ -168,15 +168,10 @@ Hamiltonian HamiltonianFactory::fromHDF5(GlobalTaskGroup& gTG, xmlNodePtr cur)
     //      APP_ABORT(" ");
   }
   nvecs = Idata[7];
-#ifdef QMC_COMPLEX
-  int nkpts = -1;
-  if (htype == KPFactorized || htype == KPTHC)
-    nkpts = Idata[2];
-#endif
 
   // MAM: this is wrong in NONCOLLINEAR, but how do I know what
   // walker type it is right here???
-  // Might need to read dimensions ahead of time from hdf5 file and check consistensy
+  // Might need to read dimensions ahead of time from hdf5 file and check consistency
   // later
   // Also, OneBodyHamiltonian doesn't make much sense now that you have KP classes.
   // Consider refactoring this part of the code...

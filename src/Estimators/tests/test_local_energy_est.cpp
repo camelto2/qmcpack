@@ -29,12 +29,12 @@ using WP = WalkerProperties::Indexes;
 
 TEST_CASE("LocalEnergyOnly", "[estimators]")
 {
-
   LocalEnergyOnlyEstimator le_est;
 
-  MCWalkerConfiguration W;
+  const SimulationCell simulation_cell;
+  MCWalkerConfiguration W(simulation_cell);
   W.setName("electrons");
-  W.create(1);
+  W.create({1});
   W.createWalkers(1);
 
   (*W.begin())->Properties(WP::LOCALENERGY) = 1.1;
@@ -46,17 +46,17 @@ TEST_CASE("LocalEnergyOnly", "[estimators]")
 
 TEST_CASE("LocalEnergy", "[estimators]")
 {
-
   QMCHamiltonian H;
   LocalEnergyEstimator le_est(H, false);
 
-  LocalEnergyEstimator* le_est2 = dynamic_cast<LocalEnergyEstimator*>(le_est.clone());
-  REQUIRE(le_est2 != NULL);
-  REQUIRE(le_est2 != &le_est);
+  std::unique_ptr<LocalEnergyEstimator> le_est2{le_est.clone()};
+  REQUIRE(le_est2 != nullptr);
+  REQUIRE(le_est2.get() != &le_est);
 
-  MCWalkerConfiguration W;
+  const SimulationCell simulation_cell;
+  MCWalkerConfiguration W(simulation_cell);
   W.setName("electrons");
-  W.create(1);
+  W.create({1});
   W.createWalkers(1);
 
   (*W.begin())->Properties(WP::LOCALENERGY)    = 1.1;
@@ -75,19 +75,19 @@ TEST_CASE("LocalEnergy", "[estimators]")
 
 TEST_CASE("LocalEnergy with hdf5", "[estimators]")
 {
-
   QMCHamiltonian H;
   LocalEnergyEstimator le_est(H, true);
 
-  MCWalkerConfiguration W;
+  const SimulationCell simulation_cell;
+  MCWalkerConfiguration W(simulation_cell);
   W.setName("electrons");
-  W.create(1);
+  W.create({1});
   W.createWalkers(1);
 
   (*W.begin())->Properties(WP::LOCALENERGY)    = 1.1;
   (*W.begin())->Properties(WP::LOCALPOTENTIAL) = 1.2;
 
-  std::vector<observable_helper*> h5desc;
+  std::vector<ObservableHelper> h5desc;
 
   hid_t h_file = H5Fcreate("tmp_obs.h5", H5F_ACC_TRUNC, H5P_DEFAULT, H5P_DEFAULT);
   le_est.registerObservables(h5desc, h_file);

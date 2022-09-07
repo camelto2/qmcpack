@@ -13,13 +13,14 @@
 #include <sstream>
 #include "DriftModifierUNR.h"
 #include "OhmmsData/ParameterSet.h"
+#include "type_traits/ConvertToReal.h"
 
 namespace qmcplusplus
 {
 void DriftModifierUNR::getDrift(RealType tau, const GradType& qf, PosType& drift) const
 {
   // convert the complex WF gradient to real
-  convert(qf, drift);
+  convertToReal(qf, drift);
 #ifndef NDEBUG
   PosType debug_drift = drift;
 #endif
@@ -34,10 +35,10 @@ void DriftModifierUNR::getDrift(RealType tau, const GradType& qf, PosType& drift
   // Generally we hope that this would only occur as the result of bad input
   // which would hopefully be the result of development time error and
   // therefore caught when run in a Debug build.
-  if( std::isnan(vsq) )
+  if (std::isnan(vsq))
   {
     std::ostringstream error_message;
-    for(int i = 0; i < drift.size(); ++i)
+    for (int i = 0; i < drift.size(); ++i)
     {
       if (std::isnan(drift[i]))
       {
@@ -53,7 +54,7 @@ void DriftModifierUNR::getDrift(RealType tau, const GradType& qf, PosType& drift
 void DriftModifierUNR::getDrift(RealType tau, const ComplexType& qf, ParticleSet::Scalar_t& drift) const
 {
   // convert the complex WF gradient to real
-  convert(qf, drift);
+  convertToReal(qf, drift);
   RealType vsq = drift * drift;
   RealType sc  = vsq < std::numeric_limits<RealType>::epsilon()
       ? tau
@@ -65,7 +66,7 @@ void DriftModifierUNR::getDrift(RealType tau, const ComplexType& qf, ParticleSet
   // Generally we hope that this would only occur as the result of bad input
   // which would hopefully be the result of development time error and
   // therefore caught when run in a Debug build.
-  if( std::isnan(vsq) )
+  if (std::isnan(vsq))
   {
     std::ostringstream error_message;
     if (std::isnan(drift))
@@ -89,10 +90,20 @@ void DriftModifierUNR::getDrifts(RealType tau, const std::vector<GradType>& qf, 
   }
 }
 
+void DriftModifierUNR::getDrifts(RealType tau,
+                                 const std::vector<ComplexType>& qf,
+                                 std::vector<ParticleSet::Scalar_t>& drift) const
+{
+  for (int i = 0; i < qf.size(); ++i)
+  {
+    getDrift(tau, qf[i], drift[i]);
+  }
+}
+
 bool DriftModifierUNR::parseXML(xmlNodePtr cur)
 {
   ParameterSet m_param;
-  m_param.add(a_, "drift_UNR_a", "double");
+  m_param.add(a_, "drift_UNR_a");
   m_param.put(cur);
   app_log() << "  Set drift_modifier UNR parameter a = " << a_ << std::endl;
   return true;

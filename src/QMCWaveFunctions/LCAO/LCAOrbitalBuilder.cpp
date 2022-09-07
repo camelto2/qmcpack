@@ -18,24 +18,22 @@
 #include "LCAOrbitalBuilder.h"
 #include "OhmmsData/AttributeSet.h"
 #include "QMCWaveFunctions/SPOSet.h"
-#include "QMCWaveFunctions/LCAO/NGFunctor.h"
-#include "QMCWaveFunctions/LCAO/MultiQuinticSpline1D.h"
-#include "QMCWaveFunctions/LCAO/SoaCartesianTensor.h"
-#include "QMCWaveFunctions/LCAO/SoaSphericalTensor.h"
-#include "QMCWaveFunctions/LCAO/SoaAtomicBasisSet.h"
-#include "QMCWaveFunctions/LCAO/SoaLocalizedBasisSet.h"
-#include "QMCWaveFunctions/LCAO/LCAOrbitalSet.h"
-//#include "QMCWaveFunctions/LCAO/RadialOrbitalSetBuilder.h"
-#include "QMCWaveFunctions/LCAO/AOBasisBuilder.h"
-#include "QMCWaveFunctions/LCAO/MultiFunctorAdapter.h"
+#include "MultiQuinticSpline1D.h"
+#include "Numerics/SoaCartesianTensor.h"
+#include "Numerics/SoaSphericalTensor.h"
+#include "SoaAtomicBasisSet.h"
+#include "SoaLocalizedBasisSet.h"
+#include "LCAOrbitalSet.h"
+#include "AOBasisBuilder.h"
+#include "MultiFunctorAdapter.h"
 #if !defined(QMC_COMPLEX)
-#include "QMCWaveFunctions/LCAO/LCAOrbitalSetWithCorrection.h"
-#include "QMCWaveFunctions/LCAO/CuspCorrectionConstruction.h"
+#include "LCAOrbitalSetWithCorrection.h"
+#include "CuspCorrectionConstruction.h"
 #endif
 #include "hdf/hdf_archive.h"
 #include "Message/CommOperators.h"
 #include "Utilities/ProgressReportEngine.h"
-#include "config/stdlib/math.hpp"
+#include "CPU/math.hpp"
 
 namespace qmcplusplus
 {
@@ -134,8 +132,8 @@ LCAOrbitalBuilder::LCAOrbitalBuilder(ParticleSet& els, ParticleSet& ions, Commun
   processChildren(cur, [&](const std::string& cname, const xmlNodePtr element) {
     if (cname == "basisset")
     {
-      XMLAttrString basisset_name_input(element, "name");
-      std::string basisset_name(basisset_name_input.empty() ? "LCAOBSet" : basisset_name_input.c_str());
+      std::string basisset_name_input(getXMLAttributeValue(element, "name"));
+      std::string basisset_name(basisset_name_input.empty() ? "LCAOBSet" : basisset_name_input);
       if (basisset_map_.find(basisset_name) != basisset_map_.end())
       {
         std::ostringstream err_msg;
@@ -160,7 +158,6 @@ LCAOrbitalBuilder::LCAOrbitalBuilder(ParticleSet& els, ParticleSet& ions, Commun
 
   if (basisset_map_.size() == 0)
     throw std::runtime_error("No basisset found in the XML input!");
-
 }
 
 LCAOrbitalBuilder::~LCAOrbitalBuilder()
@@ -351,12 +348,12 @@ LCAOrbitalBuilder::BasisSet_t* LCAOrbitalBuilder::createBasisSet(xmlNodePtr cur)
       {
         AOBasisBuilder<ao_type> any(elementType, myComm);
         any.put(cur);
-        ao_type* aoBasis = any.createAOSet(cur);
+        auto aoBasis = any.createAOSet(cur);
         if (aoBasis)
         {
           //add the new atomic basis to the basis set
           int activeCenter = sourcePtcl.getSpeciesSet().findSpecies(elementType);
-          mBasisSet->add(activeCenter, aoBasis);
+          mBasisSet->add(activeCenter, std::move(aoBasis));
         }
         ao_built_centers.push_back(elementType);
       }
@@ -427,12 +424,12 @@ LCAOrbitalBuilder::BasisSet_t* LCAOrbitalBuilder::createBasisSetH5()
     {
       AOBasisBuilder<ao_type> any(elementType, myComm);
       any.putH5(hin);
-      ao_type* aoBasis = any.createAOSetH5(hin);
+      auto aoBasis = any.createAOSetH5(hin);
       if (aoBasis)
       {
         //add the new atomic basis to the basis set
         int activeCenter = sourcePtcl.getSpeciesSet().findSpecies(elementType);
-        mBasisSet->add(activeCenter, aoBasis);
+        mBasisSet->add(activeCenter, std::move(aoBasis));
       }
       ao_built_centers.push_back(elementType);
     }
@@ -452,81 +449,88 @@ LCAOrbitalBuilder::BasisSet_t* LCAOrbitalBuilder::createBasisSetH5()
 }
 
 
-SPOSet* LCAOrbitalBuilder::createSPOSetFromXML(xmlNodePtr cur)
+std::unique_ptr<SPOSet> LCAOrbitalBuilder::createSPOSetFromXML(xmlNodePtr cur)
 {
   ReportEngine PRE(ClassName, "createSPO(xmlNodePtr)");
-  std::string spo_name(""), id, cusp_file(""), optimize("no");
+  std::string spo_name(""), cusp_file(""), optimize("no");
   std::string basisset_name("LCAOBSet");
   OhmmsAttributeSet spoAttrib;
   spoAttrib.add(spo_name, "name");
-  spoAttrib.add(id, "id");
+  spoAttrib.add(spo_name, "id");
   spoAttrib.add(cusp_file, "cuspInfo");
-  spoAttrib.add(optimize, "optimize");
   spoAttrib.add(basisset_name, "basisset");
   spoAttrib.put(cur);
 
-  BasisSet_t* myBasisSet = nullptr;
+  std::unique_ptr<BasisSet_t> myBasisSet;
   if (basisset_map_.find(basisset_name) == basisset_map_.end())
     myComm->barrier_and_abort("basisset \"" + basisset_name + "\" cannot be found\n");
   else
-    myBasisSet = basisset_map_[basisset_name]->makeClone();
+    myBasisSet.reset(basisset_map_[basisset_name]->makeClone());
 
-  if (optimize == "yes")
-    app_log() << "  SPOSet " << spo_name << " is optimizable\n";
-
-  LCAOrbitalSet* lcos = nullptr;
-#if !defined(QMC_COMPLEX)
-  LCAOrbitalSetWithCorrection* lcwc = nullptr;
+  std::unique_ptr<LCAOrbitalSet> lcos;
   if (doCuspCorrection)
   {
+#if defined(QMC_COMPLEX)
+    myComm->barrier_and_abort(
+        "LCAOrbitalBuilder::createSPOSetFromXML cusp correction is not supported on complex LCAO.");
+#else
     app_summary() << "        Using cusp correction." << std::endl;
-    lcos = lcwc =
-        new LCAOrbitalSetWithCorrection(sourcePtcl, targetPtcl, std::unique_ptr<BasisSet_t>(myBasisSet),
-                                        optimize == "yes");
+    lcos = std::make_unique<LCAOrbitalSetWithCorrection>(spo_name, sourcePtcl, targetPtcl, std::move(myBasisSet));
+#endif
   }
   else
-    lcos = new LCAOrbitalSet(std::unique_ptr<BasisSet_t>(myBasisSet), optimize == "yes");
-#else
-  lcos = new LCAOrbitalSet(std::unique_ptr<BasisSet_t>(myBasisSet), optimize == "yes");
-#endif
+    lcos = std::make_unique<LCAOrbitalSet>(spo_name, std::move(myBasisSet));
   loadMO(*lcos, cur);
 
 #if !defined(QMC_COMPLEX)
   if (doCuspCorrection)
   {
-    int num_centers = sourcePtcl.getTotalNum();
+    // Create a temporary particle set to use for cusp initialization.
+    // The particle coordinates left at the end are unsuitable for further computations.
+    // The coordinates get set to nuclear positions, which leads to zero e-N distance,
+    // which causes a NaN in SoaAtomicBasisSet.h
+    // This problem only appears when the electron positions are specified in the input.
+    // The random particle placement step executes after this part of the code, overwriting
+    // the leftover positions from the cusp initialization.
+    ParticleSet tmp_targetPtcl(targetPtcl);
 
-    // Sometimes sposet attribute is 'name' and sometimes it is 'id'
-    if (id == "")
-      id = spo_name;
+    const int num_centers = sourcePtcl.getTotalNum();
+    auto& lcwc            = dynamic_cast<LCAOrbitalSetWithCorrection&>(*lcos);
 
-    int orbital_set_size = lcos->getOrbitalSetSize();
+    const int orbital_set_size = lcos->getOrbitalSetSize();
     Matrix<CuspCorrectionParameters> info(num_centers, orbital_set_size);
 
-    bool valid = false;
-    if (myComm->rank() == 0)
+    // set a default file name if not given
+    if (cusp_file.empty())
+      cusp_file = spo_name + ".cuspInfo.xml";
+
+    bool file_exists(myComm->rank() == 0 && std::ifstream(cusp_file).good());
+    myComm->bcast(file_exists);
+    app_log() << "  Cusp correction file " << cusp_file << (file_exists? " exits.": " doesn't exist.") << std::endl;
+
+    // validate file if it exists
+    if (file_exists)
     {
-      valid = readCuspInfo(cusp_file, id, orbital_set_size, info);
-    }
+      bool valid = 0;
+      if (myComm->rank() == 0)
+        valid = readCuspInfo(cusp_file, spo_name, orbital_set_size, info);
+      myComm->bcast(valid);
+      if (!valid)
+        myComm->barrier_and_abort("Invalid cusp correction file " + cusp_file);
 #ifdef HAVE_MPI
-    myComm->comm.broadcast_value(valid);
-    if (valid)
-    {
       for (int orb_idx = 0; orb_idx < orbital_set_size; orb_idx++)
-      {
         for (int center_idx = 0; center_idx < num_centers; center_idx++)
-        {
           broadcastCuspInfo(info(center_idx, orb_idx), *myComm, 0);
-        }
-      }
-    }
 #endif
-    if (!valid)
+    }
+    else
     {
-      generateCuspInfo(orbital_set_size, num_centers, info, targetPtcl, sourcePtcl, *lcwc, id, *myComm);
+      generateCuspInfo(info, tmp_targetPtcl, sourcePtcl, lcwc, spo_name, *myComm);
+      if (myComm->rank() == 0)
+        saveCusp(cusp_file, info, spo_name);
     }
 
-    applyCuspCorrection(info, num_centers, orbital_set_size, targetPtcl, sourcePtcl, *lcwc, id);
+    applyCuspCorrection(info, tmp_targetPtcl, sourcePtcl, lcwc, spo_name);
   }
 #endif
 
@@ -663,7 +667,6 @@ bool LCAOrbitalBuilder::putFromXML(LCAOrbitalSet& spo, xmlNodePtr coeff_ptr)
    */
 bool LCAOrbitalBuilder::putFromH5(LCAOrbitalSet& spo, xmlNodePtr coeff_ptr)
 {
-#if defined(HAVE_LIBHDF5)
   int neigs  = spo.getBasisSetSize();
   int setVal = -1;
   std::string setname;
@@ -725,9 +728,6 @@ bool LCAOrbitalBuilder::putFromH5(LCAOrbitalSet& spo, xmlNodePtr coeff_ptr)
     }
   }
   myComm->bcast(spo.C->data(), spo.C->size());
-#else
-  APP_ABORT("LCAOrbitalBuilder::putFromH5 HDF5 is disabled.")
-#endif
   return true;
 }
 
@@ -738,7 +738,6 @@ bool LCAOrbitalBuilder::putFromH5(LCAOrbitalSet& spo, xmlNodePtr coeff_ptr)
    */
 bool LCAOrbitalBuilder::putPBCFromH5(LCAOrbitalSet& spo, xmlNodePtr coeff_ptr)
 {
-#if defined(HAVE_LIBHDF5)
   ReportEngine PRE("LCAOrbitalBuilder", "LCAOrbitalBuilder::putPBCFromH5");
   int norbs      = spo.getOrbitalSetSize();
   int neigs      = spo.getBasisSetSize();
@@ -824,10 +823,6 @@ bool LCAOrbitalBuilder::putPBCFromH5(LCAOrbitalSet& spo, xmlNodePtr coeff_ptr)
 #ifdef HAVE_MPI
   myComm->comm.broadcast_n(spo.C->data(), spo.C->size());
 #endif
-
-#else
-  APP_ABORT("LCAOrbitalBuilder::putFromH5 HDF5 is disabled.")
-#endif
   return true;
 }
 
@@ -852,7 +847,7 @@ bool LCAOrbitalBuilder::putOccupation(LCAOrbitalSet& spo, xmlNodePtr occ_ptr)
   }
   else
   {
-    const XMLAttrString o(occ_ptr, "mode");
+    const std::string o(getXMLAttributeValue(occ_ptr, "mode"));
     if (!o.empty())
       occ_mode = o;
   }
@@ -948,7 +943,12 @@ void LCAOrbitalBuilder::LoadFullCoefsFromH5(hdf_archive& hin,
   }
 
   char name[72];
-  sprintf(name, "%s%d", "/Super_Twist/eigenset_", setVal);
+  bool PBC = false;
+  hin.read(PBC, "/PBC/PBC");
+  if (MultiDet && PBC)
+    sprintf(name, "%s%d", "/Super_Twist/eigenset_unsorted_", setVal);
+  else
+    sprintf(name, "%s%d", "/Super_Twist/eigenset_", setVal);
   readRealMatrixFromH5(hin, name, Creal);
 }
 

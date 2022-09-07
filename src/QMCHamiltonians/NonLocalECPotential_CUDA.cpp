@@ -28,8 +28,9 @@ NonLocalECPotential_CUDA::NonLocalECPotential_CUDA(ParticleSet& ions,
                                                    ParticleSet& els,
                                                    TrialWaveFunction& psi,
                                                    bool usePBC,
-                                                   bool doForces)
-    : NonLocalECPotential(ions, els, psi, doForces, false),
+                                                   bool doForces,
+                                                   bool enable_DLA)
+    : NonLocalECPotential(ions, els, psi, doForces, enable_DLA),
       UsePBC(usePBC),
       Ions_GPU("NonLocalECPotential_CUDA::Ions_GPU"),
       L("NonLocalECPotential_CUDA::L"),
@@ -48,12 +49,17 @@ NonLocalECPotential_CUDA::NonLocalECPotential_CUDA(ParticleSet& ions,
 }
 
 
-OperatorBase* NonLocalECPotential_CUDA::makeClone(ParticleSet& qp, TrialWaveFunction& psi)
+std::unique_ptr<OperatorBase> NonLocalECPotential_CUDA::makeClone(ParticleSet& qp, TrialWaveFunction& psi)
 {
-  NonLocalECPotential_CUDA* myclone = new NonLocalECPotential_CUDA(IonConfig, qp, psi, UsePBC);
+  std::unique_ptr<NonLocalECPotential_CUDA> myclone =
+      std::make_unique<NonLocalECPotential_CUDA>(IonConfig, qp, psi, UsePBC, ComputeForces, use_DLA);
   for (int ig = 0; ig < PPset.size(); ++ig)
+  {
     if (PPset[ig])
+    {
       myclone->addComponent(ig, std::unique_ptr<NonLocalECPComponent>(PPset[ig]->makeClone(qp)));
+    }
+  }
   return myclone;
 }
 
@@ -68,8 +74,8 @@ void NonLocalECPotential_CUDA::setupCUDA(ParticleSet& elecs)
     for (int i = 0; i < OHMMS_DIM; i++)
       for (int j = 0; j < OHMMS_DIM; j++)
       {
-        LHost[OHMMS_DIM * i + j]    = (CUDA_PRECISION)elecs.Lattice.a(j)[i];
-        LinvHost[OHMMS_DIM * i + j] = (CUDA_PRECISION)elecs.Lattice.b(i)[j];
+        LHost[OHMMS_DIM * i + j]    = (CUDA_PRECISION)elecs.getLattice().a(j)[i];
+        LinvHost[OHMMS_DIM * i + j] = (CUDA_PRECISION)elecs.getLattice().b(i)[j];
       }
     L    = LHost;
     Linv = LinvHost;
@@ -148,10 +154,12 @@ void NonLocalECPotential_CUDA::resizeCUDA(int nw)
 
 void NonLocalECPotential_CUDA::addEnergy(MCWalkerConfiguration& W, std::vector<RealType>& LocalEnergy)
 {
-  std::vector<Walker_t*>& walkers = W.WalkerList;
-  int nw                          = walkers.size();
+  auto& walkers = W.WalkerList;
+  int nw        = walkers.size();
   if (CurrentNumWalkers < nw)
     resizeCUDA(nw);
+  std::vector<RealType> vrad;
+  std::vector<RealType> lpol;
   // Loop over the ionic species
   std::vector<RealType> esum(walkers.size(), 0.0);
   for (int sp = 0; sp < NumIonGroups; sp++)
@@ -272,9 +280,12 @@ void NonLocalECPotential_CUDA::addEnergy(MCWalkerConfiguration& W, std::vector<R
       }
 #endif
       RatioList.resize(QuadPosList.size());
-      RealType vrad[pp.nchannel];
-      RealType lpol[pp.lmax + 1];
-      Psi.NLratios(W, JobList, QuadPosList, RatioList);
+      vrad.resize(pp.nchannel);
+      lpol.resize(pp.lmax + 1);
+      if (use_DLA)
+        Psi.NLratios(W, JobList, QuadPosList, RatioList, TrialWaveFunction::ComputeType::FERMIONIC);
+      else
+        Psi.NLratios(W, JobList, QuadPosList, RatioList);
       int ratioIndex = 0;
       for (int iw = 0; iw < nw; iw++)
       {
@@ -318,7 +329,7 @@ void NonLocalECPotential_CUDA::addEnergy(MCWalkerConfiguration& W, std::vector<R
   {
     // if (std::isnan(esum[iw]))
     // 	app_log() << "NAN in esum.\n";
-    walkers[iw]->getPropertyBase()[WP::NUMPROPERTIES + myIndex] = esum[iw];
+    walkers[iw]->getPropertyBase()[WP::NUMPROPERTIES + my_index_] = esum[iw];
     LocalEnergy[iw] += esum[iw];
   }
 }
@@ -328,10 +339,12 @@ void NonLocalECPotential_CUDA::addEnergy(MCWalkerConfiguration& W,
                                          std::vector<RealType>& LocalEnergy,
                                          std::vector<std::vector<NonLocalData>>& Txy)
 {
-  std::vector<Walker_t*>& walkers = W.WalkerList;
-  int nw                          = walkers.size();
+  auto& walkers = W.WalkerList;
+  int nw        = walkers.size();
   if (CurrentNumWalkers < nw)
     resizeCUDA(nw);
+  std::vector<RealType> vrad;
+  std::vector<RealType> lpol;
   // Loop over the ionic species
   std::vector<RealType> esum(walkers.size(), 0.0);
   for (int sp = 0; sp < NumIonGroups; sp++)
@@ -386,9 +399,12 @@ void NonLocalECPotential_CUDA::addEnergy(MCWalkerConfiguration& W,
         }
       }
       RatioList.resize(QuadPosList.size());
-      RealType vrad[pp.nchannel];
-      RealType lpol[pp.lmax + 1];
-      Psi.NLratios(W, JobList, QuadPosList, RatioList);
+      vrad.resize(pp.nchannel);
+      lpol.resize(pp.lmax + 1);
+      if (use_DLA)
+        Psi.NLratios(W, JobList, QuadPosList, RatioList, TrialWaveFunction::ComputeType::FERMIONIC);
+      else
+        Psi.NLratios(W, JobList, QuadPosList, RatioList);
       int ratioIndex = 0;
       for (int iw = 0; iw < nw; iw++)
       {
@@ -429,7 +445,7 @@ void NonLocalECPotential_CUDA::addEnergy(MCWalkerConfiguration& W,
     }
   for (int iw = 0; iw < walkers.size(); iw++)
   {
-    walkers[iw]->getPropertyBase()[WP::NUMPROPERTIES + myIndex] = esum[iw];
+    walkers[iw]->getPropertyBase()[WP::NUMPROPERTIES + my_index_] = esum[iw];
     LocalEnergy[iw] += esum[iw];
   }
 }

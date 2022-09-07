@@ -24,19 +24,15 @@ TEST_CASE("QMCHamiltonian::flex_evaluate", "[hamiltonian]")
   Communicate* comm;
   comm = OHMMS::Controller;
 
-  MinimalParticlePool mpp;
-  ParticleSetPool particle_pool = mpp(comm);
-  MinimalWaveFunctionPool wfp;
-  WaveFunctionPool wavefunction_pool = wfp(comm, particle_pool);
-  wavefunction_pool.setPrimary(wavefunction_pool.getWaveFunction("psi0"));
-  MinimalHamiltonianPool mhp;
-  HamiltonianPool hamiltonian_pool = mhp(comm, particle_pool, wavefunction_pool);
+  auto particle_pool     = MinimalParticlePool::make_diamondC_1x1x1(comm);
+  auto wavefunction_pool = MinimalWaveFunctionPool::make_diamondC_1x1x1(comm, particle_pool);
+  auto hamiltonian_pool  = MinimalHamiltonianPool::make_hamWithEE(comm, particle_pool, wavefunction_pool);
 
   TrialWaveFunction twf;
 
   std::vector<QMCHamiltonian> hamiltonians;
-  hamiltonians.emplace_back(*(hamiltonian_pool.getPrimary()));
-  hamiltonians.emplace_back(*(hamiltonian_pool.getPrimary()));
+  //hamiltonians.emplace_back(*(hamiltonian_pool.getPrimary()));
+  //hamiltonians.emplace_back(*(hamiltonian_pool.getPrimary()));
 
   std::vector<ParticleSet> elecs;
   elecs.emplace_back(*(particle_pool.getParticleSet("e")));

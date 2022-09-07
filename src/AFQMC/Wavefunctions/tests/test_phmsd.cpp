@@ -16,7 +16,7 @@
 #include "Configuration.h"
 
 #include "OhmmsData/Libxml2Doc.h"
-#include "OhmmsApp/ProjectData.h"
+#include "ProjectData.h"
 #include "hdf/hdf_archive.h"
 #include "Utilities/RandomGenerator.h"
 #include "Utilities/Timer.h"
@@ -68,12 +68,7 @@ void test_read_phmsd(boost::mpi3::communicator& world)
 {
   using pointer = device_ptr<ComplexType>;
 
-  if (not file_exists(UTEST_WFN))
-  {
-    app_log() << " Skipping read_phmsd. Wavefunction file not found. \n";
-    app_log() << " Run unit test with --wfn /path/to/wfn.dat.\n";
-  }
-  else
+  if (check_hamil_wfn_for_utest("test_read_phmsd", UTEST_WFN, UTEST_HAMIL))
   {
     // Global Task Group
     GlobalTaskGroup gTG(world);
@@ -191,12 +186,7 @@ void test_phmsd(boost::mpi3::communicator& world)
 {
   using pointer = device_ptr<ComplexType>;
 
-  if (not file_exists(UTEST_WFN) || not file_exists(UTEST_HAMIL))
-  {
-    app_log() << " Skipping read_phmsd. Wavefunction and/or Hamiltonian file not found. \n";
-    app_log() << " Run unit test with --wfn /path/to/wfn.h5 and --hamil /path/to/hamil.h5.\n";
-  }
-  else
+  if (check_hamil_wfn_for_utest("read_phmsd", UTEST_WFN, UTEST_HAMIL))
   {
     // Global Task Group
     GlobalTaskGroup gTG(world);
@@ -254,7 +244,7 @@ void test_phmsd(boost::mpi3::communicator& world)
     Libxml2Document doc3;
     okay = doc3.parseFromString(wlk_xml_block);
     REQUIRE(okay);
-    RandomGenerator_t rng;
+    RandomGenerator rng;
     WalkerSet wset(TG, doc3.getRoot(), InfoMap["info0"], &rng);
     auto initial_guess = WfnFac.getInitialGuess(wfn_name);
     REQUIRE(initial_guess.size(0) == 2);

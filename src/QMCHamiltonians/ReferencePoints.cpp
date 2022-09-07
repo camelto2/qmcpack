@@ -28,7 +28,7 @@ bool ReferencePoints::put(xmlNodePtr cur, ParticleSet& P, std::vector<ParticleSe
   ra.put(cur);
   for (int i = 0; i < DIM; i++)
     for (int d = 0; d < DIM; d++)
-      axes(d, i) = P.Lattice.a(i)[d];
+      axes(d, i) = P.getLattice().a(i)[d];
   Tensor_t crd;
   if (coord == "cell")
   {
@@ -82,11 +82,11 @@ bool ReferencePoints::put(xmlNodePtr cur, ParticleSet& P, std::vector<ParticleSe
 bool ReferencePoints::put(ParticleSet& P, std::vector<ParticleSet*>& Psets)
 {
   //get axes and origin information from the ParticleSet
-  points["zero"] = 0 * P.Lattice.a(0);
-  points["a1"]   = P.Lattice.a(0);
-  points["a2"]   = P.Lattice.a(1);
-  points["a3"]   = P.Lattice.a(2);
-  //points["center"]= .5*(P.Lattice.a(0)+P.Lattice.a(1)+P.Lattice.a(2))
+  points["zero"] = 0 * P.getLattice().a(0);
+  points["a1"]   = P.getLattice().a(0);
+  points["a2"]   = P.getLattice().a(1);
+  points["a3"]   = P.getLattice().a(2);
+  //points["center"]= .5*(P.getLattice().a(0)+P.getLattice().a(1)+P.Lattice.a(2))
   //set points on face centers
   points["f1p"] = points["zero"] + .5 * points["a1"];
   points["f1m"] = points["zero"] - .5 * points["a1"];
@@ -131,16 +131,16 @@ void ReferencePoints::write_description(std::ostream& os, std::string& indent)
   return;
 }
 
-void ReferencePoints::save(std::vector<observable_helper*>& h5desc, hid_t gid) const
+void ReferencePoints::save(std::vector<ObservableHelper>& h5desc, hid_t gid) const
 {
-  observable_helper* oh = new observable_helper("reference_points");
-  oh->open(gid);
+  h5desc.emplace_back("reference_points");
+  auto& oh = h5desc.back();
+  oh.open(gid);
   std::map<std::string, Point>::const_iterator it;
   for (it = points.begin(); it != points.end(); ++it)
   {
-    oh->addProperty(const_cast<Point&>(it->second), it->first);
+    oh.addProperty(const_cast<Point&>(it->second), it->first);
   }
-  h5desc.push_back(oh);
   return;
 }
 

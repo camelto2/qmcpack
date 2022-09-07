@@ -23,12 +23,12 @@
 
 #include "OhmmsPETE/OhmmsMatrix.h"
 #include "MinimalContainers/ConstantSizeMatrix.hpp"
-#include "Utilities/PooledData.h"
-#include "Utilities/PooledMemory.h"
+#include "Pools/PooledData.h"
+#include "Pools/PooledMemory.h"
 #include "QMCDrivers/WalkerProperties.h"
 #ifdef QMC_CUDA
 #include "type_traits/CUDATypes.h"
-#include "Utilities/PointerPool.h"
+#include "Pools/PointerPool.h"
 #include "CUDA_legacy/gpu_vector.h"
 #endif
 #include <assert.h>
@@ -61,26 +61,26 @@ public:
     DIM = t_traits::DIM
   };
   /** typedef for real data type */
-  typedef typename t_traits::RealType RealType;
+  using RealType = typename t_traits::RealType;
   /** typedef for estimator real data type */
-  typedef typename t_traits::FullPrecRealType FullPrecRealType;
+  using FullPrecRealType = typename t_traits::FullPrecRealType;
   /** typedef for value data type. */
-  typedef typename t_traits::ValueType ValueType;
+  using ValueType = typename t_traits::ValueType;
 #ifdef QMC_CUDA
   using CTS = CUDAGlobalTypes;
   /** array of laplacians */
-  typedef typename CTS::ValueType CudaLapType;
+  using CudaLapType = typename CTS::ValueType;
 #endif
   /** array of particles */
-  typedef typename p_traits::ParticlePos_t ParticlePos_t;
+  using ParticlePos = typename p_traits::ParticlePos;
   /** array of scalars */
-  typedef typename p_traits::ParticleScalar_t ParticleScalar_t;
+  using ParticleScalar = typename p_traits::ParticleScalar;
   /** array of gradients */
-  typedef typename p_traits::ParticleGradient_t ParticleGradient_t;
+  using ParticleGradient = typename p_traits::ParticleGradient;
   /** array of laplacians */
-  typedef typename p_traits::ParticleLaplacian_t ParticleLaplacian_t;
+  using ParticleLaplacian = typename p_traits::ParticleLaplacian;
   /** typedef for value data type. */
-  typedef typename p_traits::SingleParticleValue_t SingleParticleValue_t;
+  using SingleParticleValue = typename p_traits::SingleParticleValue;
 
   ///typedef for the property container, fixed size
   using PropertyContainer_t = ConstantSizeMatrix<FullPrecRealType, std::allocator<FullPrecRealType>>;
@@ -88,8 +88,8 @@ public:
   /** @{
    * Not really "buffers", "walker message" also used to serialize walker, rename
    */
-  typedef PooledMemory<FullPrecRealType> WFBuffer_t;
-  typedef PooledData<RealType> Buffer_t;
+  using WFBuffer_t = PooledMemory<FullPrecRealType>;
+  using Buffer_t   = PooledData<RealType>;
   /** }@ */
 
   ///id reserved for forward walking
@@ -113,18 +113,20 @@ public:
   FullPrecRealType Multiplicity;
   /// mark true if this walker is being sent.
   bool SendInProgress;
+  /// if true, this walker is either copied or tranferred from another MPI rank.
+  bool wasTouched = true;
 
   /** The configuration vector (3N-dimensional vector to store
      the positions of all the particles for a single walker)*/
-  ParticlePos_t R;
+  ParticlePos R;
 
   //Dynamical spin variable.
-  ParticleScalar_t spins;
+  ParticleScalar spins;
 #if !defined(SOA_MEMORY_OPTIMIZED)
   /** \f$ \nabla_i d\log \Psi for the i-th particle */
-  ParticleGradient_t G;
+  ParticleGradient G;
   /** \f$ \nabla^2_i d\log \Psi for the i-th particle */
-  ParticleLaplacian_t L;
+  ParticleLaplacian L;
 #endif
   ///scalar properties of a walker
   PropertyContainer_t Properties;
@@ -152,8 +154,8 @@ public:
 
   /// Data for GPU-vectorized versions
 #ifdef QMC_CUDA
-  static int cuda_DataSize;
-  typedef gpu::device_vector<CTS::ValueType> cuda_Buffer_t;
+  static inline int cuda_DataSize = 0;
+  using cuda_Buffer_t = gpu::device_vector<CTS::ValueType>;
   cuda_Buffer_t cuda_DataSet;
   // Note that R_GPU has size N+1.  The last element contains the
   // proposed position for single-particle moves.
@@ -206,6 +208,14 @@ public:
     //static_cast<Matrix<FullPrecRealType>>(Properties) = 0.0;
   }
 
+#if defined(QMC_CUDA)
+  //some member variables in CUDA build cannot be and should not be copied
+  //use default copy constructor to skip actual data copy
+  Walker(const Walker& a) = default;
+#else
+  Walker(const Walker& a) : Properties(1, WP::NUMPROPERTIES, 1, WP::MAXPROPERTIES) { makeCopy(a); }
+#endif
+
   inline int addPropertyHistory(int leng)
   {
     int newL                            = PropertyHistory.size();
@@ -251,8 +261,6 @@ public:
     }
     return mean;
   }
-
-  inline ~Walker() {}
 
   ///assignment operator
   inline Walker& operator=(const Walker& a)
@@ -303,7 +311,9 @@ public:
 #endif
     //Drift = a.Drift;
     Properties.copy(a.Properties);
-    DataSet = a.DataSet;
+    DataSet    = a.DataSet;
+    block_end  = a.block_end;
+    scalar_end = a.scalar_end;
     if (PropertyHistory.size() != a.PropertyHistory.size())
       PropertyHistory.resize(a.PropertyHistory.size());
     for (int i = 0; i < PropertyHistory.size(); i++)
@@ -436,10 +446,14 @@ public:
     DataSet.add(ReleasedNodeAge);
     DataSet.add(ReleasedNodeWeight);
     // vectors
+    assert(R.size() != 0);
     DataSet.add(R.first_address(), R.last_address());
+    assert(spins.size() != 0);
     DataSet.add(spins.first_address(), spins.last_address());
 #if !defined(SOA_MEMORY_OPTIMIZED)
+    assert(G.size() != 0);
     DataSet.add(G.first_address(), G.last_address());
+    assert(L.size() != 0);
     DataSet.add(L.first_address(), L.last_address());
 #endif
     //Don't add the nLocal but the actual allocated size.  We want to register once for the life of a
@@ -469,13 +483,18 @@ public:
 
   void copyFromBuffer()
   {
+    assert(DataSet.size() != 0);
     DataSet.rewind();
     DataSet >> ID >> ParentID >> Generation >> Age >> ReleasedNodeAge >> ReleasedNodeWeight;
     // vectors
+    assert(R.size() != 0);
     DataSet.get(R.first_address(), R.last_address());
+    assert(spins.size() != 0);
     DataSet.get(spins.first_address(), spins.last_address());
 #if !defined(SOA_MEMORY_OPTIMIZED)
+    assert(G.size() != 0);
     DataSet.get(G.first_address(), G.last_address());
+    assert(L.size() != 0);
     DataSet.get(L.first_address(), L.last_address());
 #endif
     DataSet.get(Properties.data(), Properties.data() + Properties.capacity());

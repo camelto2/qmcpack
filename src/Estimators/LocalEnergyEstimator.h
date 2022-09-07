@@ -2,11 +2,12 @@
 // This file is distributed under the University of Illinois/NCSA Open Source License.
 // See LICENSE file in top directory for details.
 //
-// Copyright (c) 2016 Jeongnim Kim and QMCPACK developers.
+// Copyright (c) 2022 QMCPACK developers.
 //
 // File developed by: Jeongnim Kim, jeongnim.kim@gmail.com, University of Illinois at Urbana-Champaign
 //                    Jeremy McMinnis, jmcminis@gmail.com, University of Illinois at Urbana-Champaign
 //                    Mark A. Berrill, berrillma@ornl.gov, Oak Ridge National Laboratory
+//                    Peter Doak, doakpw@ornl.gov,  Oak Ridge National Laboratory
 //
 // File created by: Jeongnim Kim, jeongnim.kim@gmail.com, University of Illinois at Urbana-Champaign
 //////////////////////////////////////////////////////////////////////////////////////
@@ -17,7 +18,8 @@
 #include "Estimators/ScalarEstimatorBase.h"
 #include "QMCHamiltonians/QMCHamiltonian.h"
 #include "QMCDrivers/WalkerProperties.h"
-#include "QMCHamiltonians/observable_helper.h"
+#include "QMCHamiltonians/ObservableHelper.h"
+#include "ScalarEstimatorInputs.h"
 
 namespace qmcplusplus
 {
@@ -40,16 +42,22 @@ class LocalEnergyEstimator : public ScalarEstimatorBase
   int SizeOfHamiltonians;
   bool UseHDF5;
   const QMCHamiltonian& refH;
+  const LocalEnergyInput input_;
 
 public:
   /** constructor
-   * @param h QMCHamiltonian to define the components
+   *  @param[in] h            QMCHamiltonian to define the components
+   *  @param[in] use_hdf5     record local energy values in hdf5?
    */
-  LocalEnergyEstimator(QMCHamiltonian& h, bool use_hdf5);
-
+  LocalEnergyEstimator(const QMCHamiltonian& h, bool use_hdf5);
+  /** Construct from LocalEnergyInput and const reference to hamiltonian.
+   *  @param[in] input     contains input parameters for LocalEnergyEstimator
+   *  @param[in] ham       is taken as a local reference and used to size scalars data
+   */
+  LocalEnergyEstimator(LocalEnergyInput&& input, const QMCHamiltonian& ham);
   /** accumulation per walker
-   * @param awalker current walker
-   * @param wgt weight
+   *  @param awalker current walker
+   *  @param wgt weight
    *
    * Weight of observables should take into account the walkers weight. For Pure DMC. In branching DMC set weights to 1.
    */
@@ -65,22 +73,28 @@ public:
   }
 
   /*@{*/
-  inline void accumulate(const MCWalkerConfiguration& W, WalkerIterator first, WalkerIterator last, RealType wgt)
+  inline void accumulate(const MCWalkerConfiguration& W,
+                         WalkerIterator first,
+                         WalkerIterator last,
+                         RealType wgt) override
   {
     for (; first != last; ++first)
       accumulate(**first, wgt);
   }
-  void add2Record(RecordListType& record);
-  void registerObservables(std::vector<observable_helper*>& h5desc, hid_t gid);
-  ScalarEstimatorBase* clone();
+  void add2Record(RecordListType& record) override;
+  void registerObservables(std::vector<ObservableHelper>& h5desc, hid_t gid) override;
+  LocalEnergyEstimator* clone() override;
   /*@}*/
 
-  inline void accumulate(const int global_walkers, RefVector<MCPWalker>& walkers, RealType wgt)
+  inline void accumulate(const RefVector<MCPWalker>& walkers) override
   {
-    for (MCPWalker& walker: walkers)
-      accumulate(walker, wgt);
+    for (MCPWalker& walker : walkers)
+      accumulate(walker, 1.0);
   }
 
+  /// LocalEnergyEstimator is the main estimator for VMC and DMC
+  bool isMainEstimator() const override { return true; }
+  const std::string& getSubTypeStr() const override { return input_.get_type(); }
 };
 } // namespace qmcplusplus
 #endif

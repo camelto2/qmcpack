@@ -73,15 +73,18 @@ void getStatsWithResampling(const std::vector<RealType>& vals,
                             int start,
                             int NumSamples)
 {
-  RandomGenerator_t rng;
+  RandomGenerator rng;
   std::vector<RealType> avgs;
   for (int is = 0; is < NumSamples; is++)
   {
     std::vector<RealType> newVals;
     for (int i = start; i < vals.size(); i++)
     {
-      FullPrecRealType chi;
-      rng.generate_normal(&chi, 1);
+      FullPrecRealType u1, u2;
+      //rng.generate_normal(&chi, 1);
+      u1 = rng();
+      u2 = rng();
+      FullPrecRealType chi = std::sqrt(-2.0 * std::log(u1)) * std::cos(2 * M_PI * u2);
       newVals.push_back(vals[i] + chi * errs[i]);
     }
     RealType tmp1, tmp2;

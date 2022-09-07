@@ -2,18 +2,19 @@
 // This file is distributed under the University of Illinois/NCSA Open Source License.
 // See LICENSE file in top directory for details.
 //
-// Copyright (c) 2016 Jeongnim Kim and QMCPACK developers.
+// Copyright (c) 2022 QMCPACK developers.
 //
 // File developed by: Jeremy McMinnis, jmcminis@gmail.com, University of Illinois at Urbana-Champaign
 //                    Jeongnim Kim, jeongnim.kim@gmail.com, University of Illinois at Urbana-Champaign
 //                    Jaron T. Krogel, krogeljt@ornl.gov, Oak Ridge National Laboratory
 //                    Mark A. Berrill, berrillma@ornl.gov, Oak Ridge National Laboratory
+//                    Peter W. Doak, doakpw@ornl.gov, Oak Ridge National Laboratory
 //
 // File created by: Jeongnim Kim, jeongnim.kim@gmail.com, University of Illinois at Urbana-Champaign
 //////////////////////////////////////////////////////////////////////////////////////
 
 
-/**@file OperatorBase.cpp
+/**@file
  *@brief Definition of OperatorBase
  */
 #include "Message/Communicate.h"
@@ -22,34 +23,71 @@
 
 namespace qmcplusplus
 {
-OperatorBase::OperatorBase() : myIndex(-1), Dependants(0), Value(0.0), tWalker(0)
-{
-  quantum_domain = no_quantum_domain;
-  energy_domain  = no_energy_domain;
+// PUBLIC
 
+OperatorBase::OperatorBase()
+    : value_(0.0),
+      my_index_(-1),
+      t_walker_(0),
 #if !defined(REMOVE_TRACEMANAGER)
-  streaming_scalars    = false;
-  streaming_particles  = false;
-  have_required_traces = false;
+      streaming_particles_(false),
+      have_required_traces_(false),
+      streaming_scalars_(false),
 #endif
-  UpdateMode.set(PRIMARY, 1);
+      quantum_domain_(NO_QUANTUM_DOMAIN),
+      energy_domain_(NO_ENERGY_DOMAIN)
+{
+  update_mode_.set(PRIMARY, 1);
 }
 
-/** The correct behavior of this routine requires estimators with non-deterministic components
- * in their evaluate() function to override this function.
- */
-OperatorBase::Return_t OperatorBase::evaluateDeterministic(ParticleSet& P) { return evaluate(P); }
-/** Take o_list and p_list update evaluation result variables in o_list?
- *
- * really should reduce vector of local_energies. matching the ordering and size of o list
- * the this can be call for 1 or more QMCHamiltonians
- */
-void OperatorBase::mw_evaluate(const RefVector<OperatorBase>& O_list, const RefVector<ParticleSet>& P_list)
+std::bitset<8>& OperatorBase::getUpdateMode() noexcept { return update_mode_; }
+
+OperatorBase::Return_t OperatorBase::getValue() const noexcept { return value_; }
+
+std::string OperatorBase::getName() const noexcept { return name_; }
+
+void OperatorBase::setName(const std::string name) noexcept { name_ = name; }
+
+#if !defined(REMOVE_TRACEMANAGER)
+TraceRequest& OperatorBase::getRequest() noexcept { return request_; }
+#endif
+
+////////  FUNCTIONS ////////////////
+void OperatorBase::addObservables(PropertySetType& plist, BufferType& collectables) { addValue(plist); }
+
+void OperatorBase::registerObservables(std::vector<ObservableHelper>& h5desc, hid_t gid) const
 {
+  const bool collect = update_mode_.test(COLLECTABLE);
+  //exclude collectables
+  if (!collect)
+  {
+    h5desc.emplace_back(name_);
+    auto& oh = h5desc.back();
+    std::vector<int> onedim(1, 1);
+    oh.set_dimensions(onedim, my_index_);
+    oh.open(gid);
+  }
+}
+
+void OperatorBase::registerCollectables(std::vector<ObservableHelper>& h5desc, hid_t gid) const {}
+
+void OperatorBase::setObservables(PropertySetType& plist) { plist[my_index_] = value_; }
+
+void OperatorBase::setParticlePropertyList(PropertySetType& plist, int offset) { plist[my_index_ + offset] = value_; }
+
+void OperatorBase::setHistories(Walker_t& ThisWalker) { t_walker_ = &(ThisWalker); }
+
+OperatorBase::Return_t OperatorBase::evaluateDeterministic(ParticleSet& P) { return evaluate(P); }
+
+void OperatorBase::mw_evaluate(const RefVectorWithLeader<OperatorBase>& o_list,
+                               const RefVectorWithLeader<TrialWaveFunction>& wf_list,
+                               const RefVectorWithLeader<ParticleSet>& p_list) const
+{
+  assert(this == &o_list.getLeader());
 /**  Temporary raw omp pragma for simple thread parallelism
    *   ignoring the driver level concurrency
    *   
-   *  \todo replace this with a proper abstraction. It should adequately describe the behavior
+   *  TODO: replace this with a proper abstraction. It should adequately describe the behavior
    *  and strictly limit the activation of this level concurrency to when it is intended.
    *  It is unlikely to belong in this function.
    *  
@@ -71,115 +109,273 @@ void OperatorBase::mw_evaluate(const RefVector<OperatorBase>& O_list, const RefV
    *  set of anything involved in an Operator.evaluate.
    */
 #pragma omp parallel for
-  for (int iw = 0; iw < O_list.size(); iw++)
-    O_list[iw].get().evaluate(P_list[iw]);
+  for (int iw = 0; iw < o_list.size(); iw++)
+    o_list[iw].evaluate(p_list[iw]);
 }
 
-void OperatorBase::mw_evaluateWithParameterDerivatives(const RefVector<OperatorBase>& O_list,
-                                                       const RefVector<ParticleSet>& P_list,
-                                                       const opt_variables_type& optvars,
-                                                       RecordArray<ValueType>& dlogpsi,
-                                                       RecordArray<ValueType>& dhpsioverpsi)
+void OperatorBase::mw_evaluatePerParticle(const RefVectorWithLeader<OperatorBase>& o_list,
+                                          const RefVectorWithLeader<TrialWaveFunction>& wf_list,
+                                          const RefVectorWithLeader<ParticleSet>& p_list,
+                                          const std::vector<ListenerVector<RealType>>& listeners,
+                                          const std::vector<ListenerVector<RealType>>& listeners_ions) const
 {
-  int nparam = dlogpsi.nparam();
-  std::vector<ValueType> tmp_dlogpsi(nparam);
-  std::vector<ValueType> tmp_dhpsioverpsi(nparam);
-  for (int iw = 0; iw < O_list.size(); iw++)
+  mw_evaluate(o_list, wf_list, p_list);
+}
+
+
+void OperatorBase::mw_evaluateWithParameterDerivatives(const RefVectorWithLeader<OperatorBase>& o_list,
+                                                       const RefVectorWithLeader<ParticleSet>& p_list,
+                                                       const opt_variables_type& optvars,
+                                                       const RecordArray<ValueType>& dlogpsi,
+                                                       RecordArray<ValueType>& dhpsioverpsi) const
+{
+  const int nparam = dlogpsi.getNumOfParams();
+  for (int iw = 0; iw < o_list.size(); iw++)
   {
-    for (int j = 0; j < nparam; j++)
-    {
-      tmp_dlogpsi[j] = dlogpsi.getValue(j, iw);
-    }
+    const Vector<ValueType> dlogpsi_record_view(const_cast<ValueType*>(dlogpsi[iw]), nparam);
+    Vector<ValueType> dhpsioverpsi_record_view(dhpsioverpsi[iw], nparam);
 
-    O_list[iw].get().evaluateValueAndDerivatives(P_list[iw], optvars, tmp_dlogpsi, tmp_dhpsioverpsi);
-
-    for (int j = 0; j < nparam; j++)
-    {
-      dhpsioverpsi.setValue(j, iw, dhpsioverpsi.getValue(j, iw) + tmp_dhpsioverpsi[j]);
-    }
+    o_list[iw].evaluateValueAndDerivatives(p_list[iw], optvars, dlogpsi_record_view, dhpsioverpsi_record_view);
   }
 }
 
+OperatorBase::Return_t OperatorBase::rejectedMove(ParticleSet& P) { return 0; }
 
-void OperatorBase::set_energy_domain(energy_domains edomain)
+OperatorBase::Return_t OperatorBase::evaluateWithToperator(ParticleSet& P) { return evaluate(P); }
+
+void OperatorBase::mw_evaluateWithToperator(const RefVectorWithLeader<OperatorBase>& o_list,
+                                            const RefVectorWithLeader<TrialWaveFunction>& wf_list,
+                                            const RefVectorWithLeader<ParticleSet>& p_list) const
 {
-  if (energy_domain_valid(edomain))
-    energy_domain = edomain;
-  else
-    APP_ABORT("QMCHamiltonainBase::set_energy_domain\n  input energy domain is invalid");
+  // Only in NLPP evaluateWithToperator doesn't decay to evaluate. All other derived classes don't
+  // provide evaluateWithToperator specialization but may provide mw_evaluate optimization.
+  // Thus decaying to mw_evaluate is better than decalying to a loop over evaluateWithToperator
+  mw_evaluate(o_list, wf_list, p_list);
 }
 
-void OperatorBase::set_quantum_domain(quantum_domains qdomain)
+void OperatorBase::mw_evaluatePerParticleWithToperator(
+    const RefVectorWithLeader<OperatorBase>& o_list,
+    const RefVectorWithLeader<TrialWaveFunction>& wf_list,
+    const RefVectorWithLeader<ParticleSet>& p_list,
+    const std::vector<ListenerVector<RealType>>& listeners,
+    const std::vector<ListenerVector<RealType>>& listeners_ions) const
 {
-  if (quantum_domain_valid(qdomain))
-    quantum_domain = qdomain;
-  else
-    APP_ABORT("QMCHamiltonainBase::set_quantum_domain\n  input quantum domain is invalid");
+  // This may or may not be what is expected.
+  // It the responsibility of the derived type to override this if the
+  // desired behavior is instead to call mw_evaluatePerParticle
+  mw_evaluateWithToperator(o_list, wf_list, p_list);
 }
 
-void OperatorBase::one_body_quantum_domain(const ParticleSet& P)
+OperatorBase::Return_t OperatorBase::evaluateValueAndDerivatives(ParticleSet& P,
+                                                                 const opt_variables_type& optvars,
+                                                                 const Vector<ValueType>& dlogpsi,
+                                                                 Vector<ValueType>& dhpsioverpsi)
 {
-  if (P.is_classical())
-    quantum_domain = classical;
-  else if (P.is_quantum())
-    quantum_domain = quantum;
-  else
-    APP_ABORT("OperatorBase::one_body_quantum_domain\n  quantum domain of input particles is invalid");
+  if (dependsOnWaveFunction())
+    throw std::logic_error("Bug!! " + getClassName() +
+                           "::evaluateValueAndDerivatives"
+                           "must be overloaded when the OperatorBase depends on a wavefunction.");
+
+  return evaluate(P);
 }
 
-void OperatorBase::two_body_quantum_domain(const ParticleSet& P)
+OperatorBase::Return_t OperatorBase::evaluateWithIonDerivs(ParticleSet& P,
+                                                           ParticleSet& ions,
+                                                           TrialWaveFunction& psi,
+                                                           ParticleSet::ParticlePos& hf_term,
+                                                           ParticleSet::ParticlePos& pulay_term)
 {
-  if (P.is_classical())
-    quantum_domain = classical_classical;
-  else if (P.is_quantum())
-    quantum_domain = quantum_quantum;
-  else
-    APP_ABORT("OperatorBase::two_body_quantum_domain(P)\n  quantum domain of input particles is invalid");
+  return evaluate(P);
 }
 
-void OperatorBase::two_body_quantum_domain(const ParticleSet& P1, const ParticleSet& P2)
+OperatorBase::Return_t OperatorBase::evaluateWithIonDerivsDeterministic(ParticleSet& P,
+                                                                        ParticleSet& ions,
+                                                                        TrialWaveFunction& psi,
+                                                                        ParticleSet::ParticlePos& hf_term,
+                                                                        ParticleSet::ParticlePos& pulay_term)
 {
-  bool c1 = P1.is_classical();
-  bool c2 = P2.is_classical();
-  bool q1 = P1.is_quantum();
-  bool q2 = P2.is_quantum();
-  if (c1 && c2)
-    quantum_domain = classical_classical;
-  else if ((q1 && c2) || (c1 && q2))
-    quantum_domain = quantum_classical;
-  else if (q1 && q2)
-    quantum_domain = quantum_quantum;
-  else
-    APP_ABORT("OperatorBase::two_body_quantum_domain(P1,P2)\n  quantum domain of input particles is invalid");
+  return evaluateWithIonDerivs(P, ions, psi, hf_term, pulay_term);
 }
 
-bool OperatorBase::quantum_domain_valid(quantum_domains qdomain) { return qdomain != no_quantum_domain; }
+void OperatorBase::updateSource(ParticleSet& s) {}
+
+OperatorBase::Return_t OperatorBase::getEnsembleAverage() { return 0.0; }
+
+void OperatorBase::createResource(ResourceCollection& collection) const {}
+
+void OperatorBase::acquireResource(ResourceCollection& collection,
+                                   const RefVectorWithLeader<OperatorBase>& o_list) const
+{}
+
+void OperatorBase::releaseResource(ResourceCollection& collection,
+                                   const RefVectorWithLeader<OperatorBase>& o_list) const
+{}
+
+void OperatorBase::setRandomGenerator(RandomGenerator* rng) {}
 
 void OperatorBase::add2Hamiltonian(ParticleSet& qp, TrialWaveFunction& psi, QMCHamiltonian& targetH)
 {
-  OperatorBase* myclone = makeClone(qp, psi);
+  std::unique_ptr<OperatorBase> myclone = makeClone(qp, psi);
   if (myclone)
-    targetH.addOperator(myclone, myName, UpdateMode[PHYSICAL]);
-}
-
-void OperatorBase::registerObservables(std::vector<observable_helper*>& h5desc, hid_t gid) const
-{
-  bool collect = UpdateMode.test(COLLECTABLE);
-  //exclude collectables
-  if (!collect)
   {
-    int loc = h5desc.size();
-    h5desc.push_back(new observable_helper(myName));
-    std::vector<int> onedim(1, 1);
-    h5desc[loc]->set_dimensions(onedim, myIndex);
-    h5desc[loc]->open(gid);
+    targetH.addOperator(std::move(myclone), name_, update_mode_[PHYSICAL]);
   }
 }
 
+#if !defined(REMOVE_TRACEMANAGER)
+void OperatorBase::getRequiredTraces(TraceManager& tm){};
+#endif
+
 void OperatorBase::addEnergy(MCWalkerConfiguration& W, std::vector<RealType>& LocalEnergy)
 {
-  APP_ABORT("Need specialization for " + myName +
+  APP_ABORT("Need specialization for " + name_ +
             "::addEnergy(MCWalkerConfiguration &W).\n Required functionality not implemented\n");
 }
+
+void OperatorBase::addEnergy(MCWalkerConfiguration& W,
+                             std::vector<RealType>& LocalEnergy,
+                             std::vector<std::vector<NonLocalData>>& Txy)
+{
+  addEnergy(W, LocalEnergy);
+}
+
+// END  FUNCTIONS //
+
+bool OperatorBase::isClassical() const noexcept { return quantum_domain_ == CLASSICAL; }
+
+bool OperatorBase::isQuantum() const noexcept { return quantum_domain_ == QUANTUM; }
+
+bool OperatorBase::isClassicalClassical() const noexcept { return quantum_domain_ == CLASSICAL_CLASSICAL; }
+
+bool OperatorBase::isQuantumClassical() const noexcept { return quantum_domain_ == QUANTUM_CLASSICAL; }
+
+bool OperatorBase::isQuantumQuantum() const noexcept { return quantum_domain_ == QUANTUM_QUANTUM; }
+
+bool OperatorBase::getMode(const int i) const noexcept { return update_mode_[i]; }
+
+bool OperatorBase::isNonLocal() const noexcept { return update_mode_[NONLOCAL]; }
+
+bool OperatorBase::hasListener() const noexcept { return has_listener_; }
+
+#if !defined(REMOVE_TRACEMANAGER)
+
+void OperatorBase::contributeTraceQuantities()
+{
+  contributeScalarQuantities();
+  contributeParticleQuantities();
+}
+
+void OperatorBase::checkoutTraceQuantities(TraceManager& tm)
+{
+  checkoutScalarQuantities(tm);
+  checkoutParticleQuantities(tm);
+}
+
+void OperatorBase::collectScalarTraces() { collectScalarQuantities(); }
+
+void OperatorBase::deleteTraceQuantities()
+{
+  deleteScalarQuantities();
+  deleteParticleQuantities();
+  streaming_scalars_    = false;
+  streaming_particles_  = false;
+  have_required_traces_ = false;
+  request_.reset();
+}
+
+#endif
+
+////// PROTECTED FUNCTIONS
+#if !defined(REMOVE_TRACEMANAGER)
+void OperatorBase::contributeScalarQuantities() { request_.contribute_scalar(name_); }
+
+void OperatorBase::checkoutScalarQuantities(TraceManager& tm)
+{
+  streaming_scalars_ = request_.streaming_scalar(name_);
+  if (streaming_scalars_)
+    value_sample_ = tm.checkout_real<1>(name_);
+}
+
+void OperatorBase::collectScalarQuantities()
+{
+  if (streaming_scalars_)
+    (*value_sample_)(0) = value_;
+}
+
+void OperatorBase::deleteScalarQuantities()
+{
+  if (streaming_scalars_)
+    delete value_sample_;
+}
+
+void OperatorBase::contributeParticleQuantities(){};
+void OperatorBase::checkoutParticleQuantities(TraceManager& tm){};
+void OperatorBase::deleteParticleQuantities(){};
+#endif
+
+void OperatorBase::setComputeForces(bool compute) {}
+
+void OperatorBase::setEnergyDomain(EnergyDomains edomain)
+{
+  if (energyDomainValid(edomain))
+    energy_domain_ = edomain;
+  else
+    APP_ABORT("QMCHamiltonainBase::setEnergyDomain\n  input energy domain is invalid");
+}
+
+void OperatorBase::setQuantumDomain(QuantumDomains qdomain)
+{
+  if (quantumDomainValid(qdomain))
+    quantum_domain_ = qdomain;
+  else
+    APP_ABORT("QMCHamiltonainBase::setQuantumDomain\n  input quantum domain is invalid");
+}
+
+void OperatorBase::oneBodyQuantumDomain(const ParticleSet& P)
+{
+  if (P.is_classical())
+    quantum_domain_ = CLASSICAL;
+  else if (P.is_quantum())
+    quantum_domain_ = QUANTUM;
+  else
+    APP_ABORT("OperatorBase::oneBodyQuantumDomain\n  quantum domain of input particles is invalid");
+}
+
+void OperatorBase::twoBodyQuantumDomain(const ParticleSet& P)
+{
+  if (P.is_classical())
+    quantum_domain_ = CLASSICAL_CLASSICAL;
+  else if (P.is_quantum())
+    quantum_domain_ = QUANTUM_QUANTUM;
+  else
+    APP_ABORT("OperatorBase::twoBodyQuantumDomain(P)\n  quantum domain of input particles is invalid");
+}
+
+void OperatorBase::twoBodyQuantumDomain(const ParticleSet& P1, const ParticleSet& P2)
+{
+  const bool c1 = P1.is_classical();
+  const bool c2 = P2.is_classical();
+  const bool q1 = P1.is_quantum();
+  const bool q2 = P2.is_quantum();
+  if (c1 && c2)
+    quantum_domain_ = CLASSICAL_CLASSICAL;
+  else if ((q1 && c2) || (c1 && q2))
+    quantum_domain_ = QUANTUM_CLASSICAL;
+  else if (q1 && q2)
+    quantum_domain_ = QUANTUM_QUANTUM;
+  else
+    APP_ABORT("OperatorBase::twoBodyQuantumDomain(P1,P2)\n  quantum domain of input particles is invalid");
+}
+
+void OperatorBase::addValue(PropertySetType& plist)
+{
+  if (!update_mode_[COLLECTABLE])
+    my_index_ = plist.add(name_.c_str());
+}
+
+////// PRIVATE FUNCTIONS
+bool OperatorBase::energyDomainValid(EnergyDomains edomain) const noexcept { return edomain != NO_ENERGY_DOMAIN; }
+
+bool OperatorBase::quantumDomainValid(QuantumDomains qdomain) const noexcept { return qdomain != NO_QUANTUM_DOMAIN; }
 
 } // namespace qmcplusplus

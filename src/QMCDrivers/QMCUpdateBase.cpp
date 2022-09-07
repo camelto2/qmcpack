@@ -14,17 +14,17 @@
 //////////////////////////////////////////////////////////////////////////////////////
 
 
-#include "Platforms/sysutil.h"
 #include "QMCUpdateBase.h"
+#include "MemoryUsage.h"
 #include "ParticleBase/ParticleUtility.h"
 #include "ParticleBase/RandomSeqGenerator.h"
 #include "QMCDrivers/DriftOperators.h"
 #include "OhmmsData/AttributeSet.h"
-#include "Message/OpenMP.h"
+#include "Concurrency/OpenMP.h"
 #if !defined(REMOVE_TRACEMANAGER)
 #include "Estimators/TraceManager.h"
 #else
-typedef int TraceManager;
+using TraceManager = int;
 #endif
 
 namespace qmcplusplus
@@ -34,7 +34,7 @@ QMCUpdateBase::QMCUpdateBase(MCWalkerConfiguration& w,
                              TrialWaveFunction& psi,
                              TrialWaveFunction& guide,
                              QMCHamiltonian& h,
-                             RandomGenerator_t& rg)
+                             RandomGenerator& rg)
     : csoffset(0),
       Traces(0),
       W(w),
@@ -50,7 +50,7 @@ QMCUpdateBase::QMCUpdateBase(MCWalkerConfiguration& w,
 }
 
 /// Constructor.
-QMCUpdateBase::QMCUpdateBase(MCWalkerConfiguration& w, TrialWaveFunction& psi, QMCHamiltonian& h, RandomGenerator_t& rg)
+QMCUpdateBase::QMCUpdateBase(MCWalkerConfiguration& w, TrialWaveFunction& psi, QMCHamiltonian& h, RandomGenerator& rg)
     : csoffset(0),
       Traces(0),
       W(w),
@@ -76,7 +76,8 @@ void QMCUpdateBase::setDefaults()
   nSubSteps  = 1;
   MaxAge     = 10;
   m_r2max    = -1;
-  myParams.add(m_r2max, "maxDisplSq", "double"); //maximum displacement
+  myParams.add(m_r2max, "maxDisplSq"); //maximum displacement
+  myParams.add(debug_checks_str_, "debug_checks", {"no", "all", "checkGL_after_moves"});
   //store 1/mass per species
   SpeciesSet tspecies(W.getSpeciesSet());
   assert(tspecies.getTotalNum() == W.groups());
@@ -96,6 +97,17 @@ bool QMCUpdateBase::put(xmlNodePtr cur)
 {
   H.setNonLocalMoves(cur);
   bool s = myParams.put(cur);
+  if (debug_checks_str_ == "no")
+    debug_checks_ = DriverDebugChecks::ALL_OFF;
+  else
+  {
+    if (debug_checks_str_ == "all" || debug_checks_str_ == "checkGL_after_load")
+      debug_checks_ |= DriverDebugChecks::CHECKGL_AFTER_LOAD;
+    if (debug_checks_str_ == "all" || debug_checks_str_ == "checkGL_after_moves")
+      debug_checks_ |= DriverDebugChecks::CHECKGL_AFTER_MOVES;
+    if (debug_checks_str_ == "all" || debug_checks_str_ == "checkGL_after_tmove")
+      debug_checks_ |= DriverDebugChecks::CHECKGL_AFTER_TMOVE;
+  }
   return s;
 }
 
@@ -131,7 +143,7 @@ void QMCUpdateBase::resetRun(BranchEngineType* brancher,
   }
   //app_log() << "  QMCUpdateBase::resetRun m/tau=" << m_tauovermass << std::endl;
   if (m_r2max < 0)
-    m_r2max = W.Lattice.LR_rc * W.Lattice.LR_rc;
+    m_r2max = W.getLattice().LR_rc * W.getLattice().LR_rc;
   //app_log() << "  Setting the bound for the displacement std::max(r^2) = " <<  m_r2max << std::endl;
 }
 
@@ -254,14 +266,67 @@ void QMCUpdateBase::initWalkersForPbyP(WalkerIter_t it, WalkerIter_t it_end)
   print_mem("Memory Usage after the buffer registration", app_log());
 }
 
-QMCUpdateBase::RealType QMCUpdateBase::getNodeCorrection(const ParticleSet::ParticleGradient_t& g,
-                                                         ParticleSet::ParticlePos_t& gscaled)
+QMCUpdateBase::RealType QMCUpdateBase::getNodeCorrection(const ParticleSet::ParticleGradient& g,
+                                                         ParticleSet::ParticlePos& gscaled)
 {
   //setScaledDrift(m_tauovermass,g,gscaled);
   //RealType vsq=Dot(g,g);
   //RealType x=m_tauovermass*vsq;
   //return (vsq<std::numeric_limits<RealType>::epsilon())? 1.0:((-1.0+std::sqrt(1.0+2.0*x))/x);
   return setScaledDriftPbyPandNodeCorr(Tau, MassInvP, g, gscaled);
+}
+
+void QMCUpdateBase::checkLogAndGL(ParticleSet& pset, TrialWaveFunction& twf, const std::string_view location)
+{
+  bool success = true;
+  TrialWaveFunction::LogValueType log_value{twf.getLogPsi(), twf.getPhase()};
+  ParticleSet::ParticleGradient G_saved  = twf.G;
+  ParticleSet::ParticleLaplacian L_saved = twf.L;
+
+  pset.update();
+  twf.evaluateLog(pset);
+
+  RealType threshold;
+  // mixed precision can't make this test with cuda direct inversion
+  if constexpr (std::is_same<RealType, FullPrecRealType>::value)
+    threshold = 100 * std::numeric_limits<float>::epsilon();
+  else
+    threshold = 500 * std::numeric_limits<float>::epsilon();
+
+  std::ostringstream msg;
+  auto& ref_G = twf.G;
+  auto& ref_L = twf.L;
+  TrialWaveFunction::LogValueType ref_log{twf.getLogPsi(), twf.getPhase()};
+  if (std::abs(std::exp(log_value) - std::exp(ref_log)) > std::abs(std::exp(ref_log)) * threshold)
+  {
+    success = false;
+    msg << "Logpsi " << log_value << " ref " << ref_log << std::endl;
+  }
+
+  for (int iel = 0; iel < ref_G.size(); iel++)
+  {
+    auto grad_diff = ref_G[iel] - G_saved[iel];
+    if (std::sqrt(std::abs(dot(grad_diff, grad_diff))) > std::sqrt(std::abs(dot(ref_G[iel], ref_G[iel]))) * threshold)
+    {
+      success = false;
+      msg << "Grad[" << iel << "] ref = " << ref_G[iel] << " wrong = " << G_saved[iel] << " Delta " << grad_diff
+          << std::endl;
+    }
+
+    auto lap_diff = ref_L[iel] - L_saved[iel];
+    if (std::abs(lap_diff) > std::abs(ref_L[iel]) * threshold)
+    {
+      // very hard to check mixed precision case, only print, no error out
+      if (std::is_same<RealType, FullPrecRealType>::value)
+        success = false;
+      msg << "lap[" << iel << "] ref = " << ref_L[iel] << " wrong = " << L_saved[iel] << " Delta " << lap_diff
+          << std::endl;
+    }
+  }
+
+  std::cerr << msg.str();
+  if (!success)
+    throw std::runtime_error(std::string("checkLogAndGL failed at ") + std::string(location) + std::string("\n"));
 }
 
 void QMCUpdateBase::setReleasedNodeMultiplicity(WalkerIter_t it, WalkerIter_t it_end)

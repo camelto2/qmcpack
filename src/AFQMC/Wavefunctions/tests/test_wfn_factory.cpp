@@ -16,7 +16,7 @@
 #include "Configuration.h"
 
 #include "OhmmsData/Libxml2Doc.h"
-#include "OhmmsApp/ProjectData.h"
+#include "ProjectData.h"
 #include "hdf/hdf_archive.h"
 #include "Utilities/RandomGenerator.h"
 #include "Utilities/Timer.h"
@@ -65,12 +65,7 @@ void wfn_fac(boost::mpi3::communicator& world)
 {
   using pointer = device_ptr<ComplexType>;
 
-  if (not file_exists(UTEST_HAMIL) || not file_exists(UTEST_WFN))
-  {
-    app_log() << " Skipping ham_ops_basic_serial. Hamiltonian or wavefunction file not found. \n";
-    app_log() << " Run unit test with --hamil /path/to/hamil.h5 and --wfn /path/to/wfn.dat.\n";
-  }
-  else
+  if (check_hamil_wfn_for_utest("wfn_fac", UTEST_WFN, UTEST_HAMIL))
   {
     // Global Task Group
     GlobalTaskGroup gTG(world);
@@ -110,7 +105,7 @@ void wfn_fac(boost::mpi3::communicator& world)
     //auto TG = TaskGroup_(gTG,std::string("WfnTG"),1,1);
     auto TG   = TaskGroup_(gTG, std::string("WfnTG"), 1, gTG.getTotalCores());
     int nwalk = 11; // choose prime number to force non-trivial splits in shared routines
-    RandomGenerator_t rng;
+    RandomGenerator rng;
 
     Allocator alloc_(make_localTG_allocator<ComplexType>(TG));
 
@@ -134,6 +129,8 @@ void wfn_fac(boost::mpi3::communicator& world)
     okay = doc3.parseFromString(wlk_xml_block);
     REQUIRE(okay);
     std::string restart_file = create_test_hdf(UTEST_WFN, UTEST_HAMIL);
+    app_log() << " wfn_fac destroy restart_file " << restart_file << "\n";
+    if (!remove_file(restart_file)) APP_ABORT("failed to remove restart_file");
     std::string wfn_xml      = "<Wavefunction name=\"wfn0\" info=\"info0\"> \
       <parameter name=\"filetype\">ascii</parameter> \
       <parameter name=\"filename\">" +
@@ -406,12 +403,7 @@ void wfn_fac(boost::mpi3::communicator& world)
 template<class Allocator>
 void wfn_fac_distributed(boost::mpi3::communicator& world, int ngroups)
 {
-  if (not file_exists(UTEST_HAMIL) || not file_exists(UTEST_WFN))
-  {
-    app_log() << " Skipping ham_ops_basic_serial. Hamiltonian or wavefunction file not found. \n";
-    app_log() << " Run unit test with --hamil /path/to/hamil.h5 and --wfn /path/to/wfn.dat.\n";
-  }
-  else
+  if (check_hamil_wfn_for_utest("wfn_fac_distributed", UTEST_WFN, UTEST_HAMIL))
   {
     // Global Task Group
     GlobalTaskGroup gTG(world);
@@ -451,7 +443,7 @@ void wfn_fac_distributed(boost::mpi3::communicator& world, int ngroups)
     auto TG    = TaskGroup_(gTG, std::string("WfnTG"), 1, gTG.getTotalCores());
     auto TGwfn = TaskGroup_(gTG, std::string("WfnTG"), ngroups, gTG.getTotalCores());
     int nwalk  = 11; // choose prime number to force non-trivial splits in shared routines
-    RandomGenerator_t rng;
+    RandomGenerator rng;
 
     Allocator alloc_(make_localTG_allocator<ComplexType>(TG));
 
@@ -476,6 +468,8 @@ void wfn_fac_distributed(boost::mpi3::communicator& world, int ngroups)
     REQUIRE(okay);
 
     std::string restart_file = create_test_hdf(UTEST_WFN, UTEST_HAMIL);
+    app_log() << " wfn_fac_distributed destroy restart_file " << restart_file << "\n";
+    if (!remove_file(restart_file)) APP_ABORT("failed to remove restart_file");
     std::string wfn_xml      = "<Wavefunction name=\"wfn0\" info=\"info0\"> \
       <parameter name=\"filetype\">ascii</parameter> \
       <parameter name=\"filename\">" +
@@ -827,7 +821,7 @@ TEST_CASE("wfn_fac_collinear_phmsd", "[wavefunction_factory]")
     //auto TG = TaskGroup_(gTG,std::string("WfnTG"),1,1);
     //int nwalk = 1; // choose prime number to force non-trivial splits in shared routines
     int nwalk = 11; // choose prime number to force non-trivial splits in shared routines
-    RandomGenerator_t rng;
+    RandomGenerator rng;
 
 const char *wlk_xml_block =
 "<WalkerSet name=\"wset0\">  \

@@ -26,7 +26,7 @@
 
 #include "OhmmsData/Libxml2Doc.h"
 #include "Utilities/RandomGenerator.h"
-#include "OhmmsApp/ProjectData.h"
+#include "ProjectData.h"
 
 #include "hdf/hdf_multi.h"
 #include "hdf/hdf_archive.h"
@@ -114,7 +114,7 @@ void test_basic_walker_features(bool serial, std::string wtype)
     initA[i][i] = Type(0.22);
   for (int i = 0; i < NAEB; i++)
     initB[i][i] = Type(0.22);
-  RandomGenerator_t rng;
+  RandomGenerator rng;
 
   std::string xml_block;
   xml_block = "<WalkerSet name=\"wset0\">  \
@@ -256,8 +256,9 @@ void test_hyperslab()
   }
   dump.push("WalkerSet");
 
-  hyperslab_proxy<Matrix, 2> hslab(Data, std::array<int, 2>{nwtot, nprop}, std::array<int, 2>{nwalk, nprop},
-                                   std::array<int, 2>{rank * nwalk, 0});
+  hyperslab_proxy<Matrix, 2> hslab(Data, std::array<size_t, 2>{static_cast<size_t>(nwtot), static_cast<size_t>(nprop)},
+                                   std::array<size_t, 2>{static_cast<size_t>(nwalk), static_cast<size_t>(nprop)},
+                                   std::array<size_t, 2>{static_cast<size_t>(rank * nwalk), 0});
   dump.write(hslab, "Walkers");
   dump.close();
   world.barrier();
@@ -273,8 +274,10 @@ void test_hyperslab()
 
     Matrix DataIn({nwalk, nprop});
 
-    hyperslab_proxy<Matrix, 2> hslab(DataIn, std::array<int, 2>{nwtot, nprop}, std::array<int, 2>{nwalk, nprop},
-                                     std::array<int, 2>{rank * nwalk, 0});
+    hyperslab_proxy<Matrix, 2> hslab(DataIn,
+                                     std::array<size_t, 2>{static_cast<size_t>(nwtot), static_cast<size_t>(nprop)},
+                                     std::array<size_t, 2>{static_cast<size_t>(nwalk), static_cast<size_t>(nprop)},
+                                     std::array<size_t, 2>{static_cast<size_t>(rank * nwalk), 0});
     read.read(hslab, "Walkers");
     read.close();
 
@@ -319,8 +322,12 @@ void test_double_hyperslab()
   dump.push("WalkerSet");
 
   //double_hyperslab_proxy<Matrix,2> hslab(Data,
-  hyperslab_proxy<Matrix, 2> hslab(Data, std::array<int, 2>{nwtot, nprop_to_safe},
-                                   std::array<int, 2>{nwalk, nprop_to_safe}, std::array<int, 2>{rank * nwalk, 0}); //,
+  hyperslab_proxy<Matrix, 2> hslab(Data,
+                                   std::array<size_t, 2>{static_cast<size_t>(nwtot),
+                                                         static_cast<size_t>(nprop_to_safe)},
+                                   std::array<size_t, 2>{static_cast<size_t>(nwalk),
+                                                         static_cast<size_t>(nprop_to_safe)},
+                                   std::array<size_t, 2>{static_cast<size_t>(rank * nwalk), 0}); //,
 
   //                                  std::array<int,2>{nwalk,nprop},
   //                                  std::array<int,2>{nwalk,nprop_to_safe},
@@ -342,8 +349,12 @@ void test_double_hyperslab()
     Matrix DataIn({nwalk, nprop_to_safe});
 
     //double_hyperslab_proxy<Matrix,2> hslab(DataIn,
-    hyperslab_proxy<Matrix, 2> hslab(DataIn, std::array<int, 2>{nwtot, nprop_to_safe},
-                                     std::array<int, 2>{nwalk, nprop_to_safe}, std::array<int, 2>{rank * nwalk, 0}); //,
+    hyperslab_proxy<Matrix, 2> hslab(DataIn,
+                                     std::array<size_t, 2>{static_cast<size_t>(nwtot),
+                                                           static_cast<size_t>(nprop_to_safe)},
+                                     std::array<size_t, 2>{static_cast<size_t>(nwalk),
+                                                           static_cast<size_t>(nprop_to_safe)},
+                                     std::array<size_t, 2>{static_cast<size_t>(rank * nwalk), 0}); //,
     //                                  std::array<int,2>{nwalk,nprop},
     //                                  std::array<int,2>{nwalk,nprop_to_safe},
     //                                  std::array<int,2>{0,0});
@@ -406,7 +417,7 @@ void test_walker_io(std::string wtype)
     initA[i][i] = Type(0.22);
   for (int i = 0; i < NAEB; i++)
     initB[i][i] = Type(0.22);
-  RandomGenerator_t rng;
+  RandomGenerator rng;
 
   std::string xml_block;
   xml_block = "<WalkerSet name=\"wset0\">  \
@@ -422,8 +433,7 @@ void test_walker_io(std::string wtype)
   wset.resize(nwalkers, initA, initB);
 
   REQUIRE(wset.size() == nwalkers);
-  int cnt           = 0;
-  double tot_weight = 0.0;
+  int cnt = 0;
   for (WalkerSet::iterator it = wset.begin(); it != wset.end(); ++it)
   {
     auto sm = it->SlaterMatrix(Alpha);
@@ -433,7 +443,6 @@ void test_walker_io(std::string wtype)
     *it->E1()      = cnt * 1.0 + 0.5;
     *it->EXX()     = cnt * 1.0 + 0.5;
     *it->EJ()      = cnt * 1.0 + 0.5;
-    tot_weight += cnt * 1.0 + 0.5;
     cnt++;
   }
   REQUIRE(cnt == nwalkers);

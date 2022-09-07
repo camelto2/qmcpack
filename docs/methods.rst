@@ -77,9 +77,9 @@ Additional information:
 
    - **[-1]** No checkpoint (default setting).
 
-   - **[0]** Dump after the completion of a QMC section.
+   - **[0]** Write the checkpoint files after the completion of the QMC section.
 
-   - **[n]** Dump after every :math:`n` blocks.  Also dump at the end of the run.
+   - **[n]** Write the checkpoint files after every :math:`n` blocks, and also at the end of the QMC section.
 
 The particle configurations are written to a ``.config.h5`` file.
 
@@ -114,12 +114,56 @@ To continue a run, specify the ``mcwalkerset`` element before your VMC/DMC block
 
 In the project id section, make sure that the series number is different from any existing ones to avoid overwriting them.
 
+
+.. _batched_drivers:
+
+Batched drivers
+---------------
+
+The batched drivers introduce a new concept, "crowd", as a sub-organization of walker population.
+A crowd is a subset of the walkers that are operated on as as single batch.
+Walkers within a crowd operate their computation in lock-step, which helps the GPU efficiency.
+Walkers in different crowds remain fully asynchronous unless operations involving the full population are needed.
+With this flexible batching capability the new drivers are capable of delivering maximal performance on given hardware.
+In the new driver design, all the batched API calls may fallback to an existing single walker implementation.
+Consequently, batched drivers allow mixing and matching CPU-only and GPU-accelerated features
+in a way that is not feasible with the legacy GPU implementation.
+
+
+
+.. _transition_guide:
+
+Transition from classic drivers
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Available drivers in batched versions are ``vmc``, ``dmc`` and ``linear``.
+There are notable changes in the driver input section when moving from classic drivers to batched drivers:
+
+  - ``walkers`` is not supported in any batched driver inputs.
+    Instead, ``walkers_per_rank`` and ``total_walkers`` specify the population at the start of a driver run.
+
+  - ``crowds`` can added in batched drivers to specify the number of crowds.
+
+  - If a classic driver input section contains ``walkers`` equals 1, the same effect can be achieved by
+    omitting the specification of ``walkers_per_rank``, ``total_walkers`` or ``crowds`` in batched drivers.
+
+  - The ``walkers_per_rank``, ``total_walkers`` or ``crowds`` parameters are optional.
+    See driver-specific parameter additional information below about default values.
+
+  - When running on GPUs, tuning ``walkers_per_rank`` or ``total_walkers`` is likely needed to maximize GPU throughput,
+    just like tuning ``walkers`` in the classic drivers.
+
+  - Only particle-by-particle move is supported. No all-particle move support.
+
+  - During development the new drivers had separate names (``vmc_batch``, ``dmc_batch``, and ``linear_batch``).  The use of separate names has been replaced by the ``driver_version`` parameter in the ``project`` section.
+
 .. _vmc:
 
 Variational Monte Carlo
 -----------------------
 
-``vmc`` method:
+``vmc`` driver
+~~~~~~~~~~~~~~
 
   parameters:
 
@@ -146,13 +190,13 @@ Variational Monte Carlo
   +--------------------------------+--------------+-------------------------+-------------+-----------------------------------------------+
   | ``samplesperthread``           | integer      | :math:`\geq 0`          | 0           | Number of samples per thread                  |
   +--------------------------------+--------------+-------------------------+-------------+-----------------------------------------------+
-  | ``storeconfigs``               | integer      | all values              | 0           | Show configurations o                         |
+  | ``storeconfigs``               | integer      | all values              | 0           | Write configurations to files                 |
   +--------------------------------+--------------+-------------------------+-------------+-----------------------------------------------+
   | ``blocks_between_recompute``   | integer      | :math:`\geq 0`          | dep.        | Wavefunction recompute frequency              |
   +--------------------------------+--------------+-------------------------+-------------+-----------------------------------------------+
-  | ``spinMoves``                  | text         | yes,no                  | no          | Whether or not to sample the electron spins   |
-  +--------------------------------+--------------+-------------------------+-------------+-----------------------------------------------+
   | ``spinMass``                   | real         | :math:`> 0`             | 1.0         | Effective mass for spin sampling              |
+  +--------------------------------+--------------+-------------------------+-------------+-----------------------------------------------+
+  | ``debug_checks``               | text         | see additional info     | dep.        | Turn on/off additional recompute and checks   |
   +--------------------------------+--------------+-------------------------+-------------+-----------------------------------------------+
 
 Additional information:
@@ -196,7 +240,7 @@ Additional information:
   acceptance ratio should be close to 50% for an efficient
   simulation.
 
-- ``samples`` Seperate from conventional energy and other
+- ``samples`` Separate from conventional energy and other
   property measurements, samples refers to storing whole electron
   configurations in memory ("walker samples") as would be needed by subsequent
   wavefunction optimization or DMC steps. *A standard VMC run to
@@ -222,17 +266,16 @@ Additional information:
 - ``storeconfigs`` If ``storeconfigs`` is set to a nonzero value, then electron configurations during the VMC run are saved to
   files.
 
-- ``blocks_between_recompute`` Recompute the accuracy critical determinant part of the wavefunction
-  from scratch: =1 by default when using mixed precision. =0 (no
-  recompute) by default when not using mixed precision. Recomputing
-  introduces a performance penalty dependent on system size.
+- ``blocks_between_recompute`` Recompute the accuracy critical determinant part of the wavefunction from scratch: =1 by
+  default when using mixed precision. =10 by default when not using mixed precision. 0 can be set for no recomputation
+  and higher performance, but numerical errors will accumulate over time. Recomputing introduces a performance penalty
+  dependent on system size, but protects against the accumulation of numerical error, particularly in the inverses of
+  the Slater determinants. These have a cubic-scaling cost to recompute.
 
-- ``spinMoves`` Determines whether or not the spin variables are sampled following
-  :cite:`Melton2016-1` and :cite:`Melton2016-2`. If a relativistic calculation is desired using pseudopotentials,
-  spin variable sampling is required.
+- ``spinMass`` Optional parameter to allow the user to change the rate of spin sampling. If spin sampling is on using ``spinor`` == yes in the electron ParticleSet input,  the spin mass determines the rate
+  of spin sampling, resulting in an effective spin timestep :math:`\tau_s = \frac{\tau}{\mu_s}`. The algorithm is described in detail in :cite:`Melton2016-1` and :cite:`Melton2016-2`.
 
-- ``spinMass`` If spin sampling is on using ``spinMoves`` == yes, the spin mass determines the rate
-  of spin sampling, resulting in an effective spin timestep :math:`\tau_s = \frac{\tau}{\mu_s}`.
+- ``debug_checks`` valid values are 'no', 'all', 'checkGL_after_moves'. If the build type is `debug`, the default value is 'all'. Otherwise, the default value is 'no'.
 
 An example VMC section for a simple VMC run:
 
@@ -266,6 +309,125 @@ The following is an example of VMC section storing configurations (walker sample
      <parameter name="timestep">  1.0 </parameter>
      <parameter name="usedrift">   no </parameter>
    </qmc>
+
+.. _vmc_batch:
+
+Batched ``vmc`` driver (experimental)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+  parameters:
+
+  +--------------------------------+--------------+-------------------------+-------------+-------------------------------------------------+
+  | **Name**                       | **Datatype** | **Values**              | **Default** | **Description**                                 |
+  +================================+==============+=========================+=============+=================================================+
+  | ``total_walkers``              | integer      | :math:`> 0`             | 1           | Total number of walkers over all MPI ranks      |
+  +--------------------------------+--------------+-------------------------+-------------+-------------------------------------------------+
+  | ``walkers_per_rank``           | integer      | :math:`> 0`             | 1           | Number of walkers per MPI rank                  |
+  +--------------------------------+--------------+-------------------------+-------------+-------------------------------------------------+
+  | ``crowds``                     | integer      | :math:`> 0`             | dep.        | Number of desynchronized dwalker crowds         |
+  +--------------------------------+--------------+-------------------------+-------------+-------------------------------------------------+
+  | ``blocks``                     | integer      | :math:`\geq 0`          | 1           | Number of blocks                                |
+  +--------------------------------+--------------+-------------------------+-------------+-------------------------------------------------+
+  | ``steps``                      | integer      | :math:`\geq 0`          | 1           | Number of steps per block                       |
+  +--------------------------------+--------------+-------------------------+-------------+-------------------------------------------------+
+  | ``warmupsteps``                | integer      | :math:`\geq 0`          | 0           | Number of steps for warming up                  |
+  +--------------------------------+--------------+-------------------------+-------------+-------------------------------------------------+
+  | ``substeps``                   | integer      | :math:`\geq 0`          | 1           | Number of substeps per step                     |
+  +--------------------------------+--------------+-------------------------+-------------+-------------------------------------------------+
+  | ``usedrift``                   | text         | yes,no                  | yes         | Use the algorithm with drift                    |
+  +--------------------------------+--------------+-------------------------+-------------+-------------------------------------------------+
+  | ``timestep``                   | real         | :math:`> 0`             | 0.1         | Time step for each electron move                |
+  +--------------------------------+--------------+-------------------------+-------------+-------------------------------------------------+
+  | ``samples`` (not ready)        | integer      | :math:`\geq 0`          | 0           | Number of walker samples for in this VMC run    |
+  +--------------------------------+--------------+-------------------------+-------------+-------------------------------------------------+
+  | ``storeconfigs`` (not ready)   | integer      | all values              | 0           | Write configurations to files                   |
+  +--------------------------------+--------------+-------------------------+-------------+-------------------------------------------------+
+  | ``blocks_between_recompute``   | integer      | :math:`\geq 0`          | dep.        | Wavefunction recompute frequency                |
+  +--------------------------------+--------------+-------------------------+-------------+-------------------------------------------------+
+  | ``crowd_serialize_walkers``    | integer      | yes, no                 | no          | Force use of single walker APIs (for testing)   |
+  +--------------------------------+--------------+-------------------------+-------------+-------------------------------------------------+
+  | ``debug_checks``               | text         | see additional info     | dep.        | Turn on/off additional recompute and checks     |
+  +--------------------------------+--------------+-------------------------+-------------+-------------------------------------------------+
+  | ``spin_mass``                  | real         | :math:`\geq 0`          | 1.0         | Effective mass for spin sampling                |
+  +--------------------------------+--------------+-------------------------+-------------+-------------------------------------------------+
+  | ``measure_imbalance``          | text         | yes,no                  | no          | Measure load imbalance at the end of each block |
+  +--------------------------------+--------------+-------------------------+-------------+-------------------------------------------------+
+
+
+Additional information:
+
+- ``crowds`` The number of crowds that the walkers are subdivided into on each MPI rank. If not provided, it is set equal to the number of OpenMP threads.
+
+- ``walkers_per_rank`` The number of walkers per MPI rank. The exact number of walkers will be generated before performing random walking.
+  It is not required to be a multiple of the number of OpenMP threads. However, to avoid any idle resources, it is recommended to be at
+  least the number of OpenMP threads for pure CPU runs. For GPU runs, a scan of this parameter is necessary to reach reasonable single rank
+  efficiency and also get a balanced time to solution.
+  If neither ``total_walkers`` nor ``walkers_per_rank`` is provided, ``walkers_per_rank`` is set equal to ``crowds``.
+
+- ``total_walkers`` Total number of walkers over all MPI ranks. if not provided, it is computed as ``walkers_per_rank`` times the number of MPI ranks. If both ``total_walkers`` and ``walkers_per_rank`` are provided, ``total_walkers`` must be equal to ``walkers_per_rank`` times the number MPI ranks.
+
+- ``blocks`` This parameter is universal for all the QMC methods. The MC processes are divided into a number of
+  ``blocks``, each containing a number of steps. At the end of each block, the statistics accumulated in the block are dumped into files,
+  e.g., ``scalar.dat``. Typically, each block should have a sufficient number of steps that the I/O at the end of each block is negligible
+  compared with the computational cost. Each block should not take so long that monitoring its progress is difficult. There should be a
+  sufficient number of ``blocks`` to perform statistical analysis.
+
+- ``warmupsteps`` - ``warmupsteps`` are used only for
+  equilibration. Property measurements are not performed during
+  warm-up steps.
+
+- ``steps`` - ``steps`` are the number of energy and other property measurements to perform per block.
+
+- ``substeps``  For each substep, an attempt is made to move each of the electrons once only by either particle-by-particle or an
+  all-electron move.  Because the local energy is evaluated only at
+  each full step and not each substep, ``substeps`` are computationally cheaper
+  and can be used to de-correlation at a low computational cost.
+
+- ``usedrift`` The VMC is implemented in two algorithms with
+  or without drift. In the no-drift algorithm, the move of each
+  electron is proposed with a Gaussian distribution. The standard
+  deviation is chosen as the time step input. In the drift algorithm,
+  electrons are moved by Langevin dynamics.
+
+- ``timestep`` The meaning of time step depends on whether or not
+  the drift is used. In general, larger time steps reduce the
+  time correlation but might also reduce the acceptance ratio,
+  reducing overall statistical efficiency. For VMC, typically the
+  acceptance ratio should be close to 50% for an efficient
+  simulation.
+
+- ``samples`` (not ready)
+
+- ``storeconfigs`` If ``storeconfigs`` is set to a nonzero value, then electron configurations during the VMC run are saved to
+  files.
+
+- ``blocks_between_recompute`` Recompute the accuracy critical determinant part of the wavefunction from scratch: =1 by
+  default when using mixed precision. =10 by default when not using mixed precision. 0 can be set for no recomputation
+  and higher performance, but numerical errors will accumulate over time. Recomputing introduces a performance penalty
+  dependent on system size, but protects against the accumulation of numerical error, particularly in the inverses of
+  the Slater determinants. These have a cubic-scaling cost to recompute.
+
+- ``debug_checks`` valid values are 'no', 'all', 'checkGL_after_load', 'checkGL_after_moves', 'checkGL_after_tmove'. If the build type is `debug`, the default value is 'all'. Otherwise, the default value is 'no'.
+
+- ``spin_mass`` Optional parameter to allow the user to change the rate of spin sampling. If spin sampling is on using ``spinor`` == yes in the electron ParticleSet input,  the spin mass determines the rate
+  of spin sampling, resulting in an effective spin timestep :math:`\tau_s = \frac{\tau}{\mu_s}`. The algorithm is described in detail in :cite:`Melton2016-1` and :cite:`Melton2016-2`.
+
+An example VMC section for a simple batched ``vmc`` run:
+
+::
+
+  <qmc method="vmc" move="pbyp">
+    <estimator name="LocalEnergy" hdf5="no"/>
+    <parameter name="walkers_per_rank">    256 </parameter>
+    <parameter name="warmupSteps">  100 </parameter>
+    <parameter name="substeps">  5 </parameter>
+    <parameter name="blocks">  20 </parameter>
+    <parameter name="steps">  100 </parameter>
+    <parameter name="timestep">  1.0 </parameter>
+    <parameter name="usedrift">   yes </parameter>
+  </qmc>
+
+Here we set 256 walkers per MPI rank, have a brief initial equilibration of 100 ``steps``, and then have 20 ``blocks`` of 100 ``steps`` with 5 ``substeps`` each.
 
 .. _optimization:
 
@@ -354,27 +516,23 @@ The input parameters are listed in the following table.
 
   parameters:
 
-  +----------------+--------------+-------------+-------------+--------------------------------------------------+
-  | **Name**       | **Datatype** | **Values**  | **Default** | **Description**                                  |
-  +================+==============+=============+=============+==================================================+
-  | ``nonlocalpp`` | text         | yes, no     | no          | include non-local PP energy in the cost function |
-  +----------------+--------------+-------------+-------------+--------------------------------------------------+
-  | ``minwalkers`` | real         | 0--1        | 0.3         | Lower bound of the effective weight              |
-  +----------------+--------------+-------------+-------------+--------------------------------------------------+
-  | ``maxWeight``  | real         | :math:`> 1` | 1e6         | Maximum weight allowed in reweighting            |
-  +----------------+--------------+-------------+-------------+--------------------------------------------------+
+  +--------------------------+--------------+-------------+-------------+--------------------------------------------------+
+  | **Name**                 | **Datatype** | **Values**  | **Default** | **Description**                                  |
+  +==========================+==============+=============+=============+==================================================+
+  | ``nonlocalpp``           | text         |             |             | No more effective. Will be removed.              |
+  +--------------------------+--------------+-------------+-------------+--------------------------------------------------+
+  | ``use_nonlocalpp_deriv`` | text         |             |             | No more effective. Will be removed.              |
+  +--------------------------+--------------+-------------+-------------+--------------------------------------------------+
+  | ``minwalkers``           | real         | 0--1        | 0.3         | Lower bound of the effective weight              |
+  +--------------------------+--------------+-------------+-------------+--------------------------------------------------+
+  | ``maxWeight``            | real         | :math:`> 1` | 1e6         | Maximum weight allowed in reweighting            |
+  +--------------------------+--------------+-------------+-------------+--------------------------------------------------+
 
 Additional information:
 
 - ``maxWeight`` The default should be good.
 
-- ``nonlocalpp`` The ``nonlocalpp`` contribution to the local energy depends on the
-  wavefunction. When a new set of parameters is proposed, this
-  contribution needs to be updated if the cost function consists of local
-  energy. Fortunately, nonlocal contribution is chosen small when making a
-  PP for small locality error. We can ignore its change and avoid the
-  expensive computational cost. An implementation issue with GPU code is
-  that a large amount of memory is consumed with this option.
+- ``nonlocalpp`` and ``use_nonlocalpp_deriv`` are obsolete and will be treated as invalid options (trigger application abort) in future releases. From this point forward, the code behaves as prior versions of qmcpack did when both were set to ``yes``.
 
 - ``minwalkers`` This is a ``critical`` parameter. When the ratio of effective samples to actual number of samples in a reweighting step goes lower than ``minwalkers``,
   the proposed set of parameters is invalid.
@@ -386,6 +544,53 @@ The cost function consists of three components: energy, unreweighted variance, a
      <cost name="energy">                   0.95 </cost>
      <cost name="unreweightedvariance">     0.00 </cost>
      <cost name="reweightedvariance">       0.05 </cost>
+
+Variational parameter selection
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+The predominant way of selecting variational parameters is via ``<wavefunction>`` input.
+``<coefficients>`` entries support ``optimize="yes"/"no"`` to enable/disable variational parameters in the wavefunction optimization.
+The secondary way of selecting variational parameters is via ``variational_subset`` parameter in the ``<qmc>`` driver input.
+It allows controlling optimization granularity at each optimization step.
+If ``variational_subset`` is not provided or empty, all the variational parameters are selected.
+If variational parameters are set as not optimizable in the predominant way, the secondary way won't be able to set them optimizable even they are selected.
+
+The following example shows optimizing subsets of parameters in stages in a single QMCPACK run.
+
+::
+    <qmc method="linear">
+      ...
+      <parameter name="variational_subset"> uu ud </parameter>
+    </qmc>
+    <qmc method="linear">
+      ...
+      <parameter name="variational_subset"> uu ud eH </parameter>
+    </qmc>
+    <qmc method="linear">
+      ...
+      <parameter name="variational_subset"> uu ud eH CI </parameter>
+    </qmc>
+
+Variational parameter storage
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+After each optimization step the new wavefunction is stored in a file with an ``.opt.xml`` suffix.
+This new wavefunction includes the updated variational parameters.
+
+Writing a new XML wavefunction becomes more complicated if parameters are stored elsewhere (e.g. multideterminant coefficients in an HDF file) and has problems scaling with the number of parameters.
+To address these issues the variational parameters are now written to an HDF file.
+The new "VP file" has the suffix ``.vp.h5`` and is written in conjunction with the ``.opt.xml`` file.
+
+The wavefunction file connects to the VP file with a tag (``override_variational_parameters``) in the ``.opt.xml`` file that points to the ``.vp.h5`` file.
+Should it be necessary to recover the previous behavior without the VP file, this tag can be be turned off with an ``output_vp_override`` parameter in the optimizer input block:
+``<parameter name="output_vp_override">no</parameter>``
+
+Both schemes for storing variational parameters coexist.  Two important points about the VP file:
+
+  * The values of the variational parameters in the VP file take precedence over the values in the XML wavefunction.
+  * When copying an optimized wavefunction, the ``.vp.h5`` file needs to be copied as well.
+
+For users that want to inspect or modify the VP file,
+the He_param test (in ``tests/molecules/He_param``) contains a python script (``convert_vp_format.py``) to read and write the VP file. The script converts to and from a simple text representation of the parameters.
+
 
 Optimizers
 ~~~~~~~~~~
@@ -503,7 +708,7 @@ optimization strategy. To track the progress of optimization, use the
 command ``qmca -q ev *.scalar.dat`` to look at the VMC energy and
 variance for each optimization step.
 
-Adaptive Organizer
+Adaptive Optimizer
 ~~~~~~~~~~~~~~~~~~
 
 The default setting of the adaptive optimizer is to construct the linear
@@ -563,6 +768,14 @@ block-wise directions.
   +---------------------------+--------------+-------------------------+-------------+-------------------------------------------------------------------------------------------------+
   | ``nkept``                 | integer      | :math:`> 0`             |             | Number of eigenvectors to keep per block in BLM                                                 |
   +---------------------------+--------------+-------------------------+-------------+-------------------------------------------------------------------------------------------------+
+  | ``store_samples``         | text         | yes, no                 | no          | Whether to store derivative ratios from each sample in the LM engine (required for filtering)   |
+  +---------------------------+--------------+-------------------------+-------------+-------------------------------------------------------------------------------------------------+
+  | ``filter_param``          | text         | yes, no                 | no          | Whether to turn off optimization of parameters with noisy gradients                             |
+  +---------------------------+--------------+-------------------------+-------------+-------------------------------------------------------------------------------------------------+
+  | ``deriv_threshold``       | real         | :math:`> 0`             | 0.0         | Threshold on the ratio of the parameter gradient mean and standard deviation                    |
+  +---------------------------+--------------+-------------------------+-------------+-------------------------------------------------------------------------------------------------+
+  | ``filter_info``           | text         | yes, no                 | no          | Whether to print out details on which parameters are turned on or off                           |
+  +---------------------------+--------------+-------------------------+-------------+-------------------------------------------------------------------------------------------------+
 
 Additional information:
 
@@ -599,6 +812,11 @@ Additional information:
    becomes equivalent to the standard LM. Retaining five or fewer
    directions per block is often sufficient.
 
+-  ``deriv_threshold`` This is a threshold on the ratio of the (absolute) mean value of a 
+   parameter derivative to the standard deviation of that derivative. Parameters 
+   with a ratio less than the chosen threshold will be turned off when using parameter 
+   filtration.
+
 Recommendations:
 
 -  Default ``shift_i``, ``shift_s`` should be fine.
@@ -611,6 +829,14 @@ Recommendations:
    and a handful of and often provide a good balance between memory use
    and accuracy. In general, using fewer blocks should be more accurate
    but would require more memory.
+
+-  When using parameter filtration, setting ``deriv_threshold`` to 1.0
+    is an effective choice that generally leads to roughly a third of the 
+    parameters being turned off on any given LM iteration. The precise 
+    number and identity of those parameters will vary from iteration to 
+    iteration. Using the hybrid method (see below) is recommended when parameter 
+    filtration is on so that accelerated descent can be used to optimize
+    parameters that the LM leaves untouched. :cite:`Otis2021`
 
 ::
 
@@ -738,7 +964,7 @@ Parameters for descent are shown in the table below.
   +---------------------+--------------+--------------------------------+-------------+-----------------------------------------------------------------+
 
 
-These descent algortihms have been extended to the optimization of the same excited state functional as the adaptive LM. :cite:`Otis2020`
+These descent algorithms have been extended to the optimization of the same excited state functional as the adaptive LM. :cite:`Otis2020`
 This also allows the hybrid optimizer discussed below to be applied to excited states.
 The relevant parameters are the same as for targeting excited states with the adaptive optimizer above.
 
@@ -1027,7 +1253,7 @@ the tag is not added coefficients will not be saved.
 
   The rest of the optimization block remains the same.
 
-When running the optimization, the new coefficients will be stored in a *\**.sXXX.opt.h5 file,  where XXX coressponds to the series number. The H5 file contains only the optimized coefficients. The corresponding *\**.sXXX.opt.xml  will be updated for each optimization block as follows:
+When running the optimization, the new coefficients will be stored in a ``*.sXXX.opt.h5`` file,  where XXX coressponds to the series number. The H5 file contains only the optimized coefficients. The corresponding ``*.sXXX.opt.xml`` will be updated for each optimization block as follows:
 
 ::
 
@@ -1044,14 +1270,89 @@ the values found in the \*.sXXX.opt.h5 file. Be careful to keep the pair
 of optimized CI coefficients and Jastrow coefficients together to avoid
 inconsistencies.
 
+Parameter gradients
+~~~~~~~~~~~~~~~~~~~
+The gradients of the energy with respect to the variational parameters can be checked and optionally written to a file.
+The check compares the analytic derivatives with a finite difference approximation.
+These are activated by giving a ``gradient_test`` method in an ``optimize`` block, as follows:
+
+::
+
+     <qmc method="linear" move="pbyp">
+      <optimize method="gradient_test">
+      </optimize>
+      ... rest of optimizer input ...
+
+The check will print a table to the standard output with the parameter name, value, analytic gradient, finite difference gradient, and the percent difference between them.
+
+Writing the analytic parameter gradients to a file is enabled by using the ``output_param_file`` parameter.
+The file name is ``<project id>.param.s000.scalar.dat``.
+It contains one line per loop iteration, to allow using existing tools to compute averages and error bars on the values.
+
+  +-----------------------+--------------+-------------+-------------+--------------------------------------------+
+  | **Name**              | **Datatype** | **Values**  | **Default** | **Description**                            |
+  +=======================+==============+=============+=============+============================================+
+  | ``output_param_file`` | text         | yes, no     | no          |  Output parameter gradients to a file      |
+  +-----------------------+--------------+-------------+-------------+--------------------------------------------+
+  | ``finite_diff_delta`` | double       | :math:`> 0` | 1e-5        |  Finite difference delta                   |
+  +-----------------------+--------------+-------------+-------------+--------------------------------------------+
+
+The input would look like the following:
+
+::
+
+    <qmc method="linear" move="pbyp" checkpoint="-1" gpu="no">
+      <optimize method="gradient_test">
+        <parameter name="output_param_file">yes</parameter>
+      </optimize>
+      ... rest of optimizer input ...
+
+
+The output has columns for the parameter name, value, analytic gradient, numeric gradient, and relative difference (in percent). Following the relative difference, there may be exclamation marks which highlight large differences that likely indicate a problem.
+
+Sample output looks like:
+
+::
+
+ Param_Name                         Value             Numeric            Analytic        Percent
+ updet_orb_rot_0000_0002      0.000000e+00   -1.8622037512e-02    4.6904958207e-02      3.52e+02 !!!
+ updet_orb_rot_0001_0002      0.000000e+00    1.6733860519e-03    3.9023863136e-03     -1.33e+02 !!!
+ downdet_orb_rot_0000_0002    0.000000e+00   -9.3267917833e-03   -8.0747281231e-03      1.34e+01 !!!
+ downdet_orb_rot_0001_0002    0.000000e+00   -4.3276838557e-03    2.6684235669e-02      7.17e+02 !!!
+ uu_0                         0.000000e+00   -1.2724910770e-02   -1.2724906671e-02      3.22e-05
+ uu_1                         0.000000e+00    2.0305884219e-02    2.0305883999e-02      1.08e-06
+ uu_2                         0.000000e+00   -1.1644597731e-03   -1.1644591818e-03      5.08e-05
+
+
+Output of intermediate values
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Use the following parameters to the linear optimizers to output intermediate values such as the overlap and Hamiltonian matrices.
+
+  +-------------------------+--------------+-------------+-------------+--------------------------------------------------+
+  | **Name**                | **Datatype** | **Values**  | **Default** | **Description**                                  |
+  +=========================+==============+=============+=============+==================================================+
+  | ``output_matrices_csv`` | text         | yes, no     | no          |  Output linear method matrices to CSV files      |
+  +-------------------------+--------------+-------------+-------------+--------------------------------------------------+
+  | ``output_matrices_hdf`` | text         | yes, no     | no          |  Output linear method matrices to HDF file       |
+  +-------------------------+--------------+-------------+-------------+--------------------------------------------------+
+  | ``freeze_parameters``   | text         | yes, no     | no          |  Do not update parameters between iterations     |
+  +-------------------------+--------------+-------------+-------------+--------------------------------------------------+
+
+  The ``output_matrices_csv`` parameter will write to <base name>.ham.s000.scalar.dat and <base name>.ovl.scalar.dat.  One line per iteration of the optimizer loop.  Combined with ``freeze_parameters``, this allows computing error bars on the matrices for use in regression testing.
+
+  The ``output_matrices_hdf`` parameter will output in HDF format the matrices used in the linear method along with the shifts and the eigenvalue and eigenvector produced by QMCPACK.  The file is named "<base name>.<series number>.linear_matrices.h5".  It only works with the batched optimizer (batched version of ``linear``)
+
+
 .. _dmc:
 
 Diffusion Monte Carlo
 ---------------------
 
-Main input parameters are given in :numref:`table9`, additional in :numref:`table10`.
+``dmc`` driver
+~~~~~~~~~~~~~~
 
-``dmc`` method:
+Main input parameters are given in :numref:`table9`, additional in :numref:`table10`.
 
 parameters:
 
@@ -1077,13 +1378,15 @@ parameters:
   |                                |              |                         |             |                                               |
   |                                | string       | classic/DRV/ZSGMA/YL    | classic     | Branch cutoff scheme                          |
   +--------------------------------+--------------+-------------------------+-------------+-----------------------------------------------+
-  | ``maxcpusecs``                 | real         | :math:`\geq 0`          | 3.6e5       | Maximum allowed walltime in seconds           |
+  | ``maxcpusecs``                 | real         | :math:`\geq 0`          | 3.6e5       | Deprecated. Superseded by ``max_seconds``     |
+  +--------------------------------+--------------+-------------------------+-------------+-----------------------------------------------+
+  | ``max_seconds``                | real         | :math:`\geq 0`          | 3.6e5       | Maximum allowed walltime in seconds           |
   +--------------------------------+--------------+-------------------------+-------------+-----------------------------------------------+
   | ``blocks_between_recompute``   | integer      | :math:`\geq 0`          | dep.        | Wavefunction recompute frequency              |
   +--------------------------------+--------------+-------------------------+-------------+-----------------------------------------------+
-  | ``spinMoves``                  | text         | yes,no                  | no          | Whether or not to sample the electron spins   |
-  +--------------------------------+--------------+-------------------------+-------------+-----------------------------------------------+
   | ``spinMass``                   | real         | :math:`> 0`             | 1.0         | Effective mass for spin sampling              |
+  +--------------------------------+--------------+-------------------------+-------------+-----------------------------------------------+
+  | ``debug_checks``               | text         | see additional info     | dep.        | Turn on/off additional recompute and checks   |
   +--------------------------------+--------------+-------------------------+-------------+-----------------------------------------------+
 
 .. centered:: Table 9 Main DMC input parameters.
@@ -1166,17 +1469,17 @@ Additional information:
    variable specifies how often to reset all the variables kept in the
    buffer.
 
--  ``maxcpusecs``: The default is 100 hours. Once the specified time has
+-  ``maxcpusecs``: Deprecated. Superseded by ``max_seconds``.
+
+-  ``max_seconds``: The default is 100 hours. Once the specified time has
    elapsed, the program will finalize the simulation even if all blocks
    are not completed.
 
--  ``spinMoves`` Determines whether or not the spin variables are sampled following :cite:`Melton2016-1` 
-   and :cite:`Melton2016-2`. If a relativistic calculation is desired using pseudopotentials, spin variable sampling is required.
-
--  ``spinMass`` If spin sampling is on using ``spinMoves`` == yes, the spin mass determines the rate 
+-  ``spinMass`` This is an optional parameter to allow the user to change the rate of spin sampling. If spin sampling is on using ``spinor`` == yes in the electron ParticleSet input, the spin mass determines the rate 
    of spin sampling, resulting in an effective spin timestep :math:`\tau_s = \frac{\tau}{\mu_s}` where 
-   :math:`\tau` is the normal spatial timestep and :math:`\mu_s` is the value of the spin mass.
+   :math:`\tau` is the normal spatial timestep and :math:`\mu_s` is the value of the spin mass. The algorithm is described in detail in :cite:`Melton2016-1` and :cite:`Melton2016-2`.
 
+- ``debug_checks`` valid values are 'no', 'all', 'checkGL_after_moves'. If the build type is `debug`, the default value is 'all'. Otherwise, the default value is 'no'.
 
 -  ``energyUpdateInterval``: The default is to update the trial energy
    at every step. Otherwise the trial energy is updated every
@@ -1251,7 +1554,7 @@ where :math:`N` is the current population.
       The v1 and v3 algorithms are size-consistent and are important advances over the previous v0 non-size-consistent algorithm. We highly recommend investigating the importance of size-consistency.
 
 
--  ``scaleweight``: This is the scaling weight per Umrigar/Nightengale.
+-  ``scaleweight``: This is the scaling weight per Umrigar/Nightingale.
    CUDA only.
 
 -  ``MaxAge``: Set the weight of a walker to min(currentweight,0.5)
@@ -1374,6 +1677,88 @@ Combining VMC and DMC in a single run (wavefunction optimization can be combined
     <parameter name="blocks">50</parameter>
     <parameter name="steps">100</parameter>
     <parameter name="timestep">0.005</parameter>
+  </qmc>
+
+.. _dmc_batch:
+
+Batched ``dmc`` driver (experimental)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+  parameters:
+
+  +--------------------------------+--------------+-------------------------+-------------+-------------------------------------------------+
+  | **Name**                       | **Datatype** | **Values**              | **Default** | **Description**                                 |
+  +================================+==============+=========================+=============+=================================================+
+  | ``total_walkers``              | integer      | :math:`> 0`             | 1           | Total number of walkers over all MPI ranks      |
+  +--------------------------------+--------------+-------------------------+-------------+-------------------------------------------------+
+  | ``walkers_per_rank``           | integer      | :math:`> 0`             | 1           | Number of walkers per MPI rank                  |
+  +--------------------------------+--------------+-------------------------+-------------+-------------------------------------------------+
+  | ``crowds``                     | integer      | :math:`> 0`             | dep.        | Number of desynchronized dwalker crowds         |
+  +--------------------------------+--------------+-------------------------+-------------+-------------------------------------------------+
+  | ``blocks``                     | integer      | :math:`\geq 0`          | 1           | Number of blocks                                |
+  +--------------------------------+--------------+-------------------------+-------------+-------------------------------------------------+
+  | ``steps``                      | integer      | :math:`\geq 0`          | 1           | Number of steps per block                       |
+  +--------------------------------+--------------+-------------------------+-------------+-------------------------------------------------+
+  | ``warmupsteps``                | integer      | :math:`\geq 0`          | 0           | Number of steps for warming up                  |
+  +--------------------------------+--------------+-------------------------+-------------+-------------------------------------------------+
+  | ``timestep``                   | real         | :math:`> 0`             | 0.1         | Time step for each electron move                |
+  +--------------------------------+--------------+-------------------------+-------------+-------------------------------------------------+
+  | ``nonlocalmoves``              | string       | yes, no, v0, v1, v3     | no          | Run with T-moves                                |
+  +--------------------------------+--------------+-------------------------+-------------+-------------------------------------------------+
+  | ``branching_cutoff_scheme``    | string       | classic/DRV/ZSGMA/YL    | classic     | Branch cutoff scheme                            |
+  +--------------------------------+--------------+-------------------------+-------------+-------------------------------------------------+
+  | ``blocks_between_recompute``   | integer      | :math:`\geq 0`          | dep.        | Wavefunction recompute frequency                |
+  +--------------------------------+--------------+-------------------------+-------------+-------------------------------------------------+
+  | ``feedback``                   | double       | :math:`\geq 0`          | 1.0         | Population feedback on the trial energy         |
+  +--------------------------------+--------------+-------------------------+-------------+-------------------------------------------------+
+  | ``sigmaBound``                 | 10           | :math:`\geq 0`          | 10          | Parameter to cutoff large weights               |
+  +--------------------------------+--------------+-------------------------+-------------+-------------------------------------------------+
+  | ``reconfiguration``            | string       | yes/pure/other          | no          | Fixed population technique                      |
+  +--------------------------------+--------------+-------------------------+-------------+-------------------------------------------------+
+  | ``storeconfigs``               | integer      | all values              | 0           | Store configurations                            |
+  +--------------------------------+--------------+-------------------------+-------------+-------------------------------------------------+
+  | ``use_nonblocking``            | string       | yes/no                  | yes         | Using nonblocking send/recv                     |
+  +--------------------------------+--------------+-------------------------+-------------+-------------------------------------------------+
+  | ``debug_disable_branching``    | string       | yes/no                  | no          | Disable branching for debugging                 |
+  +--------------------------------+--------------+-------------------------+-------------+-------------------------------------------------+
+  | ``crowd_serialize_walkers``    | integer      | yes, no                 | no          | Force use of single walker APIs (for testing)   |
+  +--------------------------------+--------------+-------------------------+-------------+-------------------------------------------------+
+  | ``debug_checks``               | text         | see additional info     | dep.        | Turn on/off additional recompute and checks     |
+  +--------------------------------+--------------+-------------------------+-------------+-------------------------------------------------+
+  | ``spin_mass``                  | real         | :math:`\geq 0`          | 1.0         | Effective mass for spin sampling                |
+  +--------------------------------+--------------+-------------------------+-------------+-------------------------------------------------+
+  | ``measure_imbalance``          | text         | yes,no                  | no          | Measure load imbalance at the end of each block |
+  +--------------------------------+--------------+-------------------------+-------------+-------------------------------------------------+
+
+
+- ``crowds`` The number of crowds that the walkers are subdivided into on each MPI rank. If not provided, it is set equal to the number of OpenMP threads.
+
+- ``walkers_per_rank`` The number of walkers per MPI rank. This number does not have to be a multiple of the number of OpenMP
+  threads. However, to avoid any idle resources, it is recommended to be at least the number of OpenMP threads for pure CPU runs.
+  For GPU runs, a scan of this parameter is necessary to reach reasonable single rank efficiency and also get a balanced time to
+  solution. For highest throughput on GPUs, expect to use hundreds of walkers_per_rank, or the largest number that will fit in GPU
+  memory. If neither ``total_walkers`` nor ``walkers_per_rank`` is provided, ``walkers_per_rank`` is set equal to ``crowds``.
+
+- ``total_walkers`` Total number of walkers summed over all MPI ranks, or equivalently the total number of walkers in the DMC
+  calculation. If not provided, it is computed as ``walkers_per_rank`` times the number of MPI ranks. If both ``total_walkers``
+  and ``walkers_per_rank`` are provided, which is not recommended, ``total_walkers`` must be consistently set equal to
+  ``walkers_per_rank`` times the number MPI ranks.
+
+- ``debug_checks`` valid values are 'no', 'all', 'checkGL_after_load', 'checkGL_after_moves', 'checkGL_after_tmove'. If the build type is `debug`, the default value is 'all'. Otherwise, the default value is 'no'.
+
+- ``spin_mass`` Optional parameter to allow the user to change the rate of spin sampling. If spin sampling is on using ``spinor`` == yes in the electron ParticleSet input,  the spin mass determines the rate
+  of spin sampling, resulting in an effective spin timestep :math:`\tau_s = \frac{\tau}{\mu_s}`. The algorithm is described in detail in :cite:`Melton2016-1` and :cite:`Melton2016-2`.
+
+.. code-block::
+  :caption: The following is an example of a minimal DMC section using the batched ``dmc`` driver
+  :name: Listing 48b
+
+  <qmc method="dmc" move="pbyp" target="e">
+    <parameter name="walkers_per_rank">256</parameter>
+    <parameter name="blocks">100</parameter>
+    <parameter name="steps">400</parameter>
+    <parameter name="timestep">0.010</parameter>
+    <parameter name="warmupsteps">100</parameter>
   </qmc>
 
 .. _rmc:

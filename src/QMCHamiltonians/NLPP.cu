@@ -3,13 +3,19 @@
 // See LICENSE file in top directory for details.
 //
 // Copyright (c) 2016 Jeongnim Kim and QMCPACK developers.
+// Modifications Copyright (C) 2021 Advanced Micro Devices, Inc. All rights reserved.
 //
 // File developed by: Ken Esler, kpesler@gmail.com, University of Illinois at Urbana-Champaign
 //                    Jeremy McMinnis, jmcminis@gmail.com, University of Illinois at Urbana-Champaign
+//                    Jakub Kurzak, jakurzak@amd.com, Advanced Micro Devices, Inc.
 //
 // File created by: Ken Esler, kpesler@gmail.com, University of Illinois at Urbana-Champaign
 //////////////////////////////////////////////////////////////////////////////////////
 
+#include "config.h"
+#ifdef QMC_CUDA2HIP
+#include <hip/hip_runtime.h>
+#endif
 
 template<typename T, int BS>
 __device__ T min_dist_all(T x, T y, T z, T L[3][3], T Linv[3][3], T images[27][3])
@@ -312,6 +318,7 @@ __global__ void find_core_electrons_PBC_kernel(T** R,
         disp[tid][1] = r[tid][1] - i[ion][1];
         disp[tid][2] = r[tid][2] - i[ion][2];
         dist[tid]    = min_dist<T>(disp[tid][0], disp[tid][1], disp[tid][2], L, Linv);
+        __syncthreads();
         for (int elec = 0; elec < elecEnd; elec++)
         {
           __syncthreads();

@@ -17,13 +17,12 @@
 #include "DMC_CUDA.h"
 #include "QMCDrivers/DMC/DMCUpdatePbyP.h"
 #include "QMCDrivers/QMCUpdateBase.h"
-#include "OhmmsApp/RandomNumberControl.h"
+#include "RandomNumberControl.h"
 #include "Utilities/RandomGenerator.h"
 #include "ParticleBase/RandomSeqGenerator.h"
 #include "QMCDrivers/DriftOperators.h"
 #include "Utilities/RunTimeManager.h"
 #include "Message/CommOperators.h"
-#include "type_traits/scalar_traits.h"
 #ifdef USE_NVTX_API
 #include <nvToolsExt.h>
 #endif
@@ -42,7 +41,6 @@ DMCcuda::DMCcuda(MCWalkerConfiguration& w,
     : QMCDriver(w, psi, h, comm, "DMCcuda", enable_profiling),
       myWarmupSteps(0),
       Mover(0),
-      NLop(w.getTotalNum()),
       ResizeTimer(*timer_manager.createTimer("DMCcuda::resize")),
       DriftDiffuseTimer(*timer_manager.createTimer("DMCcuda::Drift_Diffuse")),
       BranchTimer(*timer_manager.createTimer("DMCcuda::Branch")),
@@ -51,25 +49,25 @@ DMCcuda::DMCcuda(MCWalkerConfiguration& w,
   RootName = "dmc";
   qmc_driver_mode.set(QMC_UPDATE_MODE, 1);
   qmc_driver_mode.set(QMC_WARMUP, 0);
-  //m_param.add(myWarmupSteps,"warmupSteps","int");
-  //m_param.add(nTargetSamples,"targetWalkers","int");
-  m_param.add(ScaleWeight, "scaleweight", "string");
+  //m_param.add(myWarmupSteps,"warmupSteps");
+  //m_param.add(nTargetSamples,"targetWalkers");
+  m_param.add(ScaleWeight, "scaleweight");
 
   H.setRandomGenerator(&Random);
 }
 
 bool DMCcuda::checkBounds(const PosType& newpos)
 {
-  PosType red = W.Lattice.toUnit(newpos);
-  return W.Lattice.isValid(red);
+  PosType red = W.getLattice().toUnit(newpos);
+  return W.getLattice().isValid(red);
 }
 
 void DMCcuda::checkBounds(std::vector<PosType>& newpos, std::vector<bool>& valid)
 {
   for (int iw = 0; iw < newpos.size(); iw++)
   {
-    PosType red = W.Lattice.toUnit(newpos[iw]);
-    valid[iw]   = W.Lattice.isValid(red);
+    PosType red = W.getLattice().toUnit(newpos[iw]);
+    valid[iw]   = W.getLattice().isValid(red);
   }
 }
 
@@ -85,8 +83,6 @@ bool DMCcuda::run()
   resetRun();
   Mover->MaxAge        = 1;
   IndexType block      = 0;
-  IndexType nAcceptTot = 0;
-  IndexType nRejectTot = 0;
   bool update_now      = false;
   int nat              = W.getTotalNum();
   int nw               = W.getActiveWalkers();
@@ -108,8 +104,8 @@ bool DMCcuda::run()
     W[iw]->Weight = 1.0;
 
   LoopTimer<> dmc_loop;
-  RunTimeControl<> runtimeControl(run_time_manager, MaxCPUSecs);
-  bool enough_time_for_next_iteration = true;
+  RunTimeControl<> runtimeControl(run_time_manager, MaxCPUSecs, myComm->getName(), myComm->rank() == 0);
+
   do
   {
     dmc_loop.start();
@@ -283,7 +279,7 @@ bool DMCcuda::run()
           v2bar += dot(wG_scaled, wG_scaled);
 #ifdef QMC_COMPLEX
           PosType wG_real;
-          convert(W.G[iat], wG_real);
+          convertToReal(W.G[iat], wG_real);
           v2 += dot(wG_real, wG_real);
 #else
           // should be removed when things work fine
@@ -318,19 +314,23 @@ bool DMCcuda::run()
       Psi.recompute(W, true);
     double accept_ratio = (double)nAccept / (double)(nAccept + nReject);
     Estimators->stopBlock(accept_ratio);
-    nAcceptTot += nAccept;
-    nRejectTot += nReject;
     ++block;
     recordBlock(block);
     dmc_loop.stop();
-    enough_time_for_next_iteration = runtimeControl.enough_time_for_next_iteration(dmc_loop);
+
+    bool stop_requested = false;
     // Rank 0 decides whether the time limit was reached
-    myComm->bcast(enough_time_for_next_iteration);
-    if (!enough_time_for_next_iteration)
+    if (!myComm->rank())
+      stop_requested = runtimeControl.checkStop(dmc_loop);
+    myComm->bcast(stop_requested);
+    if (stop_requested)
     {
-      app_log() << runtimeControl.time_limit_message("DMC", block);
+      if (!myComm->rank())
+        app_log() << runtimeControl.generateStopMessage("DMC_CUDA", block);
+      run_time_manager.markStop();
+      break;
     }
-  } while (block < nBlocks && enough_time_for_next_iteration);
+  } while (block < nBlocks);
 #ifdef USE_NVTX_API
   nvtxRangePop();
 #endif
@@ -413,11 +413,11 @@ bool DMCcuda::put(xmlNodePtr q)
 
   BranchInterval = -1;
   ParameterSet p;
-  p.add(BranchInterval, "branchInterval", "string");
-  p.add(BranchInterval, "branchinterval", "string");
-  p.add(BranchInterval, "substeps", "int");
-  p.add(BranchInterval, "subSteps", "int");
-  p.add(BranchInterval, "sub_steps", "int");
+  p.add(BranchInterval, "branchInterval");
+  p.add(BranchInterval, "branchinterval");
+  p.add(BranchInterval, "substeps");
+  p.add(BranchInterval, "subSteps");
+  p.add(BranchInterval, "sub_steps");
   p.put(q);
   return true;
 }

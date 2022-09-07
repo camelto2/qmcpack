@@ -87,7 +87,7 @@ public:
   WalkerSetBase(afqmc::TaskGroup_& tg_,
                 xmlNodePtr cur,
                 AFQMCInfo& info,
-                RandomGenerator_t* r,
+                RandomGenerator* r,
                 Allocator alloc_,
                 BPAllocator bpalloc_)
       : AFQMCInfo(info),
@@ -293,9 +293,9 @@ public:
 
   void resize_bp(int nbp, int nCV, int nref)
   {
-    assert(walker_buffer.size(1) == walker_size);
-    assert(bp_buffer.size(0) == bp_walker_size);
-    assert(walker_buffer.size(0) == bp_buffer.size(1));
+    assert(std::get<1>(walker_buffer.sizes()) == walker_size);
+    assert(bp_buffer.size() == bp_walker_size);
+    assert(walker_buffer.size() == std::get<1>(bp_buffer.sizes()));
     // wlk_descriptor: {nmo, naea, naeb, nback_prop, nCV, nRefs, nHist}
     wlk_desc[3] = nbp;
     wlk_desc[4] = nCV;
@@ -740,7 +740,7 @@ public:
 protected:
   afqmc::TaskGroup_& TG;
 
-  RandomGenerator_t* rng;
+  RandomGenerator* rng;
 
   int walker_size, walker_memory_usage;
   int bp_walker_size, bp_walker_memory_usage;

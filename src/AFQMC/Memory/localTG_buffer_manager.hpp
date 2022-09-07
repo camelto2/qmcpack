@@ -30,7 +30,7 @@ namespace afqmc
 // Follows a monostate-type pattern. All variables are static and refer to a global instance
 // of the resource.
 #if defined(ENABLE_CUDA) || defined(ENABLE_HIP)
-//  typedef LocalTGBufferManager DeviceBufferManager;
+//  using DeviceBufferManager = LocalTGBufferManager;
 class LocalTGBufferManager : public DeviceBufferManager
 {
 public:
@@ -65,7 +65,7 @@ public:
   LocalTGBufferManager(mpi3::shared_communicator& local, size_t size)
   {
     require(false);
-    generator = std::make_unique<generator_t>(::shm::memory_resource_shm_ptr_with_raw_ptr_dispatch{local}, size,
+    generator = std::make_unique<generator_t>(::shm::memory_resource_shm_ptr_with_raw_ptr_dispatch{&local}, size,
                                               shm_constructor<char>{local});
   }
 

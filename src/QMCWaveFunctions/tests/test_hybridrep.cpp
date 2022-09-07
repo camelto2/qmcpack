@@ -14,6 +14,7 @@
 
 #include "OhmmsData/Libxml2Doc.h"
 #include "OhmmsPETE/OhmmsMatrix.h"
+#include "DistanceTable.h"
 #include "Particle/ParticleSet.h"
 #include "Particle/ParticleSetPool.h"
 #include "QMCWaveFunctions/WaveFunctionComponent.h"
@@ -31,16 +32,30 @@ namespace qmcplusplus
 #if !defined(QMC_CUDA) && !defined(ENABLE_OFFLOAD)
 TEST_CASE("Hybridrep SPO from HDF diamond_1x1x1", "[wavefunction]")
 {
-  Communicate* c;
-  c = OHMMS::Controller;
+  Communicate* c = OHMMS::Controller;
 
-  auto ions_uptr = std::make_unique<ParticleSet>();
-  auto elec_uptr = std::make_unique<ParticleSet>();
+  ParticleSet::ParticleLayout lattice;
+  // diamondC_1x1x1
+  lattice.R(0, 0) = 3.37316115;
+  lattice.R(0, 1) = 3.37316115;
+  lattice.R(0, 2) = 0.0;
+  lattice.R(1, 0) = 0.0;
+  lattice.R(1, 1) = 3.37316115;
+  lattice.R(1, 2) = 3.37316115;
+  lattice.R(2, 0) = 3.37316115;
+  lattice.R(2, 1) = 0.0;
+  lattice.R(2, 2) = 3.37316115;
+
+  ParticleSetPool ptcl = ParticleSetPool(c);
+  ptcl.setSimulationCell(lattice);
+  auto ions_uptr = std::make_unique<ParticleSet>(ptcl.getSimulationCell());
+  auto elec_uptr = std::make_unique<ParticleSet>(ptcl.getSimulationCell());
   ParticleSet& ions_(*ions_uptr);
   ParticleSet& elec_(*elec_uptr);
 
   ions_.setName("ion");
-  ions_.create(2);
+  ptcl.addParticleSet(std::move(ions_uptr));
+  ions_.create({2});
   ions_.R[0][0] = 0.0;
   ions_.R[0][1] = 0.0;
   ions_.R[0][2] = 0.0;
@@ -55,11 +70,12 @@ TEST_CASE("Hybridrep SPO from HDF diamond_1x1x1", "[wavefunction]")
   int lmaxIdx             = ion_species.addAttribute("lmax");
 
   ion_species(C_chargeIdx, C_Idx) = 4;
-  ion_species(cutoffIdx, C_Idx) = 0.9;
-  ion_species(lmaxIdx, C_Idx)   = 3;
+  ion_species(cutoffIdx, C_Idx)   = 0.9;
+  ion_species(lmaxIdx, C_Idx)     = 3;
 
   elec_.setName("elec");
-  elec_.create(2);
+  ptcl.addParticleSet(std::move(elec_uptr));
+  elec_.create({2});
   elec_.R[0][0] = 0.4;
   elec_.R[0][1] = 0.0;
   elec_.R[0][2] = 0.0;
@@ -67,27 +83,10 @@ TEST_CASE("Hybridrep SPO from HDF diamond_1x1x1", "[wavefunction]")
   elec_.R[1][1] = 1.0;
   elec_.R[1][2] = 0.0;
 
-  // diamondC_1x1x1
-  elec_.Lattice.R(0, 0) = 3.37316115;
-  elec_.Lattice.R(0, 1) = 3.37316115;
-  elec_.Lattice.R(0, 2) = 0.0;
-  elec_.Lattice.R(1, 0) = 0.0;
-  elec_.Lattice.R(1, 1) = 3.37316115;
-  elec_.Lattice.R(1, 2) = 3.37316115;
-  elec_.Lattice.R(2, 0) = 3.37316115;
-  elec_.Lattice.R(2, 1) = 0.0;
-  elec_.Lattice.R(2, 2) = 3.37316115;
-
   SpeciesSet& tspecies       = elec_.getSpeciesSet();
   int upIdx                  = tspecies.addSpecies("u");
   int chargeIdx              = tspecies.addAttribute("charge");
   tspecies(chargeIdx, upIdx) = -1;
-
-  // Need 1 electron and 1 proton, somehow
-  //ParticleSet target = ParticleSet();
-  ParticleSetPool ptcl = ParticleSetPool(c);
-  ptcl.addParticleSet(std::move(elec_uptr));
-  ptcl.addParticleSet(std::move(ions_uptr));
 
   //diamondC_1x1x1
   const char* particles = "<tmp> \
@@ -104,16 +103,16 @@ TEST_CASE("Hybridrep SPO from HDF diamond_1x1x1", "[wavefunction]")
   xmlNodePtr ein1 = xmlFirstElementChild(root);
 
   EinsplineSetBuilder einSet(elec_, ptcl.getPool(), c, ein1);
-  std::unique_ptr<SPOSet> spo(einSet.createSPOSetFromXML(ein1));
+  auto spo = einSet.createSPOSetFromXML(ein1);
   REQUIRE(spo);
 
   ions_.update();
   elec_.update();
 
   // for vgl
-  SPOSet::ValueMatrix_t psiM(elec_.R.size(), spo->getOrbitalSetSize());
-  SPOSet::GradMatrix_t dpsiM(elec_.R.size(), spo->getOrbitalSetSize());
-  SPOSet::ValueMatrix_t d2psiM(elec_.R.size(), spo->getOrbitalSetSize());
+  SPOSet::ValueMatrix psiM(elec_.R.size(), spo->getOrbitalSetSize());
+  SPOSet::GradMatrix dpsiM(elec_.R.size(), spo->getOrbitalSetSize());
+  SPOSet::ValueMatrix d2psiM(elec_.R.size(), spo->getOrbitalSetSize());
   spo->evaluate_notranspose(elec_, 0, elec_.R.size(), psiM, dpsiM, d2psiM);
 
 #if !defined(QMC_CUDA) || defined(QMC_COMPLEX)
@@ -132,7 +131,7 @@ TEST_CASE("Hybridrep SPO from HDF diamond_1x1x1", "[wavefunction]")
   REQUIRE(std::real(dpsiM[0][1][2]) == Approx(-0.6386129856));
   // lapl
   REQUIRE(std::real(d2psiM[0][0]) == Approx(-4.1090884209));
-#if defined(MIXED_PRECISION) 
+#if defined(MIXED_PRECISION)
   REQUIRE(std::real(d2psiM[0][1]) == Approx(22.3851032257).epsilon(3e-5));
 #else
   REQUIRE(std::real(d2psiM[0][1]) == Approx(22.3851032257));
@@ -157,16 +156,30 @@ TEST_CASE("Hybridrep SPO from HDF diamond_1x1x1", "[wavefunction]")
 
 TEST_CASE("Hybridrep SPO from HDF diamond_2x1x1", "[wavefunction]")
 {
-  Communicate* c;
-  c = OHMMS::Controller;
+  Communicate* c = OHMMS::Controller;
 
-  auto ions_uptr = std::make_unique<ParticleSet>();
-  auto elec_uptr = std::make_unique<ParticleSet>();
+  ParticleSet::ParticleLayout lattice;
+  // diamondC_2x1x1
+  lattice.R(0, 0) = 6.7463223;
+  lattice.R(0, 1) = 6.7463223;
+  lattice.R(0, 2) = 0.0;
+  lattice.R(1, 0) = 0.0;
+  lattice.R(1, 1) = 3.37316115;
+  lattice.R(1, 2) = 3.37316115;
+  lattice.R(2, 0) = 3.37316115;
+  lattice.R(2, 1) = 0.0;
+  lattice.R(2, 2) = 3.37316115;
+
+  ParticleSetPool ptcl = ParticleSetPool(c);
+  ptcl.setSimulationCell(lattice);
+  auto ions_uptr = std::make_unique<ParticleSet>(ptcl.getSimulationCell());
+  auto elec_uptr = std::make_unique<ParticleSet>(ptcl.getSimulationCell());
   ParticleSet& ions_(*ions_uptr);
   ParticleSet& elec_(*elec_uptr);
 
   ions_.setName("ion");
-  ions_.create(4);
+  ptcl.addParticleSet(std::move(ions_uptr));
+  ions_.create({4});
   ions_.R[0][0] = 0.0;
   ions_.R[0][1] = 0.0;
   ions_.R[0][2] = 0.0;
@@ -187,11 +200,12 @@ TEST_CASE("Hybridrep SPO from HDF diamond_2x1x1", "[wavefunction]")
   int lmaxIdx             = ion_species.addAttribute("lmax");
 
   ion_species(C_chargeIdx, C_Idx) = 4;
-  ion_species(cutoffIdx, C_Idx) = 0.9;
-  ion_species(lmaxIdx, C_Idx)   = 3;
+  ion_species(cutoffIdx, C_Idx)   = 0.9;
+  ion_species(lmaxIdx, C_Idx)     = 3;
 
   elec_.setName("elec");
-  elec_.create(2);
+  ptcl.addParticleSet(std::move(elec_uptr));
+  elec_.create({2});
   elec_.R[0][0] = 0.4;
   elec_.R[0][1] = 0.0;
   elec_.R[0][2] = 0.0;
@@ -199,27 +213,10 @@ TEST_CASE("Hybridrep SPO from HDF diamond_2x1x1", "[wavefunction]")
   elec_.R[1][1] = 1.0;
   elec_.R[1][2] = 0.0;
 
-  // diamondC_2x1x1
-  elec_.Lattice.R(0, 0) = 6.7463223;
-  elec_.Lattice.R(0, 1) = 6.7463223;
-  elec_.Lattice.R(0, 2) = 0.0;
-  elec_.Lattice.R(1, 0) = 0.0;
-  elec_.Lattice.R(1, 1) = 3.37316115;
-  elec_.Lattice.R(1, 2) = 3.37316115;
-  elec_.Lattice.R(2, 0) = 3.37316115;
-  elec_.Lattice.R(2, 1) = 0.0;
-  elec_.Lattice.R(2, 2) = 3.37316115;
-
   SpeciesSet& tspecies       = elec_.getSpeciesSet();
   int upIdx                  = tspecies.addSpecies("u");
   int chargeIdx              = tspecies.addAttribute("charge");
   tspecies(chargeIdx, upIdx) = -1;
-
-  // Need 1 electron and 1 proton, somehow
-  //ParticleSet target = ParticleSet();
-  ParticleSetPool ptcl = ParticleSetPool(c);
-  ptcl.addParticleSet(std::move(elec_uptr));
-  ptcl.addParticleSet(std::move(ions_uptr));
 
   //diamondC_2x1x1
   const char* particles = "<tmp> \
@@ -236,7 +233,7 @@ TEST_CASE("Hybridrep SPO from HDF diamond_2x1x1", "[wavefunction]")
   xmlNodePtr ein1 = xmlFirstElementChild(root);
 
   EinsplineSetBuilder einSet(elec_, ptcl.getPool(), c, ein1);
-  std::unique_ptr<SPOSet> spo(einSet.createSPOSetFromXML(ein1));
+  auto spo = einSet.createSPOSetFromXML(ein1);
   REQUIRE(spo);
 
   ions_.update();
@@ -256,9 +253,9 @@ TEST_CASE("Hybridrep SPO from HDF diamond_2x1x1", "[wavefunction]")
 #endif
 
   // for vgl
-  SPOSet::ValueMatrix_t psiM(elec_.R.size(), spo->getOrbitalSetSize());
-  SPOSet::GradMatrix_t dpsiM(elec_.R.size(), spo->getOrbitalSetSize());
-  SPOSet::ValueMatrix_t d2psiM(elec_.R.size(), spo->getOrbitalSetSize());
+  SPOSet::ValueMatrix psiM(elec_.R.size(), spo->getOrbitalSetSize());
+  SPOSet::GradMatrix dpsiM(elec_.R.size(), spo->getOrbitalSetSize());
+  SPOSet::ValueMatrix d2psiM(elec_.R.size(), spo->getOrbitalSetSize());
   spo->evaluate_notranspose(elec_, 0, elec_.R.size(), psiM, dpsiM, d2psiM);
 
 #if !defined(QMC_CUDA) || defined(QMC_COMPLEX)
@@ -336,25 +333,25 @@ TEST_CASE("Hybridrep SPO from HDF diamond_2x1x1", "[wavefunction]")
   elec_2.R[0] = elec_.R[1];
   elec_2.R[1] = elec_.R[0];
   elec_2.update();
-  RefVector<ParticleSet> P_list;
+  RefVectorWithLeader<ParticleSet> P_list(elec_);
   P_list.push_back(elec_);
   P_list.push_back(elec_2);
 
   std::unique_ptr<SPOSet> spo_2(spo->makeClone());
-  RefVector<SPOSet> spo_list;
+  RefVectorWithLeader<SPOSet> spo_list(*spo);
   spo_list.push_back(*spo);
   spo_list.push_back(*spo_2);
 
-  SPOSet::ValueVector_t psi(spo->getOrbitalSetSize());
-  SPOSet::GradVector_t dpsi(spo->getOrbitalSetSize());
-  SPOSet::ValueVector_t d2psi(spo->getOrbitalSetSize());
-  SPOSet::ValueVector_t psi_2(spo->getOrbitalSetSize());
-  SPOSet::GradVector_t dpsi_2(spo->getOrbitalSetSize());
-  SPOSet::ValueVector_t d2psi_2(spo->getOrbitalSetSize());
+  SPOSet::ValueVector psi(spo->getOrbitalSetSize());
+  SPOSet::GradVector dpsi(spo->getOrbitalSetSize());
+  SPOSet::ValueVector d2psi(spo->getOrbitalSetSize());
+  SPOSet::ValueVector psi_2(spo->getOrbitalSetSize());
+  SPOSet::GradVector dpsi_2(spo->getOrbitalSetSize());
+  SPOSet::ValueVector d2psi_2(spo->getOrbitalSetSize());
 
-  RefVector<SPOSet::ValueVector_t> psi_v_list;
-  RefVector<SPOSet::GradVector_t> dpsi_v_list;
-  RefVector<SPOSet::ValueVector_t> d2psi_v_list;
+  RefVector<SPOSet::ValueVector> psi_v_list;
+  RefVector<SPOSet::GradVector> dpsi_v_list;
+  RefVector<SPOSet::ValueVector> d2psi_v_list;
 
   psi_v_list.push_back(psi);
   psi_v_list.push_back(psi_2);

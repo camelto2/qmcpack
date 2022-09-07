@@ -204,6 +204,8 @@ attributes:
   +-------------------------+--------------+----------------------+------------------------+---------------------------------+
   | ``physical``:math:`^o`  | boolean      | yes/no               | yes                    | Hamiltonian(yes)/Observable(no) |
   +-------------------------+--------------+----------------------+------------------------+---------------------------------+
+  | ``gpu``                 | boolean      | yes/no               | depend                 | Offload computation to GPU      |
+  +-------------------------+--------------+----------------------+------------------------+---------------------------------+
   | ``forces``              | boolean      | yes/no               | no                     | *Deprecated*                    |
   +-------------------------+--------------+----------------------+------------------------+---------------------------------+
 
@@ -232,6 +234,8 @@ Additional information:
    outputted ``LocalEnergy``. Regardless of the value of ``physical``
    output data will appear in ``scalar.dat`` in a column headed by
    ``name``.
+
+-  **gpu**: When not specified, use the ``gpu`` attribute of ``particleset``.
 
 .. code-block::
   :caption: QMCPXML element for Coulomb interaction between electrons.
@@ -327,11 +331,11 @@ attributes:
   +-----------------------------+--------------+-----------------------+------------------------+--------------------------------------------------+
   | ``format``:math:`^r`        | text         | xml/table             | table                  | Select file format                               |
   +-----------------------------+--------------+-----------------------+------------------------+--------------------------------------------------+
-  | ``algorithm``:math:`^o`     | text         | batched/default       | default                | Choose NLPP algorithm                            |
+  | ``algorithm``:math:`^o`     | text         | batched/non-batched   | batched                | Choose NLPP algorithm                            |
   +-----------------------------+--------------+-----------------------+------------------------+--------------------------------------------------+
   | ``DLA``:math:`^o`           | text         | yes/no                | no                     | Use determinant localization approximation       |
   +-----------------------------+--------------+-----------------------+------------------------+--------------------------------------------------+
-  | ``physicalSO``:math:`^o`    | boolean      | yes/no                | no                     | Include the SO contribution in the local energy  |
+  | ``physicalSO``:math:`^o`    | boolean      | yes/no                | yes                    | Include the SO contribution in the local energy  |
   +-----------------------------+--------------+-----------------------+------------------------+--------------------------------------------------+
 
 Additional information:
@@ -359,14 +363,15 @@ Additional information:
    These elements specify individual file names and formats (both the
    FSAtom XML and CASINO tabular data formats are supported).
 
--  **algorithm** The default algorithm evaluates the ratios of
+-  **algorithm** The ``non-batched`` algorithm evaluates the ratios of
    wavefunction components together for each quadrature point and then
-   one point after another. The batched algorithm evaluates the ratios
+   one point after another. The ``batched`` algorithm evaluates the ratios
    of quadrature points together for each wavefunction component and
    then one component after another. Internally, it uses
    ``VirtualParticleSet`` for quadrature points. Hybrid orbital
    representation has an extra optimization enabled when using the
-   batched algorithm.
+   batched algorithm. When OpenMP offload build is enabled, the default
+   value is ``batched``. Otherwise, ``non-batched`` is the default.
 
 -  **DLA** Determinant localization approximation
    (DLA) :cite:`Zen2019DLA` uses only the fermionic part of
@@ -383,7 +388,7 @@ Additional information:
     <pairpot name="PseudoPot" type="pseudo"  source="i" wavefunction="psi0" format="psf"/>
 
 .. code-block::
-  :caption: QMCPXML element for pseudopotential electron-ion interaction (xml files).
+  :caption: QMCPXML element for pseudopotential electron-ion interaction (xml files). If SOC terms present in xml, they are added to local energy
   :name: Listing 20
 
     <pairpot name="PseudoPot" type="pseudo"  source="i" wavefunction="psi0" format="xml">
@@ -392,13 +397,12 @@ Additional information:
     </pairpot>
 
 .. code-block::
-  :caption: QMCPXML element for pseudopotential including the spin-orbit interaction.
+  :caption: QMCPXML element for pseudopotential to accumulate the spin-orbit energy, but do not include in local energy
   :name: Listing 21
   
-    <pairpot name="PseudoPot" type="pseudo" source="i" wavefunction="psi0" format="xml" physicalSO="yes">
+    <pairpot name="PseudoPot" type="pseudo" source="i" wavefunction="psi0" format="xml" physicalSO="no">
       <pseudo elementType="Pb" href="Pb.xml"/>
     </pairpot>
-
 Details of ``<pseudo/>`` input elements are shown in the following. It
 is possible to include (or construct) a full pseudopotential directly in
 the input file without providing an external file via ``href``. The full
@@ -429,10 +433,12 @@ attributes:
   +-----------------------------------+--------------+-----------------+-------------+---------------------------+
   | ``nrule``:math:`^o`               | integer      |                 |             | Integration grid order    |
   +-----------------------------------+--------------+-----------------+-------------+---------------------------+
+  | ``l-local``:math:`^o`             | integer      |                 |             | Override local channel    |
+  +-----------------------------------+--------------+-----------------+-------------+---------------------------+
 
 .. code-block::
   :caption: QMCPXML element for pseudopotential of single ionic species.
-  :name: Listing 21
+  :name: Listing 21b
 
     <pseudo elementType="Li" href="Li.xml"/>
 
@@ -1682,7 +1688,7 @@ Additional information:
   :caption: Example ``sposet`` initialization for density matrix use.  Occupied and virtual orbital sets are created separately, then joined (``basis="spo_u spo_uv"``).
   :name: Listing 39
 
-  <sposet_builder type="bspline" href="../dft/pwscf_output/pwscf.pwscf.h5" tilematrix="1 0 0 0 1 0 0 0 1" twistnum="0" meshfactor="1.0" gpu="no" precision="single">
+  <sposet_builder type="bspline" href="../dft/pwscf_output/pwscf.pwscf.h5" tilematrix="1 0 0 0 1 0 0 0 1" meshfactor="1.0" gpu="no" precision="single">
     <sposet type="bspline" name="spo_u"  group="0" size="4"/>
     <sposet type="bspline" name="spo_d"  group="0" size="2"/>
     <sposet type="bspline" name="spo_uv" group="0" index_min="4" index_max="10"/>
@@ -1692,7 +1698,7 @@ Additional information:
   :caption: Example ``sposet`` initialization for density matrix use. Density matrix orbital basis created separately (``basis="dm_basis"``).
   :name: Listing 40
 
-  <sposet_builder type="bspline" href="../dft/pwscf_output/pwscf.pwscf.h5" tilematrix="1 0 0 0 1 0 0 0 1" twistnum="0" meshfactor="1.0" gpu="no" precision="single">
+  <sposet_builder type="bspline" href="../dft/pwscf_output/pwscf.pwscf.h5" tilematrix="1 0 0 0 1 0 0 0 1" meshfactor="1.0" gpu="no" precision="single">
     <sposet type="bspline" name="spo_u"  group="0" size="4"/>
     <sposet type="bspline" name="spo_d"  group="0" size="2"/>
     <sposet type="bspline" name="dm_basis" size="50" spindataset="0"/>

@@ -2,7 +2,7 @@
 // This file is distributed under the University of Illinois/NCSA Open Source License.
 // See LICENSE file in top directory for details.
 //
-// Copyright (c) 2019 developers.
+// Copyright (c) 2019 QMCPACK developers.
 //
 // File developed by: Peter Doak, doakpw@ornl.gov, Oak Ridge National Laboratory
 //
@@ -40,10 +40,10 @@ public:
   virtual void recordBlock(int block) = 0;
 
   ///return the random generators
-  //virtual std::vector<RandomGenerator_t*>& getRng() = 0;
+  //virtual std::vector<RandomGenerator*>& getRng() = 0;
 
   ///return the i-th random generator
-  virtual RandomGenerator_t& getRng(int i) = 0;
+  virtual RandomGenerator& getRng(int i) = 0;
 
   virtual void setStatus(const std::string& aname, const std::string& h5name, bool append) = 0;
 
@@ -54,15 +54,15 @@ public:
   virtual void requestTraces(bool allow_traces)                         = 0;
   virtual void process(xmlNodePtr cur)                                  = 0;
   virtual QMCRunType getRunType()                                       = 0;
-  virtual const std::string& get_root_name() const                      = 0;
   virtual std::string getEngineName()                                   = 0;
   virtual unsigned long getDriverMode()                                 = 0;
   virtual ~QMCDriverInterface() {}
 
   virtual void setBranchEngine(std::unique_ptr<BranchEngineType>&& be) {}
   virtual std::unique_ptr<BranchEngineType> getBranchEngine() { return nullptr; }
-  virtual void setNewBranchEngine(std::unique_ptr<SFNBranch>&& be) {}
-  virtual std::unique_ptr<SFNBranch> getNewBranchEngine() { return nullptr; }
+
+protected:
+  virtual const std::string& get_root_name() const = 0;
 };
 
 } // namespace qmcplusplus

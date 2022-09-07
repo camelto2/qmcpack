@@ -23,7 +23,6 @@
 #include <cstdio>
 #include <fstream>
 #include "config.h"
-#include "Platforms/sysutil.h"
 #include "Utilities/FairDivide.h"
 
 #ifdef HAVE_MPI
@@ -35,27 +34,22 @@
 Communicate* OHMMS::Controller = new Communicate;
 
 //default constructor: ready for a serial execution
-Communicate::Communicate()
-    : myMPI(MPI_COMM_NULL), d_mycontext(0), d_ncontexts(1), d_groupid(0), d_ngroups(1), GroupLeaderComm(nullptr)
-{}
+Communicate::Communicate() : myMPI(MPI_COMM_NULL), d_mycontext(0), d_ncontexts(1), d_groupid(0), d_ngroups(1) {}
 
 #ifdef HAVE_MPI
-Communicate::Communicate(const mpi3::environment& env) : GroupLeaderComm(nullptr) { initialize(env); }
+Communicate::Communicate(const mpi3::environment& env) { initialize(env); }
 #endif
 
-Communicate::~Communicate()
-{
-  if (GroupLeaderComm != nullptr)
-    delete GroupLeaderComm;
-}
+Communicate::~Communicate() = default;
 
 //exclusive:  MPI or Serial
 #ifdef HAVE_MPI
 
-Communicate::Communicate(const mpi3::communicator& in_comm) : d_groupid(0), d_ngroups(1), GroupLeaderComm(nullptr)
+Communicate::Communicate(const mpi3::communicator& in_comm) : d_groupid(0), d_ngroups(1)
 {
-  comm        = mpi3::communicator(in_comm);
-  myMPI       = &comm;
+  // const_cast is used to enable non-const call to duplicate()
+  comm        = const_cast<mpi3::communicator&>(in_comm).duplicate();
+  myMPI       = comm.get();
   d_mycontext = comm.rank();
   d_ncontexts = comm.size();
 }
@@ -65,8 +59,9 @@ Communicate::Communicate(const Communicate& in_comm, int nparts)
 {
   std::vector<int> nplist(nparts + 1);
   int p = FairDivideLow(in_comm.rank(), in_comm.size(), nparts, nplist); //group
-  comm  = in_comm.comm.split(p, in_comm.rank());
-  myMPI = &comm;
+  // const_cast is used to enable non-const call to split()
+  comm  = const_cast<mpi3::communicator&>(in_comm.comm).split(p, in_comm.rank());
+  myMPI = comm.get();
   // TODO: mpi3 needs to define comm
   d_mycontext = comm.rank();
   d_ncontexts = comm.size();
@@ -77,32 +72,20 @@ Communicate::Communicate(const Communicate& in_comm, int nparts)
   nplist.pop_back();
   mpi3::communicator leader_comm = in_comm.comm.subcomm(nplist);
   if (isGroupLeader())
-    GroupLeaderComm = new Communicate(leader_comm);
+    GroupLeaderComm = std::make_unique<Communicate>(leader_comm);
   else
-    GroupLeaderComm = nullptr;
+    GroupLeaderComm.reset();
 }
 
 
 void Communicate::initialize(const mpi3::environment& env)
 {
-  comm        = env.world();
-  myMPI       = &comm;
+  comm        = env.get_world_instance();
+  myMPI       = comm.get();
   d_mycontext = comm.rank();
   d_ncontexts = comm.size();
   d_groupid   = 0;
   d_ngroups   = 1;
-#ifdef __linux__
-  for (int proc = 0; proc < OHMMS::Controller->size(); proc++)
-  {
-    if (OHMMS::Controller->rank() == proc)
-    {
-      fprintf(stderr, "Rank = %4d  Free Memory = %5zu MB\n", proc, freemem());
-    }
-    comm.barrier();
-  }
-  comm.barrier();
-#endif
-  std::string when = "qmc." + getDateAndTime("%Y%m%d_%H%M");
 }
 
 // For unit tests until they can be changed and this will be removed.
@@ -110,8 +93,9 @@ void Communicate::initialize(int argc, char** argv) {}
 
 void Communicate::initializeAsNodeComm(const Communicate& parent)
 {
-  comm        = parent.comm.split_shared();
-  myMPI       = &comm;
+  // const_cast is used to enable non-const call to split_shared()
+  comm        = const_cast<mpi3::communicator&>(parent.comm).split_shared();
+  myMPI       = comm.get();
   d_mycontext = comm.rank();
   d_ncontexts = comm.size();
 }
@@ -133,13 +117,13 @@ void Communicate::abort() const { comm.abort(1); }
 void Communicate::barrier() const { comm.barrier(); }
 #else
 
-void Communicate::initialize(int argc, char** argv) { std::string when = "qmc." + getDateAndTime("%Y%m%d_%H%M"); }
+void Communicate::initialize(int argc, char** argv) {}
 
 void Communicate::initializeAsNodeComm(const Communicate& parent) {}
 
 void Communicate::finalize() {}
 
-void Communicate::abort() const { std::abort(); }
+void Communicate::abort() const { std::_Exit(EXIT_FAILURE); }
 
 void Communicate::barrier() const {}
 
@@ -148,7 +132,7 @@ void Communicate::cleanupMessage(void*) {}
 Communicate::Communicate(const Communicate& in_comm, int nparts)
     : myMPI(MPI_COMM_NULL), d_mycontext(0), d_ncontexts(1), d_groupid(0)
 {
-  GroupLeaderComm = new Communicate();
+  GroupLeaderComm = std::make_unique<Communicate>();
 }
 #endif // !HAVE_MPI
 

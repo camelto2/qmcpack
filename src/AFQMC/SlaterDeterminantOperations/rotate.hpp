@@ -484,7 +484,7 @@ void halfRotateCholeskyMatrix(WALKER_TYPES type,
     APP_ABORT(" Error: kN > NMO in halfRotateCholeskyMatrix. \n");
 
   // map from [0:2*NMO) to [0:NMO) in collinear case
-  int k0_alpha, k0_beta, kN_alpha = 0, kN_beta = 0;
+  int k0_alpha = 0, k0_beta = 0, kN_alpha = 0, kN_beta = 0;
   if (k0 >= 0)
   {
     k0_alpha = std::min(k0, NMO);
@@ -494,10 +494,6 @@ void halfRotateCholeskyMatrix(WALKER_TYPES type,
       k0_beta = std::max(k0, NMO) - NMO;
       kN_beta = std::max(kN, NMO) - NMO;
     }
-  }
-  else
-  {
-    k0_alpha = k0_beta = kN_alpha = kN_beta = 0;
   }
 
   int ak0, ak1;
@@ -618,7 +614,7 @@ void halfRotateCholeskyMatrix(WALKER_TYPES type,
  *   - Closed/Collinear:  L[a][n][k] = sum_i A[a][i] L[i][k][n]
  *       - In collinear case, two separate calls are made for each spin channel.
  *   - Non-collinear: L[a][n][sk] = sum_i A[a][si] L[i][k][n]   // [si] == [s][i] combined spinor index
- *       - In this case, to preserve matrix dimenions, [s][k] --> [sk] is kept as a single index.
+ *       - In this case, to preserve matrix dimensions, [s][k] --> [sk] is kept as a single index.
  */
 template<class MultiArray2DA, class MultiArray3DB, class MultiArray3DC, class MultiArray2D>
 void getLank(MultiArray2DA&& Aai,
@@ -665,7 +661,7 @@ void getLank(MultiArray2DA&& Aai,
  *   - Closed/Collinear:  L[a][n][k] = sum_i A[a][i] conj(L[k][i][n])
  *       - In collinear case, two separate calls are made for each spin channel.
  *   - Non-collinear: L[a][n][sk] = sum_i A[a][si] conj(L[k][i][n])   // [si] == [s][i] combined spinor index
- *       - In this case, to preserve matrix dimenions, [s][k] --> [sk] is kept as a single index.
+ *       - In this case, to preserve matrix dimensions, [s][k] --> [sk] is kept as a single index.
  */
 template<class MultiArray2DA, class MultiArray3DB, class MultiArray3DC, class MultiArray2D>
 void getLank_from_Lkin(MultiArray2DA&& Aai,

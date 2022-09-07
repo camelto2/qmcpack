@@ -255,15 +255,20 @@ struct device_pointer<const void> : base_device_pointer
   using value_type   = void;
   const void* impl_;
   device_pointer(std::nullptr_t = nullptr) : impl_(nullptr) {}
-  device_pointer(device_pointer const& other) = default;
+  device_pointer(device_pointer const& other)            = default;
   device_pointer& operator=(device_pointer const& other) = default;
-  device_pointer& operator                               =(std::nullptr_t)
+  device_pointer& operator=(std::nullptr_t)
   {
     impl_ = nullptr;
     return *this;
   }
   bool operator==(std::nullptr_t) const { return (impl_ == nullptr); }
   bool operator!=(std::nullptr_t) const { return not operator==(nullptr); }
+
+private:
+  device_pointer(T* impl__) : impl_(impl__) {}
+  template<class>
+  friend struct device_pointer;
 };
 
 template<>
@@ -280,7 +285,7 @@ struct device_pointer<void> : base_device_pointer
   device_pointer(device_pointer<Q> const& ptr) : impl_(reinterpret_cast<T*>(ptr.impl_))
   {}
   device_pointer& operator=(device_pointer const& other) = default;
-  device_pointer& operator                               =(std::nullptr_t)
+  device_pointer& operator=(std::nullptr_t)
   {
     impl_ = nullptr;
     return *this;
@@ -292,8 +297,10 @@ struct device_pointer<void> : base_device_pointer
   bool operator!=(device_pointer const& other) const { return not(*this == other); }
   bool operator<=(device_pointer<T> const& other) const { return impl_ <= other.impl_; }
 
-protected:
+private:
   device_pointer(T* impl__) : impl_(impl__) {}
+  template<class>
+  friend struct device_pointer;
 };
 
 // this class is not safe, since it allows construction of a gpu_ptr from a raw ptr
@@ -372,7 +379,7 @@ struct device_pointer : base_device_pointer
   }
   T* impl_;
 
-protected:
+private:
   device_pointer(T* impl__) : impl_(impl__) {}
 };
 
@@ -387,7 +394,7 @@ struct device_allocator
   template<class U>
   struct rebind
   {
-    typedef device_allocator<U> other;
+    using other = device_allocator<U>;
   };
   using element_type     = T;
   using value_type       = T;
@@ -421,16 +428,23 @@ struct device_allocator
   bool operator!=(device_allocator const& other) const { return false; }
   template<class U, class... Args>
   void construct(U p, Args&&... args)
-  {}
-  //{
-  //    ::new((void*)p) U(std::forward<Args>(args)...);
-  //  }
+  {
+    static_assert(std::is_trivially_copy_constructible<value_type>{},
+                  "!"); // ::new((void*)p) U(std::forward<Args>(args)...);
+  }
   template<class U>
   void destroy(U p)
-  {}
-  //  {
-  //    p->~U();
-  //  }
+  {
+    static_assert(std::is_trivially_destructible<value_type>{}, "!"); // p->~U();
+  }
+  template<class InputIt, class ForwardIt>
+  ForwardIt alloc_uninitialized_copy(InputIt first, InputIt last, ForwardIt d_first)
+  {
+    static_assert(std::is_trivially_copy_constructible<value_type>{}, "!");
+    static_assert(std::is_trivially_destructible<value_type>{}, "!");
+    std::advance(d_first, std::distance(first, last));
+    return d_first;
+  }
 };
 
 struct memory_resource
@@ -460,7 +474,7 @@ struct constructor
   template<class U>
   struct rebind
   {
-    typedef constructor<U> other;
+    using other = constructor<U>;
   };
   using value_type         = T;
   using pointer            = device_pointer<T>;
@@ -781,15 +795,16 @@ device_pointer<T> uninitialized_copy_n(device_pointer<T> A, Size n, device_point
   return copy_n(A, n, B);
 }
 
-template<typename T, typename Size>
-device_pointer<T> uninitialized_copy_n(T const* A, Size n, device_pointer<T> B)
+template<typename T, typename Size, typename Q>
+device_pointer<T> uninitialized_copy_n(T* A, Size n, device_pointer<Q> B)
 {
   return copy_n(A, n, B);
 }
 
-template<typename T, typename Size>
-T* uninitialized_copy_n(device_pointer<T> A, Size n, T* B)
+template<typename T, typename Size, typename Q>
+T* uninitialized_copy_n(device_pointer<T> A, Size n, Q* B)
 {
+  static_assert(std::is_trivially_assignable<Q&, T>{}, "!");
   return copy_n(A, n, B);
 }
 
@@ -799,14 +814,14 @@ device_pointer<T> uninitialized_copy_n(Alloc& a, device_pointer<T> A, Size n, de
   return copy_n(A, n, B);
 }
 
-template<class Alloc, typename T, typename Size>
-device_pointer<T> uninitialized_copy_n(Alloc& a, T const* A, Size n, device_pointer<T> B)
+template<class Alloc, typename T, typename Size, typename Q>
+device_pointer<T> alloc_uninitialized_copy_n(Alloc& a, T* A, Size n, device_pointer<Q> B)
 {
   return copy_n(A, n, B);
 }
 
-template<class Alloc, typename T, typename Size>
-T* uninitialized_copy_n(Alloc& a, device_pointer<T> A, Size n, T* B)
+template<class Alloc, typename T, typename Size, typename Q>
+T* alloc_uninitialized_copy_n(Alloc& a, device_pointer<T> A, Size n, Q* B)
 {
   return copy_n(A, n, B);
 }
@@ -866,8 +881,8 @@ device_pointer<T> uninitialized_copy(device_pointer<T> const Abeg, device_pointe
   return copy_n(Abeg, std::distance(Abeg, Aend), B);
 }
 
-template<typename T>
-device_pointer<T> uninitialized_copy(T* const Abeg, T* const Aend, device_pointer<T> B)
+template<typename T, typename Q>
+device_pointer<T> uninitialized_copy(T* Abeg, T* Aend, device_pointer<Q> B)
 {
   return copy_n(Abeg, std::distance(Abeg, Aend), B);
 }
@@ -908,10 +923,18 @@ device_pointer<T> alloc_uninitialized_copy(Alloc& a,
   return copy_n(Abeg, std::distance(Abeg, Aend), B);
 }
 
-template<class Alloc, typename T>
-device_pointer<T> alloc_uninitialized_copy(Alloc& a, T* const Abeg, T* const Aend, device_pointer<T> B)
+template<class Alloc, typename T, typename Q>
+device_pointer<Q> uninitialized_copy(T* Abeg, T* Aend, device_pointer<Q> B)
 {
+  static_assert(std::is_trivially_assignable<Q&, T>{}, "!");
   return copy_n(Abeg, std::distance(Abeg, Aend), B);
+}
+
+template<class Alloc, typename T, typename Q>
+device_pointer<Q> alloc_uninitialized_copy(Alloc& a, T* Abeg, T* Aend, device_pointer<Q> B)
+{
+  static_assert(std::is_trivially_assignable<Q&, T>{}, "!");
+  return uninitialized_copy(Abeg, Aend, B);
 }
 
 template<class Alloc, typename T>
@@ -922,7 +945,7 @@ T* alloc_uninitialized_copy(Alloc& a, device_pointer<T> const Abeg, device_point
 
 /**************** destroy_n *****************/
 // NOTE: Not sure what to do here
-// should at least guard agains non-trivial types
+// should at least guard against non-trivial types
 template<typename T, typename Size>
 device_pointer<T> destroy_n(device_pointer<T> first, Size n)
 {
@@ -1075,6 +1098,22 @@ multi::array_iterator<T, 1, device::device_pointer<T>> copy(ForwardIt first,
   return dest + std::distance(first, last);
 }
 
+template<typename T, typename Q, typename QQ>
+multi::array_iterator<T, 1, device::device_pointer<T>> uninitialized_copy(
+    T* first,
+    T* last,
+    multi::array_iterator<Q, 1, device::device_pointer<QQ>> dest)
+{
+  static_assert(std::is_trivially_assignable<QQ&, T>{}, "!");
+  assert(stride(first) == stride(last));
+  if (std::distance(first, last) == 0)
+    return dest;
+  using qmcplusplus::afqmc::to_address;
+  arch::memcopy2D(to_address(base(dest)), sizeof(T) * stride(dest), to_address(base(first)), sizeof(T) * 1, sizeof(T),
+                  std::distance(first, last));
+  return dest + std::distance(first, last);
+}
+
 template<class ForwardIt, class Q1, class Q2>
 ForwardIt copy(multi::array_iterator<Q1, 1, device::device_pointer<Q2>> first,
                multi::array_iterator<Q1, 1, device::device_pointer<Q2>> last,
@@ -1135,13 +1174,13 @@ ForwardIt copy_n(multi::array_iterator<Q1, 1, device::device_pointer<Q2>> first,
   return dest + N;
 }
 
-template<class Alloc, class T, class ForwardIt>
+template<class Q, class QQ, class T, class TT>
 multi::array_iterator<T, 1, device::device_pointer<T>> uninitialized_copy(
-    Alloc& a,
-    ForwardIt first,
-    ForwardIt last,
-    multi::array_iterator<T, 1, device::device_pointer<T>> dest)
+    multi::array_iterator<Q, 1, device::device_pointer<QQ>> first,
+    multi::array_iterator<Q, 1, device::device_pointer<QQ>> last,
+    multi::array_iterator<T, 1, device::device_pointer<TT>> dest)
 {
+  static_assert(std::is_trivially_assignable<TT&, QQ&>{}, "!");
   assert(stride(first) == stride(last));
   if (std::distance(first, last) == 0)
     return dest;
@@ -1158,6 +1197,23 @@ multi::array_iterator<T, 1, device::device_pointer<T>> alloc_uninitialized_copy(
     ForwardIt last,
     multi::array_iterator<T, 1, device::device_pointer<T>> dest)
 {
+  assert(stride(first) == stride(last));
+  if (std::distance(first, last) == 0)
+    return dest;
+  using qmcplusplus::afqmc::to_address;
+  arch::memcopy2D(to_address(base(dest)), sizeof(T) * stride(dest), to_address(base(first)), sizeof(T) * stride(first),
+                  sizeof(T), std::distance(first, last));
+  return dest + std::distance(first, last);
+}
+
+template<class Alloc, class Q, class QQ, class T, class TT>
+multi::array_iterator<T, 1, device::device_pointer<T>> alloc_uninitialized_copy(
+    Alloc& a,
+    multi::array_iterator<Q, 1, device::device_pointer<QQ>> first,
+    multi::array_iterator<Q, 1, device::device_pointer<QQ>> last,
+    multi::array_iterator<T, 1, device::device_pointer<TT>> dest)
+{
+  static_assert(std::is_trivially_assignable<TT&, QQ&>{}, "!");
   assert(stride(first) == stride(last));
   if (std::distance(first, last) == 0)
     return dest;

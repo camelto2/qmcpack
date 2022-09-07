@@ -262,7 +262,7 @@ public:
       for (int J = I + 1; J < npol * NMO; J++)
       {
         // This is really cutoff dependent!!!
-#if MIXED_PRECISION
+#if defined(MIXED_PRECISION)
         if (std::abs(P1[I][J] - ma::conj(P1[J][I])) * 2.0 > 1e-5)
         {
 #else
@@ -342,7 +342,7 @@ public:
     size_t cnt(0);
     if (addEJ)
     {
-#if MIXED_PRECISION
+#if defined(MIXED_PRECISION)
       mem_needs += 2 * nwalk * local_nCV;
 #else
       if (not getKr)
@@ -361,7 +361,7 @@ public:
       Knr = nwalk;
       Knc = local_nCV;
       cnt = 0;
-#if MIXED_PRECISION
+#if defined(MIXED_PRECISION)
       if (getKr)
       {
         assert(KEright->size(0) == nwalk && KEright->size(1) == local_nCV);
@@ -380,7 +380,7 @@ public:
         Krptr = to_address(SM_TMats.origin());
         cnt += nwalk * local_nCV;
       }
-#if MIXED_PRECISION
+#if defined(MIXED_PRECISION)
       if (getKl)
       {
         assert(KEleft->size(0) == nwalk && KEleft->size(1) == local_nCV);
@@ -653,7 +653,7 @@ public:
           }
         }
       }
-#if MIXED_PRECISION
+#if defined(MIXED_PRECISION)
       if (getKl)
       {
         size_t i0, iN;
@@ -710,7 +710,7 @@ public:
     size_t cnt(0);
     if (addEJ)
     {
-#if MIXED_PRECISION
+#if defined(MIXED_PRECISION)
       mem_needs += 2 * nwalk * local_nCV;
 #else
       if (not getKr)
@@ -729,7 +729,7 @@ public:
       Knr = nwalk;
       Knc = local_nCV;
       cnt = 0;
-#if MIXED_PRECISION
+#if defined(MIXED_PRECISION)
       if (getKr)
       {
         assert(KEright->size(0) == nwalk && KEright->size(1) == local_nCV);
@@ -748,7 +748,7 @@ public:
         Krptr = to_address(SM_TMats.origin());
         cnt += nwalk * local_nCV;
       }
-#if MIXED_PRECISION
+#if defined(MIXED_PRECISION)
       if (getKl)
       {
         assert(KEleft->size(0) == nwalk && KEleft->size(1) == local_nCV);
@@ -1079,7 +1079,7 @@ public:
           }
         }
       }
-#if MIXED_PRECISION
+#if defined(MIXED_PRECISION)
       if (getKl)
       {
         size_t i0, iN;
@@ -1340,13 +1340,11 @@ public:
     int nmo_max   = *std::max_element(nopk.begin(), nopk.end());
     int nocca_tot = std::accumulate(nelpk[nd].begin(), nelpk[nd].begin() + nkpts, 0);
     int nocca_max = *std::max_element(nelpk[nd].begin(), nelpk[nd].begin() + nkpts);
-    int noccb_max = nocca_max;
     int nchol_max = *std::max_element(ncholpQ.begin(), ncholpQ.end());
     int noccb_tot = 0;
     if (walker_type == COLLINEAR)
     {
       noccb_tot = std::accumulate(nelpk[nd].begin() + nkpts, nelpk[nd].begin() + 2 * nkpts, 0);
-      noccb_max = *std::max_element(nelpk[nd].begin() + nkpts, nelpk[nd].begin() + 2 * nkpts);
     }
     RealType scl = (walker_type == CLOSED ? 2.0 : 1.0);
     SPComplexType one(1.0, 0.0);
@@ -1617,10 +1615,10 @@ private:
   //Cholesky Tensor Lik[Q][nk][i][k][n]
   std::vector<shmSpMatrix> LQKikn;
 
-  // half-tranformed Cholesky tensor
+  // half-transformed Cholesky tensor
   std::vector<shmSpMatrix> LQKank;
 
-  // half-tranformed Cholesky tensor
+  // half-transformed Cholesky tensor
   std::vector<shmSpMatrix> LQKbnl;
 
   // Defines behavior over Q vector:

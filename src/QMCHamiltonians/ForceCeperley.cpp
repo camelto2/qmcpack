@@ -15,7 +15,7 @@
 
 
 #include "ForceCeperley.h"
-#include "Particle/DistanceTableData.h"
+#include "Particle/DistanceTable.h"
 #include "Message/Communicate.h"
 #include "Utilities/ProgressReportEngine.h"
 #include "Numerics/DeterminantOperators.h"
@@ -29,7 +29,7 @@ ForceCeperley::ForceCeperley(ParticleSet& ions, ParticleSet& elns)
     : ForceBase(ions, elns), d_aa_ID(ions.addTable(ions)), d_ei_ID(elns.addTable(ions))
 {
   ReportEngine PRE("ForceCeperley", "ForceCeperley");
-  myName = "Ceperley_Force_Base";
+  name_  = "Ceperley_Force_Base";
   prefix = "HFCep";
   // Defaults
   Rcut    = 0.4;
@@ -41,11 +41,11 @@ ForceCeperley::ForceCeperley(ParticleSet& ions, ParticleSet& elns)
   evaluate_IonIon(forces_IonIon);
 }
 
-void ForceCeperley::evaluate_IonIon(ParticleSet::ParticlePos_t& forces) const
+void ForceCeperley::evaluate_IonIon(ParticleSet::ParticlePos& forces) const
 {
   forces = 0.0;
-  const DistanceTableData& d_aa(Ions.getDistTable(d_aa_ID));
-  const ParticleScalar_t* restrict Zat = Ions.Z.first_address();
+  const auto& d_aa(Ions.getDistTableAA(d_aa_ID));
+  const ParticleScalar* restrict Zat = Ions.Z.first_address();
   for (size_t ipart = 1; ipart < Nnuc; ipart++)
   {
     const auto& dist  = d_aa.getDistRow(ipart);
@@ -76,7 +76,7 @@ void ForceCeperley::InitMatrix()
   // in Numerics/DeterminantOperators.h
   invert_matrix(Sinv, false);
   // in Numerics/MatrixOperators.h
-  MatrixOperators::product(Sinv, h.data(), c.data());
+  MatrixOperators::product(Sinv, h, c);
 }
 
 ForceCeperley::Return_t ForceCeperley::evaluate(ParticleSet& P)
@@ -85,9 +85,9 @@ ForceCeperley::Return_t ForceCeperley::evaluate(ParticleSet& P)
     forces = forces_IonIon;
   else
     forces = 0.0;
-  const auto& d_ab                     = P.getDistTable(d_ei_ID);
-  const ParticleScalar_t* restrict Zat = Ions.Z.first_address();
-  const ParticleScalar_t* restrict Qat = P.Z.first_address();
+  const auto& d_ab                   = P.getDistTableAB(d_ei_ID);
+  const ParticleScalar* restrict Zat = Ions.Z.first_address();
+  const ParticleScalar* restrict Qat = P.Z.first_address();
   for (int jat = 0; jat < Nel; jat++)
   {
     const auto& dist  = d_ab.getDistRow(jat);
@@ -129,9 +129,9 @@ bool ForceCeperley::put(xmlNodePtr cur)
   app_log() << "addionion=" << addionion << std::endl;
   app_log() << "FirstTime= " << FirstTime << std::endl;
   ParameterSet fcep_param_set;
-  fcep_param_set.add(Rcut, "rcut", "real");
-  fcep_param_set.add(N_basis, "nbasis", "int");
-  fcep_param_set.add(m_exp, "weight_exp", "int");
+  fcep_param_set.add(Rcut, "rcut");
+  fcep_param_set.add(N_basis, "nbasis");
+  fcep_param_set.add(m_exp, "weight_exp");
   fcep_param_set.put(cur);
   app_log() << "    ForceCeperley Parameters" << std::endl;
   app_log() << "        ForceCeperley::Rcut=" << Rcut << std::endl;
@@ -141,7 +141,10 @@ bool ForceCeperley::put(xmlNodePtr cur)
   return true;
 }
 
-OperatorBase* ForceCeperley::makeClone(ParticleSet& qp, TrialWaveFunction& psi) { return new ForceCeperley(*this); }
+std::unique_ptr<OperatorBase> ForceCeperley::makeClone(ParticleSet& qp, TrialWaveFunction& psi)
+{
+  return std::make_unique<ForceCeperley>(*this);
+}
 } // namespace qmcplusplus
 
 //  void ForceCeperley::addObservables(PropertySetType& plist) {

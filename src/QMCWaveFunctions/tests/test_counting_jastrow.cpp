@@ -14,7 +14,7 @@
 #include "Configuration.h"
 #include "OhmmsData/Libxml2Doc.h"
 #include "Particle/ParticleSet.h"
-#include "Optimize/VariableSet.h"
+#include "VariableSet.h"
 
 #include "QMCWaveFunctions/Jastrow/CountingGaussian.h"
 #include "QMCWaveFunctions/Jastrow/CountingGaussianRegion.h"
@@ -134,11 +134,11 @@ TEST_CASE("CountingJastrow","[wavefunction]")
   using VariableSet = optimize::VariableSet;
   using LogValueType = std::complex<QMCTraits::QTFull::RealType>;
 
-  Communicate* c;
-  c = OHMMS::Controller;
+  Communicate* c = OHMMS::Controller;
 
   // initialize particle sets
-  ParticleSet elec;
+  const SimulationCell simulation_cell;
+  ParticleSet elec(simulation_cell);
   std::vector<int> egroup(1);
   int num_els = 4;
   egroup[0] = num_els;
@@ -152,7 +152,7 @@ TEST_CASE("CountingJastrow","[wavefunction]")
     for(int k = 0; k < 3; ++k)
       elec.R[i][k] = Re[i][k];
 
-  ParticleSet ion0;
+  ParticleSet ion0(simulation_cell);
   std::vector<int> igroup(1);
   int num_ion = 4;
   igroup[0] = num_ion;
@@ -205,8 +205,9 @@ TEST_CASE("CountingJastrow","[wavefunction]")
   xmlNodePtr cj_root = doc.getRoot();
   CountingJastrowBuilder cjb(c, elec);
 
-  CountingJastrow<CountingGaussianRegion>* cj = dynamic_cast<CountingJastrow<CountingGaussianRegion>*>(cjb.buildComponent(cj_root));
-  
+  auto cj_uptr                                = cjb.buildComponent(cj_root);
+  CountingJastrow<CountingGaussianRegion>* cj = dynamic_cast<CountingJastrow<CountingGaussianRegion>*>(cj_uptr.get());
+
   // reference for evaluateLog, evalGrad
   RealType Jval_exact = 7.8100074447e+00;
   PosType Jgrad_exact[] = {PosType(3.6845037054e-04, -4.2882992861e-04, 0),
@@ -247,7 +248,8 @@ TEST_CASE("CountingJastrow","[wavefunction]")
   CountingJastrowBuilder cjvb(c, elec, ion0);
 
   // test evaluateLog for cjv
-  CountingJastrow<CountingGaussianRegion>* cjv = dynamic_cast<CountingJastrow<CountingGaussianRegion>*>(cjvb.buildComponent(cjv_root));
+  auto cjv_uptr                                = cjvb.buildComponent(cjv_root);
+  CountingJastrow<CountingGaussianRegion>* cjv = dynamic_cast<CountingJastrow<CountingGaussianRegion>*>(cjv_uptr.get());
 
   for(int i = 0; i < num_els; ++i)
   {
@@ -294,11 +296,11 @@ TEST_CASE("CountingJastrow","[wavefunction]")
     RealType ratioval = std::real( cj->ratio(elec, iat) );
     REQUIRE( ratioval_exact[iat] == Approx(std::real(ratioval)) );
 
-    PosType grad_iat(0,0,0);
+    GradType grad_iat(0, 0, 0);
     RealType gradratioval = std::real( cj->ratioGrad(elec, iat, grad_iat) );
     REQUIRE( ratioval_exact[iat] == Approx(gradratioval));
     for(int k = 0; k < 3; ++k)
-      REQUIRE(Jgrad_t_exact[iat][k] == Approx(grad_iat[k]));
+      REQUIRE(Jgrad_t_exact[iat][k] == Approx(std::real(grad_iat[k])));
 
     cj->acceptMove(elec, iat);
   }
@@ -339,8 +341,8 @@ TEST_CASE("CountingJastrow","[wavefunction]")
      9.2144952390e+00, 4.6068416473e+00,-9.3975889104e+01,-8.8298321426e+01, 1.5097063606e+01,
      1.8605794463e+01,-7.3647009565e+00,-5.9114663448e-01,-3.9243955679e+00,-7.8630886487e+00,
     -4.4437106408e+00,-7.0313362338e+00,-2.3986142270e+01,-4.0724297500e+01};
-  std::vector<ValueType> dlogpsi;
-  std::vector<ValueType> dhpsioverpsi;
+  Vector<ValueType> dlogpsi;
+  Vector<ValueType> dhpsioverpsi;
   dlogpsi.resize(num_derivs);
   dhpsioverpsi.resize(num_derivs);
   std::fill(dlogpsi.begin(), dlogpsi.end(), 0);
@@ -349,9 +351,9 @@ TEST_CASE("CountingJastrow","[wavefunction]")
   // prepare variable set
   VariableSet optVars;
   optVars.clear();
-  cj->checkInVariables(optVars);
+  cj->checkInVariablesExclusive(optVars);
   optVars.resetIndex();
-  cj->checkInVariables(optVars);
+  cj->checkInVariablesExclusive(optVars);
   cj->checkOutVariables(optVars);
   optVars.print(std::cout);
 
@@ -367,16 +369,17 @@ TEST_CASE("CountingJastrow","[wavefunction]")
 
 
   // test makeClone
-  CountingJastrow<CountingGaussianRegion>* cj2 = dynamic_cast<CountingJastrow<CountingGaussianRegion>*>(cj->makeClone(elec));
+  auto cj2_uptr                                = cj->makeClone(elec);
+  CountingJastrow<CountingGaussianRegion>* cj2 = dynamic_cast<CountingJastrow<CountingGaussianRegion>*>(cj2_uptr.get());
   std::fill(dlogpsi.begin(), dlogpsi.end(), 0);
   std::fill(dhpsioverpsi.begin(), dhpsioverpsi.end(), 0);
 
   // prepare variable set
   VariableSet optVars2;
   optVars2.clear();
-  cj2->checkInVariables(optVars2);
+  cj2->checkInVariablesExclusive(optVars2);
   optVars2.resetIndex();
-  cj2->checkInVariables(optVars2);
+  cj2->checkInVariablesExclusive(optVars2);
   cj2->checkOutVariables(optVars2);
   optVars2.print(std::cout);
 
@@ -390,9 +393,9 @@ TEST_CASE("CountingJastrow","[wavefunction]")
   // test resetParameters, recompute
   for(int p = 0; p < num_derivs; ++p)
     optVars[p] = 0;
-  cj->resetParameters(optVars);
+  cj->resetParametersExclusive(optVars);
   cj->recompute(elec);
-  REQUIRE( cj->LogValue == LogValueType(0) );
+  REQUIRE( cj->get_log_value() == LogValueType(0) );
 #endif
 
 }

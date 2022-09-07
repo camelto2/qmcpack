@@ -23,7 +23,7 @@
 
 #include "Configuration.h"
 #include "OhmmsData/ParameterSet.h"
-#include "Utilities/PooledData.h"
+#include "Pools/PooledData.h"
 #include "Utilities/TimerManager.h"
 #include "Utilities/ScopedProfiler.h"
 #include "QMCWaveFunctions/TrialWaveFunction.h"
@@ -34,7 +34,6 @@
 #include "QMCDrivers/QMCDriverInterface.h"
 #include "QMCDrivers/GreenFunctionModifiers/DriftModifierBase.h"
 #include "QMCDrivers/SimpleFixedNodeBranch.h"
-#include "QMCDrivers/BranchIO.h"
 class Communicate;
 
 namespace qmcplusplus
@@ -79,8 +78,8 @@ public:
     QMC_WARMUP
   };
 
-  typedef MCWalkerConfiguration::Walker_t Walker_t;
-  typedef Walker_t::Buffer_t Buffer_t;
+  using Walker_t = MCWalkerConfiguration::Walker_t;
+  using Buffer_t = Walker_t::Buffer_t;
   /** bits to classify QMCDriver
    *
    * - qmc_driver_mode[QMC_UPDATE_MODE]? particle-by-particle: walker-by-walker
@@ -102,7 +101,12 @@ public:
             const std::string& QMC_driver_type,
             bool enable_profiling = false);
 
-  virtual ~QMCDriver() override;
+  ///Copy Constructor (disabled).
+  QMCDriver(const QMCDriver&) = delete;
+  ///Copy operator (disabled).
+  QMCDriver& operator=(const QMCDriver&) = delete;
+
+  ~QMCDriver() override;
 
   ///return current step
   inline int current() const { return CurrentStep; }
@@ -182,10 +186,16 @@ public:
   std::unique_ptr<TraceManager> Traces;
 
   ///return the random generators
-  inline std::vector<RandomGenerator_t*>& getRng() { return Rng; }
+  inline RefVector<RandomGenerator> getRngRefs() const
+  {
+    RefVector<RandomGenerator> RngRefs;
+    for (int i = 0; i < Rng.size(); ++i)
+      RngRefs.push_back(*Rng[i]);
+    return RngRefs;
+  }
 
   ///return the i-th random generator
-  inline RandomGenerator_t& getRng(int i) override { return (*Rng[i]); }
+  inline RandomGenerator& getRng(int i) override { return (*Rng[i]); }
 
   unsigned long getDriverMode() override { return qmc_driver_mode.to_ulong(); }
 
@@ -209,8 +219,6 @@ protected:
    * using MyCounter++ as in RQMC.
    */
   int MyCounter;
-  ///the number of blocks to be rolled back
-  int RollBackBlocks;
   ///the number to delay updates by
   int kDelay;
   /** period of dumping walker configurations and everything else for restart
@@ -278,7 +286,7 @@ protected:
   RealType Tau;
 
   ///maximum cpu in secs
-  RealType MaxCPUSecs;
+  int MaxCPUSecs;
 
   ///Time-step factor \f$ 1/(2\tau)\f$
   RealType m_oneover2tau;
@@ -308,7 +316,7 @@ protected:
   QMCHamiltonian& H;
 
   ///record engine for walkers
-  HDFWalkerOutput* wOut;
+  std::unique_ptr<HDFWalkerOutput> wOut;
 
   ///a list of TrialWaveFunctions for multiple method
   std::vector<TrialWaveFunction*> Psi1;
@@ -317,25 +325,19 @@ protected:
   std::vector<QMCHamiltonian*> H1;
 
   ///Random number generators
-  std::vector<RandomGenerator_t*> Rng;
+  UPtrVector<RandomGenerator> Rng;
 
   ///a list of mcwalkerset element
   std::vector<xmlNodePtr> mcwalkerNodePtr;
 
   ///temporary storage for drift
-  ParticleSet::ParticlePos_t drift;
+  ParticleSet::ParticlePos drift;
 
   ///temporary storage for random displacement
-  ParticleSet::ParticlePos_t deltaR;
+  ParticleSet::ParticlePos deltaR;
 
-  ///turn on spin moves
-  std::string SpinMoves;
+  ///spin mass for spinor calcs
   RealType SpinMass;
-
-  ///Copy Constructor (disabled).
-  QMCDriver(const QMCDriver&) = delete;
-  ///Copy operator (disabled).
-  QMCDriver& operator=(const QMCDriver&) = delete;
 
   bool putQMCInfo(xmlNodePtr cur);
 
@@ -346,7 +348,7 @@ protected:
    *
    * virtual function with a default implementation
    */
-  virtual void recordBlock(int block) override;
+  void recordBlock(int block) override;
 
   /** finalize a qmc section
    * @param block current block
