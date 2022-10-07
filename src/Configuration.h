@@ -50,8 +50,9 @@ struct QMCTraits
 {
   enum
   {
-    DIM = OHMMS_DIM,
-    DIM_VGL = OHMMS_DIM + 2 // Value(1) + Gradients(OHMMS_DIM) + Laplacian(1)
+    DIM      = OHMMS_DIM,
+    DIM_VGL  = OHMMS_DIM + 2, // Value(1) + Gradients(OHMMS_DIM) + Laplacian(1)
+    DIM_VGLS = OHMMS_DIM + 3, // Value(1) + Gradients(OHMMS_DIM) + Laplacian(1) + SpinGradient(1)
   };
   using QTBase      = QMCTypes<OHMMS_PRECISION, DIM>;
   using QTFull      = QMCTypes<OHMMS_PRECISION_FULL, DIM>;

@@ -179,6 +179,18 @@ public:
                             const std::vector<bool>& isAccepted,
                             bool safe_to_delay = false) const override;
 
+  void mw_accept_rejectMove_impl(const RefVectorWithLeader<WaveFunctionComponent>& wfc_list,
+                            const RefVectorWithLeader<ParticleSet>& p_list,
+                            int iat,
+                            const std::vector<bool>& isAccepted,
+                            bool safe_to_delay = false) const;
+
+  void mw_accept_rejectMoveWithSpin_impl(const RefVectorWithLeader<WaveFunctionComponent>& wfc_list,
+                            const RefVectorWithLeader<ParticleSet>& p_list,
+                            int iat,
+                            const std::vector<bool>& isAccepted,
+                            bool safe_to_delay = false) const;
+
   /** complete any left over determinant matrix updates.
    * Usually this is the end of pbyp moves for a given spin of electrons
    * The psiM, dpsiM, d2psiM should be up-to-date on both device and host sides.

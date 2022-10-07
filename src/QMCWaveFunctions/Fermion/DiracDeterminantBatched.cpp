@@ -234,7 +234,35 @@ void DiracDeterminantBatched<DET_ENGINE>::mw_evalGradWithSpin(
     int iat,
     std::vector<Grad>& grad_now,
     std::vector<ComplexType>& spingrad_now) const
-{}
+{
+  assert(this == &wfc_list.getLeader());
+  auto& wfc_leader = wfc_list.getCastedLeader<DiracDeterminantBatched<DET_ENGINE>>();
+  ScopedTimer local_timer(RatioTimer);
+
+  const int nw = wfc_list.size();
+  std::vector<const Value*> dpsiM_row_list(nw, nullptr);
+  std::vector<const Value*> dspinM_row_list(nw, nullptr);
+  RefVectorWithLeader<DET_ENGINE> engine_list(wfc_leader.det_engine_);
+  engine_list.reserve(nw);
+
+  const int WorkingIndex = iat - FirstIndex;
+  for (int iw = 0; iw < nw; iw++)
+  {
+    auto& det = wfc_list.getCastedElement<DiracDeterminantBatched<DET_ENGINE>>(iw);
+    // capacity is the size of each vector in the VGL so this advances us to the g then makes
+    // an offset into the gradients
+    dpsiM_row_list[iw]  = det.psiM_vgls.device_data() + psiM_vgls.capacity() + NumOrbitals * WorkingIndex * DIM;
+    dspinM_row_list[iw] = det.psiM_vgls.device_data() + 5 * psiM_vgls.capacity() + NumOrbitals * WorkingIndex * DIM;
+    engine_list.push_back(det.det_engine_);
+  }
+
+  DET_ENGINE::mw_evalGradWithSpin(engine_list, dpsiM_row_list, dspinM_row_list, WorkingIndex, grad_now, spingrad_now);
+
+#ifndef NDEBUG
+  for (int iw = 0; iw < nw; iw++)
+    checkG(grad_now[iw]);
+#endif
+}
 
 template<typename DET_ENGINE>
 typename DiracDeterminantBatched<DET_ENGINE>::PsiValue DiracDeterminantBatched<DET_ENGINE>::ratioGrad(ParticleSet& P,
@@ -340,7 +368,7 @@ void DiracDeterminantBatched<DET_ENGINE>::mw_ratioGradWithSpin(
 
     auto psiMinv_row_dev_ptr_list = DET_ENGINE::mw_getInvRow(engine_list, WorkingIndex, !Phi->isOMPoffload());
 
-    phi_vgl_v.resize(DIM_VGL, wfc_list.size(), NumOrbitals);
+    phi_vgl_v.resize(DIM_VGLS, wfc_list.size(), NumOrbitals);
     ratios_local.resize(wfc_list.size());
     grad_new_local.resize(wfc_list.size());
     spingrad_new_local.resize(wfc_list.size());
@@ -402,6 +430,8 @@ void DiracDeterminantBatched<DET_ENGINE>::acceptMove(ParticleSet& P, int iat, bo
     {
       simd::copy(dpsiM[WorkingIndex], dpsiV.data(), NumOrbitals);
       simd::copy(d2psiM[WorkingIndex], d2psiV.data(), NumOrbitals);
+      if (Phi->isSpinor())
+        simd::copy(dspinM[WorkingIndex], dspin_psiV.data(), NumOrbitals);
     }
   }
   curRatio = 1.0;
@@ -415,12 +445,28 @@ void DiracDeterminantBatched<DET_ENGINE>::mw_accept_rejectMove(
     const std::vector<bool>& isAccepted,
     bool safe_to_delay) const
 {
+  if (Phi->isSpinor())
+    mw_accept_rejectMoveWithSpin_impl(wfc_list, p_list, iat, isAccepted, safe_to_delay);
+  else
+    mw_accept_rejectMove_impl(wfc_list, p_list, iat, isAccepted, safe_to_delay);
+}
+
+template<typename DET_ENGINE>
+void DiracDeterminantBatched<DET_ENGINE>::mw_accept_rejectMove_impl(
+    const RefVectorWithLeader<WaveFunctionComponent>& wfc_list,
+    const RefVectorWithLeader<ParticleSet>& p_list,
+    int iat,
+    const std::vector<bool>& isAccepted,
+    bool safe_to_delay) const
+{
   assert(this == &wfc_list.getLeader());
   auto& wfc_leader = wfc_list.getCastedLeader<DiracDeterminantBatched<DET_ENGINE>>();
   wfc_leader.guardMultiWalkerRes();
   auto& mw_res       = *wfc_leader.mw_res_;
   auto& phi_vgl_v    = mw_res.phi_vgl_v;
   auto& ratios_local = mw_res.ratios_local;
+
+  assert(phi_vgl_v.size(0) == DIM_VGL);
 
   ScopedTimer update(UpdateTimer);
 
@@ -459,6 +505,63 @@ void DiracDeterminantBatched<DET_ENGINE>::mw_accept_rejectMove(
     DET_ENGINE::mw_updateInvMat(engine_list);
 }
 
+template<typename DET_ENGINE>
+void DiracDeterminantBatched<DET_ENGINE>::mw_accept_rejectMoveWithSpin_impl(
+    const RefVectorWithLeader<WaveFunctionComponent>& wfc_list,
+    const RefVectorWithLeader<ParticleSet>& p_list,
+    int iat,
+    const std::vector<bool>& isAccepted,
+    bool safe_to_delay) const
+{
+  assert(this == &wfc_list.getLeader());
+  auto& wfc_leader = wfc_list.getCastedLeader<DiracDeterminantBatched<DET_ENGINE>>();
+  wfc_leader.guardMultiWalkerRes();
+  auto& mw_res       = *wfc_leader.mw_res_;
+  auto& phi_vgl_v    = mw_res.phi_vgl_v;
+  auto& ratios_local = mw_res.ratios_local;
+
+  assert(phi_vgl_v.size(0) == DIM_VGLS);
+
+  ScopedTimer update(UpdateTimer);
+
+  const int nw = wfc_list.size();
+  int count    = 0;
+  for (int iw = 0; iw < nw; iw++)
+    if (isAccepted[iw])
+      count++;
+  const int n_accepted = count;
+
+  RefVectorWithLeader<DET_ENGINE> engine_list(wfc_leader.det_engine_);
+  engine_list.reserve(nw);
+  std::vector<Value*> psiM_g_dev_ptr_list(n_accepted, nullptr);
+  std::vector<Value*> psiM_l_dev_ptr_list(n_accepted, nullptr);
+  std::vector<Value*> psiM_s_dev_ptr_list(n_accepted, nullptr);
+
+  const int WorkingIndex = iat - FirstIndex;
+  for (int iw = 0, count = 0; iw < nw; iw++)
+  {
+    // This can be auto but some debuggers can't figure the type out.
+    DiracDeterminantBatched<DET_ENGINE>& det = wfc_list.getCastedElement<DiracDeterminantBatched<DET_ENGINE>>(iw);
+    engine_list.push_back(det.det_engine_);
+    if (isAccepted[iw])
+    {
+      psiM_g_dev_ptr_list[count] =
+          det.psiM_vgls.device_data() + psiM_vgls.capacity() + NumOrbitals * WorkingIndex * DIM;
+      psiM_l_dev_ptr_list[count] = det.psiM_vgls.device_data() + psiM_vgls.capacity() * 4 + NumOrbitals * WorkingIndex;
+      psiM_s_dev_ptr_list[count] = det.psiM_vgls.device_data() + psiM_vgls.capacity() * 5 + NumOrbitals * WorkingIndex;
+      det.log_value_ += convertValueToLog(det.curRatio);
+      count++;
+    }
+    det.curRatio = 1.0;
+  }
+
+  DET_ENGINE::mw_accept_rejectRow(engine_list, WorkingIndex, psiM_g_dev_ptr_list, psiM_l_dev_ptr_list,
+                                  psiM_g_dev_ptr_list, isAccepted, phi_vgl_v, ratios_local);
+
+  if (!safe_to_delay)
+    DET_ENGINE::mw_updateInvMat(engine_list);
+}
+
 /** move was rejected. copy the real container to the temporary to move on
 */
 template<typename DET_ENGINE>
@@ -473,10 +576,20 @@ void DiracDeterminantBatched<DET_ENGINE>::completeUpdates()
   ScopedTimer update(UpdateTimer);
   if (UpdateMode == ORB_PBYP_PARTIAL)
   {
-    // dpsiM, d2psiM on the device needs to be aligned as host.
-    auto* psiM_vgl_ptr = psiM_vgl.data();
-    // transfer host to device, total size 4, g(3) + l(1)
-    PRAGMA_OFFLOAD("omp target update to(psiM_vgl_ptr[psiM_vgl.capacity():psiM_vgl.capacity()*4])")
+    if (Phi->isSpinor())
+    {
+      // dpsiM, d2psiM on the device needs to be aligned as host.
+      auto* psiM_vgl_ptr = psiM_vgl.data();
+      // transfer host to device, total size 4, g(3) + l(1)
+      PRAGMA_OFFLOAD("omp target update to(psiM_vgl_ptr[psiM_vgl.capacity():psiM_vgl.capacity()*4])")
+    }
+    else
+    {
+      // dpsiM, d2psiM on the device needs to be aligned as host.
+      auto* psiM_vgls_ptr = psiM_vgls.data();
+      // transfer host to device, total size 4, g(3) + l(1)
+      PRAGMA_OFFLOAD("omp target update to(psiM_vgls_ptr[psiM_vgls.capacity():psiM_vgls.capacity()*5])")
+    }
   }
 }
 
@@ -513,11 +626,17 @@ void DiracDeterminantBatched<DET_ENGINE>::mw_completeUpdates(
       for (int iw = 0; iw < nw; iw++)
       {
         auto& det = wfc_list.getCastedElement<DiracDeterminantBatched<DET_ENGINE>>(iw);
-        psiM_vgl_list.push_back(det.psiM_vgl);
+        if (Phi->isSpinor())
+          psiM_vgl_list.push_back(det.psiM_vgls);
+        else
+          psiM_vgl_list.push_back(det.psiM_vgl);
       }
 
       // transfer device to host, total size 4, g(3) + l(1), skipping v
-      DET_ENGINE::mw_transferVGL_D2H(wfc_leader.det_engine_, psiM_vgl_list, 1, 4);
+      int maxsize = 4;
+      if (Phi->isSpinor())
+        maxsize = 5;
+      DET_ENGINE::mw_transferVGL_D2H(wfc_leader.det_engine_, psiM_vgl_list, 1, maxsize);
     }
   }
 }
@@ -634,6 +753,8 @@ void DiracDeterminantBatched<DET_ENGINE>::registerData(ParticleSet& P, WFBufferT
   buf.add(psiMinv.first_address(), psiMinv.last_address());
   buf.add(dpsiM.first_address(), dpsiM.last_address());
   buf.add(d2psiM.first_address(), d2psiM.last_address());
+  if (Phi->isSpinor())
+    buf.add(dspinM.first_address(), dspinM.last_address());
   buf.add(log_value_);
 }
 
@@ -649,6 +770,8 @@ typename DiracDeterminantBatched<DET_ENGINE>::LogValue DiracDeterminantBatched<D
   buf.put(psiMinv.first_address(), psiMinv.last_address());
   buf.put(dpsiM.first_address(), dpsiM.last_address());
   buf.put(d2psiM.first_address(), d2psiM.last_address());
+  if (Phi->isSpinor())
+    buf.put(dspinM.first_address(), dspinM.last_address());
   buf.put(log_value_);
   return log_value_;
 }
@@ -661,12 +784,24 @@ void DiracDeterminantBatched<DET_ENGINE>::copyFromBuffer(ParticleSet& P, WFBuffe
   buf.get(psiMinv.first_address(), psiMinv.last_address());
   buf.get(dpsiM.first_address(), dpsiM.last_address());
   buf.get(d2psiM.first_address(), d2psiM.last_address());
+  if (Phi->isSpinor())
+    buf.get(dspinM.first_address(), dspinM.last_address());
   auto* psiMinv_ptr = psiMinv.data();
   PRAGMA_OFFLOAD("omp target update to(psiMinv_ptr[:psiMinv.size()])")
-  auto* psiM_vgl_ptr           = psiM_vgl.data();
-  const size_t psiM_vgl_stride = psiM_vgl.capacity();
-  // transfer host to device, total size 4, g(3) + l(1)
-  PRAGMA_OFFLOAD("omp target update to(psiM_vgl_ptr[psiM_vgl_stride:psiM_vgl_stride*4])")
+  if (Phi->isSpinor())
+  {
+    auto* psiM_vgls_ptr           = psiM_vgls.data();
+    const size_t psiM_vgls_stride = psiM_vgls.capacity();
+    // transfer host to device, total size 4, g(3) + l(1)
+    PRAGMA_OFFLOAD("omp target update to(psiM_vgls_ptr[psiM_vgls_stride:psiM_vgls_stride*5])")
+  }
+  else
+  {
+    auto* psiM_vgl_ptr           = psiM_vgl.data();
+    const size_t psiM_vgl_stride = psiM_vgl.capacity();
+    // transfer host to device, total size 4, g(3) + l(1)
+    PRAGMA_OFFLOAD("omp target update to(psiM_vgl_ptr[psiM_vgl_stride:psiM_vgl_stride*4])")
+  }
   buf.get(log_value_);
 }
 

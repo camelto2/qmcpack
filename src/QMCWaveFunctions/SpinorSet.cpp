@@ -229,7 +229,7 @@ void SpinorSet::mw_evaluateVGLandDetRatioGradsWithSpin(const RefVectorWithLeader
   auto& spo_leader = spo_list.getCastedLeader<SpinorSet>();
   auto& P_leader   = P_list.getLeader();
   assert(this == &spo_leader);
-  assert(phi_vgl_v.size(0) == DIM_VGL);
+  assert(phi_vgl_v.size(0) == (DIM_VGLS));
   assert(phi_vgl_v.size(1) == spo_list.size());
   const size_t nw             = spo_list.size();
   const size_t norb_requested = phi_vgl_v.size(2);
@@ -286,12 +286,19 @@ void SpinorSet::mw_evaluateVGLandDetRatioGradsWithSpin(const RefVectorWithLeader
     RealType c, s;
     omptarget::sincos(spins_ptr[iw], &s, &c);
     ValueType eis(c, s), emis(c, -s);
+    ValueType eye(0.0, 1.0);
     PRAGMA_OFFLOAD("omp parallel for collapse(2)")
     for (int idim = 0; idim < DIM_VGL; idim++)
       for (int iorb = 0; iorb < norb_requested; iorb++)
       {
         auto offset         = idim * nw * norb_requested + iw * norb_requested + iorb;
         phi_vgl_ptr[offset] = eis * up_phi_vgl_ptr[offset] + emis * dn_phi_vgl_ptr[offset];
+        // if we are on the values, construct the spin gradient. Need different offset into spingradient values
+        if (idim == 0)
+        {
+          auto offset_spin         = DIM_VGL * nw * norb_requested + iw * norb_requested + iorb;
+          phi_vgl_ptr[offset_spin] = eye * (eis * up_phi_vgl_ptr[offset] - emis * dn_phi_vgl_ptr[offset]);
+        }
       }
   }
 }

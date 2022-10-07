@@ -65,6 +65,8 @@ public:
     UnpinnedOffloadVector<Value> czero_vec;
     // multi walker of grads for transfer needs.
     OffloadMatrix<Value> grads_value_v;
+    // multi walker of grads for transfer needs.
+    UnpinnedOffloadVector<Value> spingrads_value_v;
     // pointer buffer
     Vector<char, PinnedAllocator<char>> buffer_H2D;
     /// scratch space for rank-1 update
@@ -195,6 +197,69 @@ public:
 
     for (int iw = 0; iw < nw; iw++)
       grad_now[iw] = {grads_value_v[iw][0], grads_value_v[iw][1], grads_value_v[iw][2]};
+  }
+
+  template<typename GT>
+  static void mw_evalGradWithSpin(const RefVectorWithLeader<This_t>& engines,
+                                  const std::vector<const Value*>& dpsiM_row_list,
+                                  const std::vector<const Value*>& dspinM_row_list,
+                                  int rowchanged,
+                                  std::vector<GT>& grad_now,
+                                  std::vector<Value>& spingrad_now)
+  {
+    auto& engine_leader     = engines.getLeader();
+    auto& buffer_H2D        = engine_leader.mw_mem_->buffer_H2D;
+    auto& grads_value_v     = engine_leader.mw_mem_->grads_value_v;
+    auto& spingrads_value_v = engine_leader.mw_mem_->spingrads_value_v;
+
+    const int norb                   = engine_leader.get_psiMinv().rows();
+    const int nw                     = engines.size();
+    constexpr size_t num_ptrs_packed = 3; // it must match packing and unpacking
+    buffer_H2D.resize(sizeof(Value*) * num_ptrs_packed * nw);
+    Matrix<const Value*> ptr_buffer(reinterpret_cast<const Value**>(buffer_H2D.data()), num_ptrs_packed, nw);
+    for (int iw = 0; iw < nw; iw++)
+    {
+      ptr_buffer[0][iw] = engines[iw].get_psiMinv().device_data() + rowchanged * engine_leader.get_psiMinv().cols();
+      ptr_buffer[1][iw] = dpsiM_row_list[iw];
+      ptr_buffer[2][iw] = dspinM_row_list[iw];
+    }
+
+    constexpr unsigned DIM = GT::Size;
+    grads_value_v.resize(nw, DIM);
+    spingrads_value_v.resize(nw);
+    auto* __restrict__ grads_value_v_ptr     = grads_value_v.data();
+    auto* __restrict__ spingrads_value_v_ptr = spingrads_value_v.data();
+    auto* buffer_H2D_ptr                     = buffer_H2D.data();
+
+    PRAGMA_OFFLOAD("omp target teams distribute num_teams(nw) \
+                    map(always, to: buffer_H2D_ptr[:buffer_H2D.size()]) \
+                    map(always, from: grads_value_v_ptr[:grads_value_v.size()] \
+                    map(always, from: spingrads_value_v_ptr[:spingrads_value_v.size()])")
+    for (int iw = 0; iw < nw; iw++)
+    {
+      const Value* __restrict__ invRow_ptr     = reinterpret_cast<const Value**>(buffer_H2D_ptr)[iw];
+      const Value* __restrict__ dpsiM_row_ptr  = reinterpret_cast<const Value**>(buffer_H2D_ptr)[nw + iw];
+      const Value* __restrict__ dspinM_row_ptr = reinterpret_cast<const Value**>(buffer_H2D_ptr)[2 * nw + iw];
+      Value grad_x(0), grad_y(0), grad_z(0), spingrad(0);
+      PRAGMA_OFFLOAD("omp parallel for reduction(+: grad_x, grad_y, grad_z, spingrad)")
+      for (int iorb = 0; iorb < norb; iorb++)
+      {
+        grad_x += invRow_ptr[iorb] * dpsiM_row_ptr[iorb * DIM];
+        grad_y += invRow_ptr[iorb] * dpsiM_row_ptr[iorb * DIM + 1];
+        grad_z += invRow_ptr[iorb] * dpsiM_row_ptr[iorb * DIM + 2];
+        spingrad += invRow_ptr[iorb] * dspinM_row_ptr[iorb];
+      }
+      grads_value_v_ptr[iw * DIM]     = grad_x;
+      grads_value_v_ptr[iw * DIM + 1] = grad_y;
+      grads_value_v_ptr[iw * DIM + 2] = grad_z;
+      spingrads_value_v_ptr[iw]       = spingrad;
+    }
+
+    for (int iw = 0; iw < nw; iw++)
+    {
+      grad_now[iw]     = {grads_value_v[iw][0], grads_value_v[iw][1], grads_value_v[iw][2]};
+      spingrad_now[iw] = spingrads_value_v[iw];
+    }
   }
 
   template<typename VVT>
@@ -345,6 +410,120 @@ public:
     }
   }
 
+  /** The potential for mayhem here without a unit test is great.
+   */
+  static void mw_updateRow(const RefVectorWithLeader<This_t>& engines,
+                           int rowchanged,
+                           const std::vector<Value*>& psiM_g_list,
+                           const std::vector<Value*>& psiM_l_list,
+                           const std::vector<Value*>& psiM_s_list,
+                           const std::vector<bool>& isAccepted,
+                           const OffloadMWVGLArray<Value>& phi_vgl_v,
+                           const std::vector<Value>& ratios)
+  {
+    const size_t n_accepted = psiM_g_list.size();
+    if (n_accepted == 0)
+      return;
+
+    auto& engine_leader         = engines.getLeader();
+    auto& buffer_H2D            = engine_leader.mw_mem_->buffer_H2D;
+    auto& grads_value_v         = engine_leader.mw_mem_->grads_value_v;
+    auto& spingrads_value_v     = engine_leader.mw_mem_->spingrads_value_v;
+    auto& cone_vec              = engine_leader.mw_mem_->cone_vec;
+    auto& czero_vec             = engine_leader.mw_mem_->czero_vec;
+    auto& mw_temp               = engine_leader.mw_mem_->mw_temp;
+    auto& mw_rcopy              = engine_leader.mw_mem_->mw_rcopy;
+    const int norb              = engine_leader.get_psiMinv().rows();
+    const int lda               = engine_leader.get_psiMinv().cols();
+    const size_t nw             = isAccepted.size();
+    const size_t phi_vgl_stride = nw * norb;
+
+    engine_leader.resize_scratch_arrays(norb, n_accepted);
+
+    // to handle Value** of Ainv, psi_v, temp, rcopy
+    constexpr size_t num_ptrs_packed = 7; // it must match packing and unpacking
+    buffer_H2D.resize((sizeof(Value*) * num_ptrs_packed + sizeof(Value)) * n_accepted);
+    Matrix<Value*> ptr_buffer(reinterpret_cast<Value**>(buffer_H2D.data()), num_ptrs_packed, n_accepted);
+    Value* c_ratio_inv = reinterpret_cast<Value*>(buffer_H2D.data() + sizeof(Value*) * num_ptrs_packed * n_accepted);
+    for (int iw = 0, count = 0; iw < nw; iw++)
+      if (isAccepted[iw])
+      {
+        ptr_buffer[0][count] = engines[iw].get_ref_psiMinv().device_data();
+        ptr_buffer[1][count] = const_cast<Value*>(phi_vgl_v.device_data_at(0, iw, 0));
+        ptr_buffer[2][count] = mw_temp.device_data() + norb * count;
+        ptr_buffer[3][count] = mw_rcopy.device_data() + norb * count;
+        ptr_buffer[4][count] = psiM_g_list[count];
+        ptr_buffer[5][count] = psiM_l_list[count];
+        ptr_buffer[6][count] = psiM_s_list[count];
+
+        c_ratio_inv[count] = Value(-1) / ratios[iw];
+        count++;
+      }
+
+    // update the inverse matrix
+    constexpr Value cone(1);
+    constexpr Value czero(0);
+    int dummy_handle     = 0;
+    int success          = 0;
+    auto* buffer_H2D_ptr = buffer_H2D.data();
+    engine_leader.resize_fill_constant_arrays(n_accepted);
+    Value* cone_ptr  = cone_vec.data();
+    Value* czero_ptr = czero_vec.data();
+    PRAGMA_OFFLOAD("omp target data \
+                    map(always, to: buffer_H2D_ptr[:buffer_H2D.size()]) \
+                    use_device_ptr(buffer_H2D_ptr, cone_ptr, czero_ptr)")
+    {
+      Value** Ainv_mw_ptr   = reinterpret_cast<Value**>(buffer_H2D_ptr);
+      Value** phiVGL_mw_ptr = reinterpret_cast<Value**>(buffer_H2D_ptr + sizeof(Value*) * n_accepted);
+      Value** temp_mw_ptr   = reinterpret_cast<Value**>(buffer_H2D_ptr + sizeof(Value*) * n_accepted * 2);
+      Value** rcopy_mw_ptr  = reinterpret_cast<Value**>(buffer_H2D_ptr + sizeof(Value*) * n_accepted * 3);
+      Value** dpsiM_mw_out  = reinterpret_cast<Value**>(buffer_H2D_ptr + sizeof(Value*) * n_accepted * 4);
+      Value** d2psiM_mw_out = reinterpret_cast<Value**>(buffer_H2D_ptr + sizeof(Value*) * n_accepted * 5);
+      Value** dspinM_mw_out = reinterpret_cast<Value**>(buffer_H2D_ptr + sizeof(Value*) * n_accepted * 6);
+      Value* ratio_inv_mw   = reinterpret_cast<Value*>(buffer_H2D_ptr + sizeof(Value*) * n_accepted * 7);
+
+      // invoke the Fahy's variant of Sherman-Morrison update.
+      success = ompBLAS::gemv_batched(dummy_handle, 'T', norb, norb, cone_ptr, Ainv_mw_ptr, lda, phiVGL_mw_ptr, 1,
+                                      czero_ptr, temp_mw_ptr, 1, n_accepted);
+      if (success != 0)
+        throw std::runtime_error("ompBLAS::gemv_batched failed.");
+
+      PRAGMA_OFFLOAD("omp target teams distribute num_teams(n_accepted) is_device_ptr(Ainv_mw_ptr, temp_mw_ptr, \
+                     rcopy_mw_ptr, dpsiM_mw_out, d2psiM_mw_out, dspinM_mw_out,  phiVGL_mw_ptr)")
+      for (int iw = 0; iw < n_accepted; iw++)
+      {
+        Value* __restrict__ Ainv_ptr   = Ainv_mw_ptr[iw];
+        Value* __restrict__ temp_ptr   = temp_mw_ptr[iw];
+        Value* __restrict__ rcopy_ptr  = rcopy_mw_ptr[iw];
+        Value* __restrict__ dpsiM_out  = dpsiM_mw_out[iw];
+        Value* __restrict__ d2psiM_out = d2psiM_mw_out[iw];
+        Value* __restrict__ dspinM_out = dspinM_mw_out[iw];
+        Value* __restrict__ dpsiM_in   = phiVGL_mw_ptr[iw] + phi_vgl_stride;
+        Value* __restrict__ d2psiM_in  = phiVGL_mw_ptr[iw] + phi_vgl_stride * 4;
+        Value* __restrict__ dspinM_in  = phiVGL_mw_ptr[iw] + phi_vgl_stride * 5;
+
+        temp_ptr[rowchanged] -= cone;
+        PRAGMA_OFFLOAD("omp parallel for simd")
+        for (int i = 0; i < norb; i++)
+        {
+          rcopy_ptr[i] = Ainv_ptr[rowchanged * lda + i];
+          // the following copying data on the device is not part of SM-1
+          // it is intended to copy dpsiM and d2psiM from temporary to final without a separate kernel.
+          dpsiM_out[i * 3]     = dpsiM_in[i];
+          dpsiM_out[i * 3 + 1] = dpsiM_in[i + phi_vgl_stride];
+          dpsiM_out[i * 3 + 2] = dpsiM_in[i + phi_vgl_stride * 2];
+          d2psiM_out[i]        = d2psiM_in[i];
+          dspinM_out[i]        = dspinM_in[i];
+        }
+      }
+
+      success = ompBLAS::ger_batched(dummy_handle, norb, norb, ratio_inv_mw, rcopy_mw_ptr, 1, temp_mw_ptr, 1,
+                                     Ainv_mw_ptr, lda, n_accepted);
+      if (success != 0)
+        throw std::runtime_error("ompBLAS::ger failed.");
+    }
+  }
+
   static void mw_accept_rejectRow(const RefVectorWithLeader<This_t>& engines,
                                   const int rowchanged,
                                   const std::vector<Value*>& psiM_g_list,
@@ -354,6 +533,18 @@ public:
                                   const std::vector<Value>& ratios)
   {
     mw_updateRow(engines, rowchanged, psiM_g_list, psiM_l_list, isAccepted, phi_vgl_v, ratios);
+  }
+
+  static void mw_accept_rejectRow(const RefVectorWithLeader<This_t>& engines,
+                                  const int rowchanged,
+                                  const std::vector<Value*>& psiM_g_list,
+                                  const std::vector<Value*>& psiM_l_list,
+                                  const std::vector<Value*>& psiM_s_list,
+                                  const std::vector<bool>& isAccepted,
+                                  const OffloadMWVGLArray<Value>& phi_vgl_v,
+                                  const std::vector<Value>& ratios)
+  {
+    mw_updateRow(engines, rowchanged, psiM_g_list, psiM_l_list, psiM_s_list, isAccepted, phi_vgl_v, ratios);
   }
 
   /** update the full Ainv and reset delay_count
