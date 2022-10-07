@@ -39,7 +39,12 @@ DiracDeterminantBatched<DET_ENGINE>::DiracDeterminantBatched(std::unique_ptr<SPO
       H2DTimer(*timer_manager.createTimer("DiracDeterminantBatched::H2D", timer_level_fine))
 {
   static_assert(std::is_same<SPOSet::ValueType, typename DET_ENGINE::Value>::value);
-  resize(NumPtcls, NumPtcls);
+  //if we are working with Spinors, we will need the spin gradients so call resizeWithSpin
+  //otherwise, we use the normal resize
+  if (Phi->isSpinor())
+    resizeWithSpin(NumPtcls, NumPtcls);
+  else
+    resize(NumPtcls, NumPtcls);
   if (isOptimizable())
     Phi->buildOptVariables(NumPtcls);
 }
@@ -124,6 +129,31 @@ void DiracDeterminantBatched<DET_ENGINE>::resize(int nel, int morb)
   psiM_host.attachReference(psiM_vgl.data(0), nel, norb);
   dpsiM.attachReference(reinterpret_cast<Grad*>(psiM_vgl.data(1)), nel, norb);
   d2psiM.attachReference(psiM_vgl.data(4), nel, norb);
+
+  det_engine_.resize(norb, ndelay_);
+
+  psiV.resize(NumOrbitals);
+  psiV_host_view.attachReference(psiV.data(), NumOrbitals);
+  dpsiV.resize(NumOrbitals);
+  dpsiV_host_view.attachReference(dpsiV.data(), NumOrbitals);
+  d2psiV.resize(NumOrbitals);
+  d2psiV_host_view.attachReference(d2psiV.data(), NumOrbitals);
+}
+
+///reset the size: with the number of particles and number of orbtials
+template<typename DET_ENGINE>
+void DiracDeterminantBatched<DET_ENGINE>::resizeWithSpin(int nel, int morb)
+{
+  int norb = morb;
+  if (norb <= 0)
+    norb = nel; // for morb == -1 (default)
+  psiM_vgls.resize(nel * norb);
+  // attach pointers VGL
+  psiM_temp.attachReference(psiM_vgls, psiM_vgls.data(0), nel, norb);
+  psiM_host.attachReference(psiM_vgls.data(0), nel, norb);
+  dpsiM.attachReference(reinterpret_cast<Grad*>(psiM_vgls.data(1)), nel, norb);
+  d2psiM.attachReference(psiM_vgls.data(4), nel, norb);
+  dspinM.attachReference(psiM_vgls.data(5), nel, norb);
 
   det_engine_.resize(norb, ndelay_);
 

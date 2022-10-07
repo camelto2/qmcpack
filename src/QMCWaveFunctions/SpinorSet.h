@@ -29,6 +29,7 @@ public:
 
   std::string getClassName() const override { return "SpinorSet"; }
   bool isOptimizable() const override { return spo_up->isOptimizable() || spo_dn->isOptimizable(); }
+  bool isSpinor() const override { return true; }
   bool isOMPoffload() const override { return spo_up->isOMPoffload() || spo_dn->isOMPoffload(); }
   bool hasIonDerivs() const override { return spo_up->hasIonDerivs() || spo_dn->hasIonDerivs(); }
 

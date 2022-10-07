@@ -54,6 +54,7 @@ public:
   template<typename DT>
   using DualMatrix    = Matrix<DT, PinnedDualAllocator<DT>>;
   using DualVGLVector = VectorSoaContainer<Value, DIM + 2, PinnedDualAllocator<Value>>;
+  using DualVGLSVector = VectorSoaContainer<Value, DIM + 3, PinnedDualAllocator<Value>>;
 
   using OffloadMWVGLArray = typename SPOSet::OffloadMWVGLArray;
 
@@ -260,6 +261,8 @@ public:
    */
   /// fused memory for psiM, dpsiM and d2psiM. [5][norb*norb]
   DualVGLVector psiM_vgl;
+  /// fused memory for psiM, dpsiM and d2psiM. [6][norb*norb]
+  DualVGLVector psiM_vgls;
   /** psiM(j,i) \f$= \psi_j({\bf r}_i)\f$. partial memory view of psiM_vgl
    *  Only this one is Dual since only psiM is a Dual argument
    *  in the det_engine single walker API.
@@ -270,6 +273,8 @@ public:
   Matrix<Grad> dpsiM;
   /// d2psiM(i,j) \f$= \nabla_i^2 \psi_j({\bf r}_i)\f$. partial memory view of psiM_vgl
   Matrix<Value> d2psiM;
+  /// dspin(i,j) \f$= \partial_{s_i} \psi_j({\bf r}_i)\f$. partial memory view of psiM_vgl
+  Matrix<Value> dspinM;
 
   /// Used for force computations
   Matrix<Grad> grad_source_psiM, grad_lapl_source_psiM;
@@ -298,6 +303,9 @@ public:
 private:
   ///reset the size: with the number of particles and number of orbtials
   void resize(int nel, int morb);
+
+  ///includes data structures with spin gradients
+  void resizeWithSpin(int nel, int morb);
 
   /// Delayed update engine 1 per walker.
   DET_ENGINE det_engine_;

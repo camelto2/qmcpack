@@ -90,6 +90,9 @@ public:
   /// Query if this SPOSet is optimizable
   virtual bool isOptimizable() const { return false; }
 
+  /// Query if this SPOSet is optimizable
+  virtual bool isSpinor() const { return false; }
+
   /** extract underlying OptimizableObject references
    * @param opt_obj_refs aggregated list of optimizable object references
    */
