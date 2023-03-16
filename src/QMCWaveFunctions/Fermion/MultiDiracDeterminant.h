@@ -290,7 +290,13 @@ public:
                                                  UnpinnedOffloadMatrix<ValueType>& mw_grads);
   /// evaluate the value and gradients of all the unique determinants with one electron moved. Used by the table method. Includes Spin Gradient data
   void evaluateDetsAndGradsForPtclMoveWithSpin(const ParticleSet& P, int iat);
-
+  /// multi walker version of evaluateDetsAndGradsForPtclMoveWithSpin 
+  void mw_evaluateDetsAndGradsForPtclMoveWithSpin(const RefVectorWithLeader<MultiDiracDeterminant>& det_list,
+                                                  const RefVectorWithLeader<ParticleSet>& p_list,
+                                                  int iat,
+                                                  UnpinnedOffloadMatrix<ValueType>& mw_grads,
+                                                  UnpinnedOffloadMatrix<ValueType>& mw_spingrads)
+  {}
 
   /// evaluate the gradients of all the unique determinants with one electron moved. Used by the table method
   void evaluateGrads(ParticleSet& P, int iat);
@@ -301,6 +307,12 @@ public:
                                UnpinnedOffloadMatrix<ValueType>& mw_grads);
   /// evaluate the gradients of all the unique determinants with one electron moved. Used by the table method. Includes Spin Gradient data
   void evaluateGradsWithSpin(ParticleSet& P, int iat);
+  /// multi walker version of mw_evaluateGradWithSpin
+  void static mw_evaluateGradsWithSpin(const RefVectorWithLeader<MultiDiracDeterminant>& det_list,
+                                       const RefVectorWithLeader<ParticleSet>& p_list,
+                                       int iat,
+                                       UnpinnedOffloadMatrix<ValueType>& mw_grads,
+                                       UnpinnedOffloadMatrix<ValueType>& mw_spingrads) {}
 
   // full evaluation of all the structures from scratch, used in evaluateLog for example
   void evaluateForWalkerMove(const ParticleSet& P, bool fromScratch = true);

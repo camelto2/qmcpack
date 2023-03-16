@@ -292,6 +292,98 @@ void MultiSlaterDetTableMethod::mw_evalGrad_impl(const RefVectorWithLeader<WaveF
   }
 }
 
+void MultiSlaterDetTableMethod::mw_evalGradWithSpin_impl(const RefVectorWithLeader<WaveFunctionComponent>& WFC_list,
+                                                         const RefVectorWithLeader<ParticleSet>& P_list,
+                                                         int iat,
+                                                         bool newpos,
+                                                         std::vector<GradType>& grad_now,
+                                                         std::vector<ComplexType>& spingrad_now,
+                                                         std::vector<PsiValueType>& psi_list)
+{
+  auto& det_leader = WFC_list.getCastedLeader<MultiSlaterDetTableMethod>();
+  const int det_id = det_leader.getDetID(iat);
+  const int nw     = WFC_list.size();
+  const int ndets  = det_leader.Dets[det_id]->getNumDets();
+
+  RefVectorWithLeader<MultiDiracDeterminant> det_list(*det_leader.Dets[det_id]);
+  det_list.reserve(WFC_list.size());
+  for (int iw = 0; iw < WFC_list.size(); iw++)
+  {
+    auto& det = WFC_list.getCastedElement<MultiSlaterDetTableMethod>(iw);
+    det_list.push_back(*det.Dets[det_id]);
+  }
+
+  auto& mw_grads     = det_leader.mw_res_->mw_grads;
+  auto& mw_spingrads = det_leader.mw_res_->mw_spingrads;
+  mw_grads.resize(3 * nw, ndets);
+  mw_spingrads.resize(nw, ndets);
+  if (newpos)
+    det_leader.Dets[det_id]->mw_evaluateDetsAndGradsForPtclMoveWithSpin(det_list, P_list, iat, mw_grads, mw_spingrads);
+  else
+    det_leader.Dets[det_id]->mw_evaluateGradsWithSpin(det_list, P_list, iat, mw_grads, mw_spingrads);
+
+  auto& det_value_ptr_list = det_leader.mw_res_->det_value_ptr_list;
+  det_value_ptr_list.resize(nw);
+  for (size_t iw = 0; iw < nw; iw++)
+  {
+    auto& det              = WFC_list.getCastedElement<MultiSlaterDetTableMethod>(iw);
+    det_value_ptr_list[iw] = (newpos) ? det.Dets[det_id]->getNewRatiosToRefDet().device_data()
+                                      : det.Dets[det_id]->getRatiosToRefDet().device_data();
+  }
+
+  std::vector<ValueType> grad_now_list(nw * 3, 0);
+  std::vector<ValueType> spingrad_now_list(nw, 0);
+  auto* grad_now_list_ptr      = grad_now_list.data();
+  auto* spingrad_now_list_ptr  = spingrad_now_list.data();
+  auto* mw_grads_ptr           = mw_grads.data();
+  auto* mw_spingrads_ptr       = mw_spingrads.data();
+  auto* psi_list_ptr           = psi_list.data();
+  auto* C_otherDs_ptr_list_ptr = det_leader.mw_res_->C_otherDs_ptr_list.data();
+  auto* det_value_ptr_list_ptr = det_value_ptr_list.data();
+  {
+    ScopedTimer local_timer(det_leader.offload_timer);
+    PRAGMA_OFFLOAD("omp target teams distribute map(from: psi_list_ptr[:nw]) \
+                    map(from: grad_now_list_ptr[:3 * nw]) \
+                    map(from: spingrad_now_list_ptr[:nw]) \
+                    map(always, to: det_value_ptr_list_ptr[:nw]) \
+                    map(to: mw_grads_ptr[:mw_grads.size()]) \
+                    map(to: mw_spingrads_ptr[:mw_spingrads.size()])")
+    for (size_t iw = 0; iw < nw; iw++)
+    {
+      // enforce full precision reduction due to numerical sensitivity
+      PsiValueType psi_local(0);
+      PsiValueType grad_local_x(0);
+      PsiValueType grad_local_y(0);
+      PsiValueType grad_local_z(0);
+      PsiValueType spingrad_local(0);
+      PRAGMA_OFFLOAD(
+          "omp parallel for reduction(+:psi_local, grad_local_x, grad_local_y, grad_local_z, spingrad_local)")
+      for (size_t i = 0; i < ndets; i++)
+      {
+        psi_local += det_value_ptr_list_ptr[iw][i] * C_otherDs_ptr_list_ptr[iw][i];
+        grad_local_x += C_otherDs_ptr_list_ptr[iw][i] * mw_grads_ptr[(3 * iw + 0) * ndets + i];
+        grad_local_y += C_otherDs_ptr_list_ptr[iw][i] * mw_grads_ptr[(3 * iw + 1) * ndets + i];
+        grad_local_z += C_otherDs_ptr_list_ptr[iw][i] * mw_grads_ptr[(3 * iw + 2) * ndets + i];
+        spingrad_local += C_otherDs_ptr_list_ptr[iw][i] * mw_spingrads_ptr[iw * ndets + i];
+      }
+      psi_list_ptr[iw]              = psi_local;
+      grad_now_list_ptr[iw * 3 + 0] = grad_local_x;
+      grad_now_list_ptr[iw * 3 + 1] = grad_local_y;
+      grad_now_list_ptr[iw * 3 + 2] = grad_local_z;
+      spingrad_now_list_ptr[iw]     = spingrad_local;
+    }
+  }
+
+  for (size_t iw = 0; iw < nw; iw++)
+  {
+    auto psi_inv     = static_cast<ValueType>(PsiValueType(1.0) / psi_list[iw]);
+    grad_now[iw][0]  = grad_now_list[iw * 3 + 0] * psi_inv;
+    grad_now[iw][1]  = grad_now_list[iw * 3 + 1] * psi_inv;
+    grad_now[iw][2]  = grad_now_list[iw * 3 + 2] * psi_inv;
+    spingrad_now[iw] = spingrad_now_list[iw] * psi_inv;
+  }
+}
+
 WaveFunctionComponent::PsiValueType MultiSlaterDetTableMethod::evalGrad_impl_no_precompute(ParticleSet& P,
                                                                                            int iat,
                                                                                            bool newpos,
@@ -411,6 +503,26 @@ void MultiSlaterDetTableMethod::mw_evalGrad(const RefVectorWithLeader<WaveFuncti
   mw_evalGrad_impl(WFC_list, P_list, iat, false, grad_now, psi_list);
 }
 
+void MultiSlaterDetTableMethod::mw_evalGradWithSpin(const RefVectorWithLeader<WaveFunctionComponent>& wfc_list,
+                                                    const RefVectorWithLeader<ParticleSet>& p_list,
+                                                    int iat,
+                                                    std::vector<GradType>& grad_now,
+                                                    std::vector<ComplexType>& spingrad_now) const
+{
+  if (!use_pre_computing_)
+  {
+    WaveFunctionComponent::mw_evalGradWithSpin(wfc_list, p_list, iat, grad_now, spingrad_now);
+    return;
+  }
+
+  auto& det_leader = wfc_list.getCastedLeader<MultiSlaterDetTableMethod>();
+  ScopedTimer local_timer(det_leader.EvalGradTimer);
+
+  const int nw = wfc_list.size();
+
+  std::vector<PsiValueType> psi_list(nw, 0);
+  mw_evalGradWithSpin_impl(wfc_list, p_list, iat, false, grad_now, spingrad_now, psi_list);
+}
 
 WaveFunctionComponent::PsiValueType MultiSlaterDetTableMethod::ratioGrad(ParticleSet& P, int iat, GradType& grad_iat)
 {
@@ -479,6 +591,40 @@ void MultiSlaterDetTableMethod::mw_ratioGrad(const RefVectorWithLeader<WaveFunct
     auto& det                         = WFC_list.getCastedElement<MultiSlaterDetTableMethod>(iw);
     det.new_psi_ratio_to_new_ref_det_ = psi_list[iw];
     grad_new[iw] += dummy[iw];
+    ratios[iw] = det.curRatio = det.Dets[det_id]->getRefDetRatio() * psi_list[iw] / det.psi_ratio_to_ref_det_;
+  }
+}
+
+void MultiSlaterDetTableMethod::mw_ratioGradWithSpin(const RefVectorWithLeader<WaveFunctionComponent>& wfc_list,
+                                                     const RefVectorWithLeader<ParticleSet>& p_list,
+                                                     int iat,
+                                                     std::vector<WaveFunctionComponent::PsiValueType>& ratios,
+                                                     std::vector<GradType>& grad_new,
+                                                     std::vector<ComplexType>& spingrad_new) const
+{
+  if (!use_pre_computing_)
+  {
+    WaveFunctionComponent::mw_ratioGradWithSpin(wfc_list, p_list, iat, ratios, grad_new, spingrad_new);
+    return;
+  }
+
+  auto& det_leader = wfc_list.getCastedLeader<MultiSlaterDetTableMethod>();
+  const int nw     = wfc_list.size();
+
+  ScopedTimer local_timer(det_leader.RatioGradTimer);
+  std::vector<PsiValueType> psi_list(nw, 0);
+  std::vector<GradType> grads(nw);
+  std::vector<ComplexType> spingrads(nw);
+
+  mw_evalGradWithSpin_impl(wfc_list, p_list, iat, true, grads, spingrads, psi_list);
+
+  const int det_id = getDetID(iat);
+  for (size_t iw = 0; iw < nw; iw++)
+  {
+    auto& det                         = wfc_list.getCastedElement<MultiSlaterDetTableMethod>(iw);
+    det.new_psi_ratio_to_new_ref_det_ = psi_list[iw];
+    grad_new[iw] += grads[iw];
+    spingrad_new[iw] += spingrads[iw];
     ratios[iw] = det.curRatio = det.Dets[det_id]->getRefDetRatio() * psi_list[iw] / det.psi_ratio_to_ref_det_;
   }
 }

@@ -134,11 +134,24 @@ public:
                    int iat,
                    std::vector<GradType>& grad_now) const override;
 
+  void mw_evalGradWithSpin(const RefVectorWithLeader<WaveFunctionComponent>& wfc_list,
+                           const RefVectorWithLeader<ParticleSet>& p_list,
+                           int iat,
+                           std::vector<GradType>& grad_now,
+                           std::vector<ComplexType>& spingrad_now) const override;
+
   void mw_ratioGrad(const RefVectorWithLeader<WaveFunctionComponent>& WFC_list,
                     const RefVectorWithLeader<ParticleSet>& P_list,
                     int iat,
                     std::vector<PsiValueType>& ratios,
                     std::vector<GradType>& grad_new) const override;
+
+  void mw_ratioGradWithSpin(const RefVectorWithLeader<WaveFunctionComponent>& wfc_list,
+                            const RefVectorWithLeader<ParticleSet>& p_list,
+                            int iat,
+                            std::vector<PsiValueType>& ratios,
+                            std::vector<GradType>& grad_new,
+                            std::vector<ComplexType>& spingrad_new) const override;
 
   void mw_calcRatio(const RefVectorWithLeader<WaveFunctionComponent>& WFC_list,
                     const RefVectorWithLeader<ParticleSet>& P_list,
@@ -184,9 +197,7 @@ public:
                            Vector<ValueType>& dlogpsi,
                            Vector<ValueType>& dhpsioverpsi) override;
 
-  void evaluateDerivativesWF(ParticleSet& P,
-                             const opt_variables_type& optvars,
-                             Vector<ValueType>& dlogpsi) override;
+  void evaluateDerivativesWF(ParticleSet& P, const opt_variables_type& optvars, Vector<ValueType>& dlogpsi) override;
 
   void evaluateDerivRatios(const VirtualParticleSet& VP,
                            const opt_variables_type& optvars,
@@ -242,6 +253,14 @@ private:
                                                    GradType& g_at,
                                                    ComplexType& sg_at);
 
+  static void mw_evalGradWithSpin_impl(const RefVectorWithLeader<WaveFunctionComponent>& wfc_list,
+                                       const RefVectorWithLeader<ParticleSet>& p_list,
+                                       int iat,
+                                       bool newpos,
+                                       std::vector<GradType>& grad_now,
+                                       std::vector<ComplexType>& spingrad_now,
+                                       std::vector<PsiValueType>& psi_list);
+
   // compute the new multi determinant to reference determinant ratio based on temporarycoordinates.
   PsiValueType computeRatio_NewMultiDet_to_NewRefDet(int det_id) const;
 
@@ -265,9 +284,7 @@ private:
    * @param dlogpsi saved derivatives
    * @param det_id provide this argument to affect determinant group id for virtual moves
    */
-  void evaluateDerivativesMSD(const PsiValueType& multi_det_to_ref,
-                              Vector<ValueType>& dlogpsi,
-                              int det_id = -1) const;
+  void evaluateDerivativesMSD(const PsiValueType& multi_det_to_ref, Vector<ValueType>& dlogpsi, int det_id = -1) const;
 
   /// determinant collection
   std::vector<std::unique_ptr<MultiDiracDeterminant>> Dets;
@@ -323,6 +340,8 @@ private:
 
     /// grads of each unique determinants for multiple walkers
     Matrix<ValueType, OffloadAllocator<ValueType>> mw_grads;
+    /// spingrads of each unique determinants for multiple walkers
+    Matrix<ValueType, OffloadAllocator<ValueType>> mw_spingrads;
     /// a collection of device pointers of multiple walkers fused for fast H2D transfer.
     OffloadVector<const ValueType*> C_otherDs_ptr_list;
     OffloadVector<const ValueType*> det_value_ptr_list;
