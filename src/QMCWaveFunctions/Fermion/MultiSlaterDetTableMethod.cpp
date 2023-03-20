@@ -480,6 +480,8 @@ WaveFunctionComponent::GradType MultiSlaterDetTableMethod::evalGradWithSpin(Part
   else
     evalGradWithSpin_impl_no_precompute(P, iat, false, grad_iat, spingrad_iat);
 
+  spingrad += spingrad_iat;
+
   return grad_iat;
 }
 
