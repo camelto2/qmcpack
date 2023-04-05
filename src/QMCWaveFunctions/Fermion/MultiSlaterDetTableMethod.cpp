@@ -335,8 +335,9 @@ void MultiSlaterDetTableMethod::mw_evalGradWithSpin_impl(const RefVectorWithLead
     det_list.push_back(*det.Dets[det_id]);
   }
 
-  auto& mw_grads     = det_leader.mw_res_->mw_grads;
-  auto& mw_spingrads = det_leader.mw_res_->mw_spingrads;
+  auto& mw_res       = det_leader.mw_res_handle_.getResource();
+  auto& mw_grads     = mw_res.mw_grads;
+  auto& mw_spingrads = mw_res.mw_spingrads;
   mw_grads.resize(3 * nw, ndets);
   mw_spingrads.resize(nw, ndets);
   if (newpos)
@@ -344,7 +345,7 @@ void MultiSlaterDetTableMethod::mw_evalGradWithSpin_impl(const RefVectorWithLead
   else
     det_leader.Dets[det_id]->mw_evaluateGradsWithSpin(det_list, P_list, iat, mw_grads, mw_spingrads);
 
-  auto& det_value_ptr_list = det_leader.mw_res_->det_value_ptr_list;
+  auto& det_value_ptr_list = mw_res.det_value_ptr_list;
   det_value_ptr_list.resize(nw);
   for (size_t iw = 0; iw < nw; iw++)
   {
@@ -360,7 +361,7 @@ void MultiSlaterDetTableMethod::mw_evalGradWithSpin_impl(const RefVectorWithLead
   auto* mw_grads_ptr           = mw_grads.data();
   auto* mw_spingrads_ptr       = mw_spingrads.data();
   auto* psi_list_ptr           = psi_list.data();
-  auto* C_otherDs_ptr_list_ptr = det_leader.mw_res_->C_otherDs_ptr_list.data();
+  auto* C_otherDs_ptr_list_ptr = mw_res.C_otherDs_ptr_list.data();
   auto* det_value_ptr_list_ptr = det_value_ptr_list.data();
   {
     ScopedTimer local_timer(det_leader.offload_timer);
