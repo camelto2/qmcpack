@@ -298,6 +298,42 @@ void MultiDiracDeterminant::mw_buildTableMatrix_calculateGradRatios(
       mw_grads_ptr[(3 * iw + dx) * Grads_cols + count] = WorkSpace_list_ptr[iw][count];
 }
 
+void MultiDiracDeterminant::mw_buildTableMatrix_calculateSpinGradRatios(
+    MultiDiracDetMultiWalkerResource& mw_res,
+    int ref,
+    int iat,
+    int getNumDets,
+    const OffloadVector<ValueType>& det0_spingrad_list,
+    const RefVector<OffloadMatrix<ValueType>>& psiinv_list,
+    const RefVector<OffloadMatrix<ValueType>>& psi_list,
+    const OffloadVector<int>& data,
+    const VectorSoaContainer<int, 2, OffloadPinnedAllocator<int>>& pairs,
+    const OffloadVector<RealType>& sign,
+    const RefVector<OffloadVector<ValueType>>& WorkSpace_list,
+    const RefVector<OffloadMatrix<ValueType>>& table_matrix_list,
+    UnpinnedOffloadMatrix<ValueType>& mw_spingrads)
+{
+  ScopedTimer local_timer(calculateSpinGradRatios_timer);
+  mw_buildTableMatrix_calculateRatios_impl(mw_res, ref, det0_spingrad_list, psiinv_list, psi_list, data, pairs, sign,
+                                           table_matrix_list, WorkSpace_list);
+
+  const size_t nw = WorkSpace_list.size();
+  OffloadVector<ValueType*> WorkSpace_deviceptr_list(nw);
+  for (size_t iw = 0; iw < nw; iw++)
+    WorkSpace_deviceptr_list[iw] = WorkSpace_list[iw].get().device_data();
+
+  auto* WorkSpace_list_ptr    = WorkSpace_deviceptr_list.data();
+  auto* mw_spingrads_ptr      = mw_spingrads.data();
+  const size_t spingrads_cols = mw_spingrads.cols();
+
+  PRAGMA_OFFLOAD(
+      "omp target teams distribute parallel for collapse(2)  map(from:mw_spingrads_ptr[:mw_spingrads.size()]) \
+		                                                        map(always, to:WorkSpace_list_ptr[:nw])")
+  for (size_t iw = 0; iw < nw; iw++)
+    for (size_t count = 0; count < getNumDets; ++count)
+      mw_spingrads_ptr[iw * spingrads_cols + count] = WorkSpace_list_ptr[iw][count];
+}
+
 void MultiDiracDeterminant::buildTableMatrix_calculateRatiosValueMatrixOneParticle(
     int ref,
     const OffloadMatrix<ValueType>& psiinv,
@@ -1173,6 +1209,7 @@ void MultiDiracDeterminant::mw_evaluateGradsWithSpin(const RefVectorWithLeader<M
   auto* psiM_list_ptr             = mw_res.psiM_deviceptr_list.data();
   auto* psiV_temp_list_ptr        = mw_res.psiV_temp_deviceptr_list.data();
   auto* dpsiM_list_ptr            = mw_res.dpsiM_deviceptr_list.data();
+  auto* dspin_psiM_list_ptr       = mw_res.dspin_psiM_deviceptr_list.data();
   auto* confgListOccup_ptr        = det_leader.refdet_occup->data();
 
   {
@@ -1226,6 +1263,54 @@ void MultiDiracDeterminant::mw_evaluateGradsWithSpin(const RefVectorWithLeader<M
                                                          *det_leader.uniquePairs, *det_leader.DetSigns, WorkSpace_list,
                                                          table_matrix_list, mw_grads);
     }
+
+    //now do spin grad
+    success = ompBLAS::copy_batched(dummy_handle, psiMinv_rows * psiMinv_cols, psiMinv_list_devptr, 1,
+                                    dspin_psiMinv_list_devptr, 1, nw);
+    if (success != 0)
+      throw std::runtime_error("In MultiDiracDeterminant ompBLAS::copy_batched_offset failed.");
+
+    PRAGMA_OFFLOAD("omp target teams distribute  map(always, to: psiV_temp_list_ptr[:nw]) \
+		                                  map(always, to: dspin_psiM_list_ptr[:nw])")
+    for (size_t iw = 0; iw < nw; iw++)
+      for (size_t i = 0; i < NumPtcls; i++)
+      {
+        size_t J                  = confgListOccup_ptr[i];
+        psiV_temp_list_ptr[iw][i] = dspin_psiM_list_ptr[iw][WorkingIndex * dspin_psiM_cols + J];
+      }
+
+    PRAGMA_OFFLOAD("omp target teams distribute is_device_ptr(psiMinv_list_devptr) \
+		                                  map(always, from: ratioSG_list_ptr[:nw])")
+    for (size_t iw = 0; iw < nw; iw++)
+    {
+      ValueType ratioSG_local(0);
+      PRAGMA_OFFLOAD("omp parallel for reduction(+ : ratioSG_local)")
+      for (size_t i = 0; i < NumPtcls; i++)
+      {
+        size_t J = confgListOccup_ptr[i];
+        ratioSG_local += psiMinv_list_devptr[iw][i * psiMinv_cols + WorkingIndex] *
+            dspin_psiM_list_ptr[iw][WorkingIndex * dpsiM_cols + J];
+      }
+      ratioSG_list_ptr[iw]     = ratioSG_local;
+      inv_ratioSG_list_ptr[iw] = ValueType(1) / ratioSG_local;
+    }
+
+    det_leader.mw_InverseUpdateByColumn(det_leader.mw_res_handle_, WorkingIndex, inv_ratioSG_list,
+                                        mw_res.psiV_temp_deviceptr_list, mw_res.dspin_psiMinv_deviceptr_list,
+                                        psiMinv_rows);
+
+    PRAGMA_OFFLOAD("omp target teams distribute parallel for collapse(2) map(to:dspin_psiM_list_ptr[:nw]) \
+		                                              map(always, to: TpsiM_list_devptr[:nw])")
+    for (size_t iw = 0; iw < nw; iw++)
+      for (size_t i = 0; i < NumOrbitals; i++)
+        TpsiM_list_devptr[iw][i * TpsiM_cols + WorkingIndex] = dspin_psiM_list_ptr[iw][dpsiM_cols * WorkingIndex + i];
+
+
+    det_leader.mw_buildTableMatrix_calculateSpinGradRatios(det_leader.mw_res_handle_, det_leader.ReferenceDeterminant,
+                                                           WorkingIndex, det_leader.getNumDets(), ratioSG_list,
+                                                           dspin_psiMinv_list, TpsiM_list, *det_leader.detData,
+                                                           *det_leader.uniquePairs, *det_leader.DetSigns,
+                                                           WorkSpace_list, table_matrix_list, mw_spingrads);
 
     // restore the modified column of TpsiM.
     PRAGMA_OFFLOAD("omp target teams distribute parallel for map(from:TpsiM_list_devptr[:nw]) \

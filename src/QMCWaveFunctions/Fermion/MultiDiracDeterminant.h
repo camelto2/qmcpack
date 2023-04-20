@@ -35,7 +35,8 @@ class MultiDiracDeterminant : public WaveFunctionComponent
 public:
   NewTimer &inverse_timer, &buildTable_timer, &table2ratios_timer, &evalWalker_timer, &evalOrbValue_timer,
       &evalOrbVGL_timer;
-  NewTimer &updateInverse_timer, &calculateRatios_timer, &calculateGradRatios_timer, &updateRatios_timer;
+  NewTimer &updateInverse_timer, &calculateRatios_timer, &calculateGradRatios_timer, &calculateSpinGradRatios_timer,
+      &updateRatios_timer;
   NewTimer &evaluateDetsForPtclMove_timer, &evaluateDetsAndGradsForPtclMove_timer, &evaluateGrads_timer;
   NewTimer &offload_timer, &transferH2D_timer, &transferD2H_timer;
 
@@ -512,6 +513,21 @@ private:
                                                const RefVector<OffloadVector<ValueType>>& WorkSpace_list,
                                                const RefVector<OffloadMatrix<ValueType>>& table_matrix_list,
                                                UnpinnedOffloadMatrix<ValueType>& mw_grads);
+
+  //same as previous, except for spin gradients
+  void mw_buildTableMatrix_calculateSpinGradRatios(MultiDiracDetMultiWalkerResource& mw_res,
+                                                   int ref,
+                                                   int iat,
+                                                   int getNumDets,
+                                                   const OffloadVector<ValueType>& det0_spingrad_list,
+                                                   const RefVector<OffloadMatrix<ValueType>>& psiinv_list,
+                                                   const RefVector<OffloadMatrix<ValueType>>& psi_list,
+                                                   const OffloadVector<int>& data,
+                                                   const VectorSoaContainer<int, 2, OffloadPinnedAllocator<int>>& pairs,
+                                                   const OffloadVector<RealType>& sign,
+                                                   const RefVector<OffloadVector<ValueType>>& WorkSpace_list,
+                                                   const RefVector<OffloadMatrix<ValueType>>& table_matrix_list,
+                                                   UnpinnedOffloadMatrix<ValueType>& mw_spingrads);
 
   void buildTableMatrix_calculateRatiosValueMatrixOneParticle(
       int ref,

@@ -547,6 +547,7 @@ MultiDiracDeterminant::MultiDiracDeterminant(const MultiDiracDeterminant& s)
       updateInverse_timer(s.updateInverse_timer),
       calculateRatios_timer(s.calculateRatios_timer),
       calculateGradRatios_timer(s.calculateGradRatios_timer),
+      calculateSpinGradRatios_timer(s.calculateSpinGradRatios_timer),
       updateRatios_timer(s.updateRatios_timer),
       evaluateDetsForPtclMove_timer(s.evaluateDetsForPtclMove_timer),
       evaluateDetsAndGradsForPtclMove_timer(s.evaluateDetsAndGradsForPtclMove_timer),
@@ -593,6 +594,7 @@ MultiDiracDeterminant::MultiDiracDeterminant(std::unique_ptr<SPOSet>&& spos, boo
       updateInverse_timer(*timer_manager.createTimer(getClassName() + "::updateRefDetInv")),
       calculateRatios_timer(*timer_manager.createTimer(getClassName() + "::calcRatios")),
       calculateGradRatios_timer(*timer_manager.createTimer(getClassName() + "::calcGradRatios")),
+      calculateSpinGradRatios_timer(*timer_manager.createTimer(getClassName() + "::calcSpinGradRatios")),
       updateRatios_timer(*timer_manager.createTimer(getClassName() + "::updateRatios")),
       evaluateDetsForPtclMove_timer(*timer_manager.createTimer(getClassName() + "::evaluateDet")),
       evaluateDetsAndGradsForPtclMove_timer(*timer_manager.createTimer(getClassName() + "::evaluateDetAndGrad")),
@@ -768,6 +770,7 @@ void MultiDiracDeterminant::resize()
   {
     dspin_psiV.resize(NumOrbitals);
     dspin_psiM.resize(nel, NumOrbitals);
+    dspin_psiMinv.resize(nel, NumOrbitals);
     spingrads.resize(NumDets, nel);
     new_spingrads.resize(NumDets, nel);
   }
