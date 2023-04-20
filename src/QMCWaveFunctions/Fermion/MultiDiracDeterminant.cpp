@@ -261,12 +261,14 @@ void MultiDiracDeterminant::evaluateForWalkerMoveWithSpin(const ParticleSet& P, 
     Matrix<ValueType> psiM_host_view(psiM.data(), psiM.rows(), psiM.cols());
     Matrix<GradType> dpsiM_host_view(dpsiM.data(), dpsiM.rows(), dpsiM.cols());
     Matrix<ValueType> d2psiM_host_view(d2psiM.data(), d2psiM.rows(), d2psiM.cols());
+    Matrix<ValueType> dspin_psiM_host_view(dspin_psiM.data(), dspin_psiM.rows(), dspin_psiM.cols());
     Phi->evaluate_notranspose_spin(P, FirstIndex, LastIndex, psiM_host_view, dpsiM_host_view, d2psiM_host_view,
-                                   dspin_psiM);
+                                   dspin_psiM_host_view);
     {
       ScopedTimer local_timer(transferH2D_timer);
       psiM.updateTo();
       dpsiM.updateTo();
+      dspin_psiM.updateTo();
     }
   }
 
@@ -657,22 +659,25 @@ void MultiDiracDeterminant::acquireResource(ResourceCollection& collection,
   const size_t nw = wfc_list.size();
   mw_res.resizeConstants(nw);
 
-  auto& psiV_temp_deviceptr_list    = mw_res.psiV_temp_deviceptr_list;
-  auto& psiMinv_temp_deviceptr_list = mw_res.psiMinv_temp_deviceptr_list;
-  auto& dpsiMinv_deviceptr_list     = mw_res.dpsiMinv_deviceptr_list;
-  auto& workV1_deviceptr_list       = mw_res.workV1_deviceptr_list;
-  auto& workV2_deviceptr_list       = mw_res.workV2_deviceptr_list;
+  auto& psiV_temp_deviceptr_list     = mw_res.psiV_temp_deviceptr_list;
+  auto& psiMinv_temp_deviceptr_list  = mw_res.psiMinv_temp_deviceptr_list;
+  auto& dpsiMinv_deviceptr_list      = mw_res.dpsiMinv_deviceptr_list;
+  auto& dspin_psiMinv_deviceptr_list = mw_res.dspin_psiMinv_deviceptr_list;
+  auto& workV1_deviceptr_list        = mw_res.workV1_deviceptr_list;
+  auto& workV2_deviceptr_list        = mw_res.workV2_deviceptr_list;
 
-  auto& psiV_deviceptr_list    = mw_res.psiV_deviceptr_list;
-  auto& dpsiV_deviceptr_list   = mw_res.dpsiV_deviceptr_list;
-  auto& TpsiM_deviceptr_list   = mw_res.TpsiM_deviceptr_list;
-  auto& psiM_deviceptr_list    = mw_res.psiM_deviceptr_list;
-  auto& psiMinv_deviceptr_list = mw_res.psiMinv_deviceptr_list;
-  auto& dpsiM_deviceptr_list   = mw_res.dpsiM_deviceptr_list;
+  auto& psiV_deviceptr_list       = mw_res.psiV_deviceptr_list;
+  auto& dpsiV_deviceptr_list      = mw_res.dpsiV_deviceptr_list;
+  auto& TpsiM_deviceptr_list      = mw_res.TpsiM_deviceptr_list;
+  auto& psiM_deviceptr_list       = mw_res.psiM_deviceptr_list;
+  auto& psiMinv_deviceptr_list    = mw_res.psiMinv_deviceptr_list;
+  auto& dpsiM_deviceptr_list      = mw_res.dpsiM_deviceptr_list;
+  auto& dspin_psiM_deviceptr_list = mw_res.dspin_psiM_deviceptr_list;
 
   psiV_temp_deviceptr_list.resize(nw);
   psiMinv_temp_deviceptr_list.resize(nw);
   dpsiMinv_deviceptr_list.resize(nw);
+  dspin_psiMinv_deviceptr_list.resize(nw);
   workV1_deviceptr_list.resize(nw);
   workV2_deviceptr_list.resize(nw);
 
@@ -682,27 +687,31 @@ void MultiDiracDeterminant::acquireResource(ResourceCollection& collection,
   psiM_deviceptr_list.resize(nw);
   psiMinv_deviceptr_list.resize(nw);
   dpsiM_deviceptr_list.resize(nw);
+  dspin_psiM_deviceptr_list.resize(nw);
 
   for (size_t iw = 0; iw < nw; iw++)
   {
-    auto& det                       = wfc_list.getCastedElement<MultiDiracDeterminant>(iw);
-    psiV_temp_deviceptr_list[iw]    = det.psiV_temp.device_data();
-    psiMinv_temp_deviceptr_list[iw] = det.psiMinv_temp.device_data();
-    dpsiMinv_deviceptr_list[iw]     = det.dpsiMinv.device_data();
-    workV1_deviceptr_list[iw]       = det.workV1.device_data();
-    workV2_deviceptr_list[iw]       = det.workV2.device_data();
+    auto& det                        = wfc_list.getCastedElement<MultiDiracDeterminant>(iw);
+    psiV_temp_deviceptr_list[iw]     = det.psiV_temp.device_data();
+    psiMinv_temp_deviceptr_list[iw]  = det.psiMinv_temp.device_data();
+    dpsiMinv_deviceptr_list[iw]      = det.dpsiMinv.device_data();
+    dspin_psiMinv_deviceptr_list[iw] = det.dspin_psiMinv.device_data();
+    workV1_deviceptr_list[iw]        = det.workV1.device_data();
+    workV2_deviceptr_list[iw]        = det.workV2.device_data();
 
-    psiV_deviceptr_list[iw]    = det.psiV.device_data();
-    dpsiV_deviceptr_list[iw]   = det.dpsiV.device_data();
-    TpsiM_deviceptr_list[iw]   = det.TpsiM.device_data();
-    psiM_deviceptr_list[iw]    = det.psiM.device_data();
-    psiMinv_deviceptr_list[iw] = det.psiMinv.device_data();
-    dpsiM_deviceptr_list[iw]   = det.dpsiM.device_data();
+    psiV_deviceptr_list[iw]       = det.psiV.device_data();
+    dpsiV_deviceptr_list[iw]      = det.dpsiV.device_data();
+    TpsiM_deviceptr_list[iw]      = det.TpsiM.device_data();
+    psiM_deviceptr_list[iw]       = det.psiM.device_data();
+    psiMinv_deviceptr_list[iw]    = det.psiMinv.device_data();
+    dpsiM_deviceptr_list[iw]      = det.dpsiM.device_data();
+    dspin_psiM_deviceptr_list[iw] = det.dspin_psiM.device_data();
   }
 
   psiV_temp_deviceptr_list.updateTo();
   psiMinv_temp_deviceptr_list.updateTo();
   dpsiMinv_deviceptr_list.updateTo();
+  dspin_psiMinv_deviceptr_list.updateTo();
   workV1_deviceptr_list.updateTo();
   workV2_deviceptr_list.updateTo();
 
@@ -712,6 +721,7 @@ void MultiDiracDeterminant::acquireResource(ResourceCollection& collection,
   psiM_deviceptr_list.updateTo();
   psiMinv_deviceptr_list.updateTo();
   dpsiM_deviceptr_list.updateTo();
+  dspin_psiM_deviceptr_list.updateTo();
 }
 
 void MultiDiracDeterminant::releaseResource(ResourceCollection& collection,

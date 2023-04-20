@@ -95,6 +95,7 @@ public:
     OffloadVector<ValueType*> psiV_temp_deviceptr_list;
     OffloadVector<ValueType*> psiMinv_temp_deviceptr_list;
     OffloadVector<ValueType*> dpsiMinv_deviceptr_list;
+    OffloadVector<ValueType*> dspin_psiMinv_deviceptr_list;
 
     OffloadVector<ValueType*> psiV_deviceptr_list;
     OffloadVector<GradType*> dpsiV_deviceptr_list;
@@ -102,6 +103,7 @@ public:
     OffloadVector<ValueType*> psiM_deviceptr_list;
     OffloadVector<ValueType*> psiMinv_deviceptr_list;
     OffloadVector<GradType*> dpsiM_deviceptr_list;
+    OffloadVector<ValueType*> dspin_psiM_deviceptr_list;
 
     // pointer lists used by mw_buildTableMatrix_calculateRatios_impl
     OffloadVector<ValueType*> psiinv_deviceptr_list;
@@ -111,6 +113,9 @@ public:
 
     OffloadVector<ValueType> curRatio_list;
     OffloadVector<ValueType> inv_curRatio_list;
+
+    OffloadVector<ValueType> ratioSG_list;
+    OffloadVector<ValueType> inv_ratioSG_list;
 
     OffloadVector<ValueType> det0_grad_list;
     OffloadVector<GradType> ratioGradRef_list;
@@ -293,7 +298,7 @@ public:
                                                  UnpinnedOffloadMatrix<ValueType>& mw_grads);
   /// evaluate the value and gradients of all the unique determinants with one electron moved. Used by the table method. Includes Spin Gradient data
   void evaluateDetsAndGradsForPtclMoveWithSpin(const ParticleSet& P, int iat);
-  /// multi walker version of evaluateDetsAndGradsForPtclMoveWithSpin 
+  /// multi walker version of evaluateDetsAndGradsForPtclMoveWithSpin
   void mw_evaluateDetsAndGradsForPtclMoveWithSpin(const RefVectorWithLeader<MultiDiracDeterminant>& det_list,
                                                   const RefVectorWithLeader<ParticleSet>& p_list,
                                                   int iat,
@@ -315,7 +320,7 @@ public:
                                        const RefVectorWithLeader<ParticleSet>& p_list,
                                        int iat,
                                        UnpinnedOffloadMatrix<ValueType>& mw_grads,
-                                       UnpinnedOffloadMatrix<ValueType>& mw_spingrads) {}
+                                       UnpinnedOffloadMatrix<ValueType>& mw_spingrads);
 
   // full evaluation of all the structures from scratch, used in evaluateLog for example
   void evaluateForWalkerMove(const ParticleSet& P, bool fromScratch = true);
@@ -555,7 +560,8 @@ private:
   /* dspin_psiM(i,j) \f$= \partial_{s_i} \psi_j({\bf r}_i,s_i)\f$ where \f$s_i\f$s is the spin variable
    * This is only resized if a spinor calculation is used
    */
-  ValueMatrix dspin_psiM;
+  OffloadMatrix<ValueType> dspin_psiMinv;
+  OffloadMatrix<ValueType> dspin_psiM;
 
   /// value of single-particle orbital for particle-by-particle update
   //ValueVector psiV, psiV_temp;
