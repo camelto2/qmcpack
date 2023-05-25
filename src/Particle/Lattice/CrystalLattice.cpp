@@ -85,6 +85,20 @@ void CrystalLattice<T, D>::reset()
       WignerSeitzRadius - SimulationCellRadius <= WignerSeitzRadius * std::numeric_limits<float>::epsilon() * 2)
     WignerSeitzRadius = SimulationCellRadius;
   CellRadiusSq = SimulationCellRadius * SimulationCellRadius;
+
+  //calclate neighbor cells
+  int counter = 0;
+  int nsearch = 1;
+  int numcell = 2 * nsearch + 1;
+  neighbor_cells.resize(numcell);
+  for (int aa = -nsearch; aa <= nsearch; aa++)
+    for (int bb = -nsearch; bb <= nsearch; bb++)
+      for (int cc = -nsearch; cc <= nsearch; cc++)
+      {
+        for (int d = 0; d < D; d++)
+          neighbor_cells[counter][d] = aa * R(0, d) +  bb * R(1, d) + cc * R(2, d);
+        counter++;
+      }
 }
 
 /*! \fn  CrystalLattice<T,D>::operator*=(T sc)
