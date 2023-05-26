@@ -90,13 +90,14 @@ void CrystalLattice<T, D>::reset()
   int counter = 0;
   int nsearch = 1;
   int numcell = 2 * nsearch + 1;
-  neighbor_cells.resize(numcell);
   for (int aa = -nsearch; aa <= nsearch; aa++)
     for (int bb = -nsearch; bb <= nsearch; bb++)
       for (int cc = -nsearch; cc <= nsearch; cc++)
       {
+        std::vector<T> tmp(D);
+        neighbor_cells.push_back(tmp);
         for (int d = 0; d < D; d++)
-          neighbor_cells[counter][d] = aa * R(0, d) +  bb * R(1, d) + cc * R(2, d);
+          neighbor_cells[counter][d] = aa * Rv[0][d] +  bb * Rv[1][d] + cc * Rv[2][d];
         counter++;
       }
 }

@@ -127,7 +127,7 @@ struct CrystalLattice : public LRBreakupParameters<T, D>
   ///true, the lattice is defined by the input instead of an artificial default
   bool explicitly_defined;
 
-  std::vector<SingleParticlePos> neighbor_cells;
+  std::vector<std::vector<T>> neighbor_cells;
 
   ///default constructor, assign a huge supercell
   CrystalLattice();
@@ -198,20 +198,23 @@ struct CrystalLattice : public LRBreakupParameters<T, D>
     if (SuperCellEnum)
     {
       T dismin = 1e99;
-      TinyVector<T, D> tmpvec, rmin;
+      std::vector<T> tmpvec(D), rmin(D);
       for (int i = 0; i < neighbor_cells.size(); i++)
       {
-        tmpvec = c + neighbor_cells[i];
         T tmpdis = 0;
         for (int d = 0; d < D; d++)
+        {
+          tmpvec[d] = c[d] + neighbor_cells[i][d];
           tmpdis += tmpvec[d] * tmpvec[d];
+        }
         if (tmpdis < dismin)
         {
           rmin = tmpvec;
           dismin = tmpdis;
         }
       }
-      c = rmin;
+      for (int d = 0; d < D; d++)
+        c[d] = rmin[d];
     }
   }
 
