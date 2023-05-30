@@ -100,6 +100,40 @@ void CrystalLattice<T, D>::reset()
           neighbor_cells[counter][d] = aa * Rv[0][d] +  bb * Rv[1][d] + cc * Rv[2][d];
         counter++;
       }
+
+  std::vector<std::vector<T>> cp;
+  for (int i = 0; i < 3; i++)
+  {
+    std::vector<T> tmp(3);
+    cp.push_back(tmp);
+  }
+  cp[0][0]=(Rv[1][1]*Rv[2][2]-Rv[1][2]*Rv[2][1]);
+  cp[0][1]=(Rv[1][2]*Rv[2][0]-Rv[1][0]*Rv[2][2]); 
+  cp[0][2]=(Rv[1][0]*Rv[2][1]-Rv[1][1]*Rv[2][0]);
+
+  cp[1][0]=(Rv[2][1]*Rv[0][2]-Rv[2][2]*Rv[0][1]);
+  cp[1][1]=(Rv[2][2]*Rv[0][0]-Rv[2][0]*Rv[0][2]);
+  cp[1][2]=(Rv[2][0]*Rv[0][1]-Rv[2][1]*Rv[0][0]);
+
+  cp[2][0]=(Rv[0][1]*Rv[1][2]-Rv[0][2]*Rv[1][1]);
+  cp[2][1]=(Rv[0][2]*Rv[1][0]-Rv[0][0]*Rv[1][2]);
+  cp[2][2]=(Rv[0][0]*Rv[1][1]-Rv[0][1]*Rv[1][0]);
+
+  smallest_height = 1e99;
+  for (int i = 0; i < 3; i++)
+  {
+    T tmph = 0;
+    T l = 0;
+    for (int j = 0; j < 3; j++)
+    {
+        tmph += cp[i][j] * Rv[i][j];
+        l += cp[i][j] * cp[i][j];
+    }
+    tmph = std::abs(tmph)/std::sqrt(l);
+    if (tmph < smallest_height)
+      smallest_height = tmph;
+  }
+
 }
 
 /*! \fn  CrystalLattice<T,D>::operator*=(T sc)

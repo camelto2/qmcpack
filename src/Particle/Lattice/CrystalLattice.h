@@ -128,6 +128,7 @@ struct CrystalLattice : public LRBreakupParameters<T, D>
   bool explicitly_defined;
 
   std::vector<std::vector<T>> neighbor_cells;
+  T smallest_height;
 
   ///default constructor, assign a huge supercell
   CrystalLattice();
@@ -197,11 +198,19 @@ struct CrystalLattice : public LRBreakupParameters<T, D>
   {
     if (SuperCellEnum)
     {
+      assert(D == 3);
+      T h2 = smallest_height * smallest_height * 0.25;
+      T tmpdis = 0;
+      for (int d = 0; d < D; d++)
+        tmpdis += c[d] * c[d];
+      if (tmpdis < h2)
+        return;
+
       T dismin = 1e99;
       std::vector<T> tmpvec(D), rmin(D);
       for (int i = 0; i < neighbor_cells.size(); i++)
       {
-        T tmpdis = 0;
+        tmpdis = 0;
         for (int d = 0; d < D; d++)
         {
           tmpvec[d] = c[d] + neighbor_cells[i][d];
@@ -211,7 +220,11 @@ struct CrystalLattice : public LRBreakupParameters<T, D>
         {
           rmin = tmpvec;
           dismin = tmpdis;
+          if (tmpdis < h2)
+            break;
         }
+        if (tmpdis < h2)
+            break;
       }
       for (int d = 0; d < D; d++)
         c[d] = rmin[d];
