@@ -1020,9 +1020,9 @@ struct DTD_BConds<T, 3, PPPX + SOA_OFFSET>
         g22(lat.G(8)),
         r2max(lat.CellRadiusSq)
   {
-    const auto& cellx = nextcells[0];
-    const auto& celly = nextcells[1];
-    const auto& cellz = nextcells[2];
+    auto& cellx = nextcells[0];
+    auto& celly = nextcells[1];
+    auto& cellz = nextcells[2];
 
     int ic = 0;
     for (int i = -1; i <= 1; ++i)
