@@ -1071,6 +1071,7 @@ struct DTD_BConds<T, 3, PPPX + SOA_OFFSET>
       const T displ_2 = (pz[iat] - z0) * flip;
 
       T rmin = displ_0 * displ_0 + displ_1 * displ_1 + displ_2 * displ_2;
+      temp_r[iat] = std::sqrt(rmin);
       dx[iat]     = displ_0;
       dy[iat]     = displ_1;
       dz[iat]     = displ_2;
@@ -1089,7 +1090,11 @@ struct DTD_BConds<T, 3, PPPX + SOA_OFFSET>
              dx[iat]     = flip * (displ_0 + cellx[c]);
              dy[iat]     = flip * (displ_1 + celly[c]);
              dz[iat]     = flip * (displ_2 + cellz[c]);
+             if (rmin < r2max)
+               break;
           }
+          if (rmin < r2max)
+            break;
         }
       }
     }
