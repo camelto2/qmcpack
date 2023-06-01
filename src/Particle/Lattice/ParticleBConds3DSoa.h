@@ -1070,33 +1070,30 @@ struct DTD_BConds<T, 3, PPPX + SOA_OFFSET>
       const T displ_1 = (py[iat] - y0) * flip;
       const T displ_2 = (pz[iat] - z0) * flip;
 
-      T rmin = displ_0 * displ_0 + displ_1 * displ_1 + displ_2 * displ_2;
-      temp_r[iat] = std::sqrt(rmin);
-      dx[iat]     = displ_0;
-      dy[iat]     = displ_1;
-      dz[iat]     = displ_2;
-      if (rmin > r2max)
+      const T ar_0 = -std::floor(displ_0 * g00 + displ_1 * g10 + displ_2 * g20);
+      const T ar_1 = -std::floor(displ_0 * g01 + displ_1 * g11 + displ_2 * g21);
+      const T ar_2 = -std::floor(displ_0 * g02 + displ_1 * g12 + displ_2 * g22);
+
+      const T delx = displ_0 + ar_0 * r00 + ar_1 * r10 + ar_2 * r20;
+      const T dely = displ_1 + ar_0 * r01 + ar_1 * r11 + ar_2 * r21;
+      const T delz = displ_2 + ar_0 * r02 + ar_1 * r12 + ar_2 * r22;
+
+      T rmin = delx * delx + dely * dely + delz * delz;
+      int ic = 0;
+      for (int c = 0; c < cellx.size(); ++c)
       {
-        for (int c = 0; c < cellx.size(); ++c)
-        {
-          const T x  = displ_0 + cellx[c];
-          const T y  = displ_1 + celly[c];
-          const T z  = displ_2 + cellz[c];
-          const T r2 = x * x + y * y + z * z;
-          if (r2 < rmin)
-          {
-             rmin = r2;
-             temp_r[iat] = std::sqrt(rmin);
-             dx[iat]     = flip * (displ_0 + cellx[c]);
-             dy[iat]     = flip * (displ_1 + celly[c]);
-             dz[iat]     = flip * (displ_2 + cellz[c]);
-             if (rmin < r2max)
-               break;
-          }
-          if (rmin < r2max)
-            break;
-        }
+        const T x  = delx + cellx[c];
+        const T y  = dely + celly[c];
+        const T z  = delz + cellz[c];
+        const T r2 = x * x + y * y + z * z;
+        ic         = (r2 < rmin) ? c : ic;
+        rmin       = (r2 < rmin) ? r2 : rmin;
       }
+
+      temp_r[iat] = std::sqrt(rmin);
+      dx[iat]     = flip * (delx + cellx[ic]);
+      dy[iat]     = flip * (dely + celly[ic]);
+      dz[iat]     = flip * (delz + cellz[ic]);
     }
   }
 
@@ -1118,21 +1115,25 @@ struct DTD_BConds<T, 3, PPPX + SOA_OFFSET>
     const auto& celly = nextcells[1];
     const auto& cellz = nextcells[2];
 
-    T rmin = dx * dx + dy * dy + dz * dz;
-    if (rmin < r2max)
-      return std::sqrt(rmin);
-    else
+    const T ar_0 = -std::floor(dx * g00 + dy * g10 + dz * g20);
+    const T ar_1 = -std::floor(dx * g01 + dy * g11 + dz * g21);
+    const T ar_2 = -std::floor(dx * g02 + dy * g12 + dz * g22);
+
+    const T delx = dx + ar_0 * r00 + ar_1 * r10 + ar_2 * r20;
+    const T dely = dy + ar_0 * r01 + ar_1 * r11 + ar_2 * r21;
+    const T delz = dz + ar_0 * r02 + ar_1 * r12 + ar_2 * r22;
+
+    T rmin = delx * delx + dely * dely + delz * delz;
+    for (int c = 0; c < cellx.size(); ++c)
     {
-      for (int c = 0; c < cellx.size(); ++c)
-      {
-        const T x  = dx + cellx[c];
-        const T y  = dy + celly[c];
-        const T z  = dz + cellz[c];
-        const T r2 = x * x + y * y + z * z;
-        rmin       = (r2 < rmin) ? r2 : rmin;
-      }
-      return std::sqrt(rmin);
+      const T x  = delx + cellx[c];
+      const T y  = dely + celly[c];
+      const T z  = delz + cellz[c];
+      const T r2 = x * x + y * y + z * z;
+      rmin       = (r2 < rmin) ? r2 : rmin;
     }
+
+    return std::sqrt(rmin);
   }
 };
 
