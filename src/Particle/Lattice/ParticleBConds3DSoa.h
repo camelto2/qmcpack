@@ -997,7 +997,7 @@ struct DTD_BConds<T, 3, PPPX + SOA_OFFSET>
   T r00, r10, r20, r01, r11, r21, r02, r12, r22;
   T g00, g10, g20, g01, g11, g21, g02, g12, g22;
   T r2max;
-  TinyVector<TinyVector<T, 26>, 3> nextcells;
+  TinyVector<TinyVector<T, 27>, 3> nextcells;
 
   DTD_BConds(const CrystalLattice<T, 3>& lat)
       : r00(lat.R(0)),
@@ -1029,8 +1029,6 @@ struct DTD_BConds<T, 3, PPPX + SOA_OFFSET>
       for (int j = -1; j <= 1; ++j)
         for (int k = -1; k <= 1; ++k)
         {
-          if (i == 0 && j == 0 && j == 0)
-            continue; //exclude zero
           cellx[ic] = i * r00 + j * r10 + k * r20;
           celly[ic] = i * r01 + j * r11 + k * r21;
           cellz[ic] = i * r02 + j * r12 + k * r22;
@@ -1065,7 +1063,6 @@ struct DTD_BConds<T, 3, PPPX + SOA_OFFSET>
 
     constexpr T minusone(-1);
     constexpr T one(1);
-#pragma omp simd aligned(temp_r, px, py, pz, dx, dy, dz: QMC_SIMD_ALIGNMENT)
     for (int iat = first; iat < last; ++iat)
     {
       const T flip    = iat < flip_ind ? one : minusone;
@@ -1073,31 +1070,28 @@ struct DTD_BConds<T, 3, PPPX + SOA_OFFSET>
       const T displ_1 = (py[iat] - y0) * flip;
       const T displ_2 = (pz[iat] - z0) * flip;
 
-      const T ar_0 = -std::floor(displ_0 * g00 + displ_1 * g10 + displ_2 * g20);
-      const T ar_1 = -std::floor(displ_0 * g01 + displ_1 * g11 + displ_2 * g21);
-      const T ar_2 = -std::floor(displ_0 * g02 + displ_1 * g12 + displ_2 * g22);
-
-      const T delx = displ_0 + ar_0 * r00 + ar_1 * r10 + ar_2 * r20;
-      const T dely = displ_1 + ar_0 * r01 + ar_1 * r11 + ar_2 * r21;
-      const T delz = displ_2 + ar_0 * r02 + ar_1 * r12 + ar_2 * r22;
-
-      T rmin = delx * delx + dely * dely + delz * delz;
-      int ic = 0;
-#pragma unroll(25)
-      for (int c = 0; c < 26; ++c)
+      T rmin = displ_0 * displ_0 + displ_1 * displ_1 + displ_2 * displ_2;
+      dx[iat]     = displ_0;
+      dy[iat]     = displ_1;
+      dz[iat]     = displ_2;
+      if (rmin > r2max)
       {
-        const T x  = delx + cellx[c];
-        const T y  = dely + celly[c];
-        const T z  = delz + cellz[c];
-        const T r2 = x * x + y * y + z * z;
-        ic         = (r2 < rmin) ? c : ic;
-        rmin       = (r2 < rmin) ? r2 : rmin;
+        for (int c = 0; c < cellx.size(); ++c)
+        {
+          const T x  = displ_0 + cellx[c];
+          const T y  = displ_1 + celly[c];
+          const T z  = displ_2 + cellz[c];
+          const T r2 = x * x + y * y + z * z;
+          if (r2 < rmin)
+          {
+             rmin = r2;
+             temp_r[iat] = std::sqrt(rmin);
+             dx[iat]     = flip * (displ_0 + cellx[c]);
+             dy[iat]     = flip * (displ_1 + celly[c]);
+             dz[iat]     = flip * (displ_2 + cellz[c]);
+          }
+        }
       }
-
-      temp_r[iat] = std::sqrt(rmin);
-      dx[iat]     = flip * (delx + cellx[ic]);
-      dy[iat]     = flip * (dely + celly[ic]);
-      dz[iat]     = flip * (delz + cellz[ic]);
     }
   }
 
@@ -1110,7 +1104,7 @@ struct DTD_BConds<T, 3, PPPX + SOA_OFFSET>
                                int iat,
                                int flip_ind = 0) const
   {
-    //APP_ABORT("DTD_BConds<T, 3, PPPX + SOA_OFFSET>::computeDistancesOffload not implemented");
+    APP_ABORT("DTD_BConds<T, 3, PPPX + SOA_OFFSET>::computeDistancesOffload not implemented");
   }
 
   T computeDist(T dx, T dy, T dz) const
@@ -1119,26 +1113,21 @@ struct DTD_BConds<T, 3, PPPX + SOA_OFFSET>
     const auto& celly = nextcells[1];
     const auto& cellz = nextcells[2];
 
-    const T ar_0 = -std::floor(dx * g00 + dy * g10 + dz * g20);
-    const T ar_1 = -std::floor(dx * g01 + dy * g11 + dz * g21);
-    const T ar_2 = -std::floor(dx * g02 + dy * g12 + dz * g22);
-
-    const T delx = dx + ar_0 * r00 + ar_1 * r10 + ar_2 * r20;
-    const T dely = dy + ar_0 * r01 + ar_1 * r11 + ar_2 * r21;
-    const T delz = dz + ar_0 * r02 + ar_1 * r12 + ar_2 * r22;
-
-    T rmin = delx * delx + dely * dely + delz * delz;
-#pragma unroll(25)
-    for (int c = 0; c < 26; ++c)
+    T rmin = dx * dx + dy * dy + dz * dz;
+    if (rmin < r2max)
+      return std::sqrt(rmin);
+    else
     {
-      const T x  = delx + cellx[c];
-      const T y  = dely + celly[c];
-      const T z  = delz + cellz[c];
-      const T r2 = x * x + y * y + z * z;
-      rmin       = (r2 < rmin) ? r2 : rmin;
+      for (int c = 0; c < cellx.size(); ++c)
+      {
+        const T x  = dx + cellx[c];
+        const T y  = dy + celly[c];
+        const T z  = dz + cellz[c];
+        const T r2 = x * x + y * y + z * z;
+        rmin       = (r2 < rmin) ? r2 : rmin;
+      }
+      return std::sqrt(rmin);
     }
-
-    return std::sqrt(rmin);
   }
 };
 

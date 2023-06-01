@@ -49,8 +49,8 @@ std::unique_ptr<DistanceTable> createDistanceTableAA(ParticleSet& s, std::ostrea
     {
       if (s.getLattice().WignerSeitzRadius > s.getLattice().SimulationCellRadius)
       {
-        o << "    Distance computations use general periodic cell in 3D with corner image checks." << std::endl;
-        dt = std::make_unique<SoaDistanceTableAA<RealType, DIM, PPPG + SOA_OFFSET>>(s);
+        o << "    Distance computations USING PPPX " << std::endl;
+        dt = std::make_unique<SoaDistanceTableAA<RealType, DIM, PPPX + SOA_OFFSET>>(s);
       }
       else
       {
