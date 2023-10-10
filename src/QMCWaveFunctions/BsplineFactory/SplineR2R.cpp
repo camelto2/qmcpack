@@ -126,7 +126,7 @@ void SplineR2R<ST>::applyRotation(const ValueMatrix& rot_mat, bool use_stored_co
   if constexpr (std::is_same_v<ST, RealType>)
   {
     //Here, ST should be equal to ValueType, which will be double for R2R. Using BLAS to make things faster
-    BLAS::gemm('T', 'N', OrbitalSetSize, BasisSetSize, OrbitalSetSize, ST(1.0), rot_mat.data(), OrbitalSetSize,
+    BLAS::gemm('N', 'N', OrbitalSetSize, BasisSetSize, OrbitalSetSize, ST(1.0), rot_mat.data(), OrbitalSetSize,
                coef_copy_->data(), Nsplines, ST(0.0), spl_coefs, Nsplines);
   }
   else
