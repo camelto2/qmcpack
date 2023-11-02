@@ -292,7 +292,7 @@ void VariableSet::readFromHDF(const std::string& filename, qmcplusplus::hdf_arch
     throw std::runtime_error(err_msg.str());
   }
 
-  std::vector<qmcplusplus::QMCTraits::ValueType> param_values;
+  std::vector<qmcplusplus::QMCTraits::RealType> param_values;
   hin.read(param_values, "parameter_values");
 
   std::vector<std::string> param_names;
