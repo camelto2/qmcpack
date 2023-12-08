@@ -41,9 +41,12 @@ public:
   std::shared_ptr<ValueMatrix> C;
 
   /** constructor
+     * @param my_name name of the SPOSet object
      * @param bs pointer to the BasisSet
+     * @param norb number of orbitals
+     * @param identity if true, the MO coefficients matrix is identity
      */
-  LCAOrbitalSet(const std::string& my_name, std::unique_ptr<basis_type>&& bs);
+  LCAOrbitalSet(const std::string& my_name, std::unique_ptr<basis_type>&& bs, size_t norbs, bool identity = false);
 
   LCAOrbitalSet(const LCAOrbitalSet& in);
 
@@ -109,11 +112,7 @@ public:
                                       std::vector<ValueType>& ratios,
                                       std::vector<GradType>& grads) const final;
 
-  void evaluateVGH(const ParticleSet& P,
-                   int iat,
-                   ValueVector& psi,
-                   GradVector& dpsi,
-                   HessVector& grad_grad_psi) final;
+  void evaluateVGH(const ParticleSet& P, int iat, ValueVector& psi, GradVector& dpsi, HessVector& grad_grad_psi) final;
 
   void evaluateVGHGH(const ParticleSet& P,
                      int iat,
@@ -226,7 +225,7 @@ protected:
   std::shared_ptr<ValueMatrix> C_copy;
 
   ///true if C is an identity matrix
-  bool Identity;
+  const bool Identity;
   ///Temp(BasisSetSize) : Row index=V,Gx,Gy,Gz,L
   vgl_type Temp;
   ///Tempv(OrbitalSetSize) Tempv=C*Temp
@@ -308,6 +307,13 @@ private:
                                 int iat,
                                 OffloadMWVArray& phi_v) const;
 
+  /// packed walker GEMM implementation with multi virtual particle sets
+  void mw_evaluateValueVPsImplGEMM(const RefVectorWithLeader<SPOSet>& spo_list,
+                                   const RefVectorWithLeader<const VirtualParticleSet>& vp_list,
+                                   OffloadMWVArray& phi_v) const;
+
+  /// helper function for extracting a list of basis sets from a list of LCAOrbitalSet
+  RefVectorWithLeader<basis_type> extractBasisRefList(const RefVectorWithLeader<SPOSet>& spo_list) const;
   struct LCAOMultiWalkerMem;
   ResourceHandle<LCAOMultiWalkerMem> mw_mem_handle_;
   /// timer for basis set
