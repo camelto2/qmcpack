@@ -1854,10 +1854,11 @@ bool QMCFixedSampleLinearOptimizeBatched::stochastic_reconfiguration()
     }
 
     for (int i = 0; i < numParams; i++)
-      parameterDirections.at(i + 1) = -prdMat(i + 1, 0);
+      parameterDirections.at(i + 1) = -bestShift_s * prdMat(i + 1, 0);
 
     // compute the scaling constant to apply to the update
-    objFuncWrapper_.Lambda = getNonLinearRescale(parameterDirections, ovlMat, *optTarget);
+    //objFuncWrapper_.Lambda = getNonLinearRescale(parameterDirections, ovlMat, *optTarget);
+    objFuncWrapper_.Lambda = 1.0;
   }
 
   if (use_line_search_)
@@ -1894,11 +1895,11 @@ bool QMCFixedSampleLinearOptimizeBatched::stochastic_reconfiguration()
   else
   {
     for (int i = 0; i < numParams; i++)
-      optTarget->Params(i) = currentParameters.at(i) + bestShift_i * objFuncWrapper_.Lambda * parameterDirections.at(i + 1);
+      optTarget->Params(i) = currentParameters.at(i) + objFuncWrapper_.Lambda * parameterDirections.at(i + 1);
   }
 
-  if (bestShift_s > 1.0e-2)
-    bestShift_s = bestShift_s / shift_s_base;
+  //if (bestShift_s > 1.0e-2)
+  //  bestShift_s = bestShift_s / shift_s_base;
   // say what we are doing
   app_log() << std::endl << "The new set of parameters is valid. Updating the trial wave function!" << std::endl;
   accept_history <<= 1;
