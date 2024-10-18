@@ -1129,6 +1129,18 @@ if(NOT QMC_NO_SLOW_CUSTOM_TESTING_COMMANDS)
 endif()
 
 #-------------------------------------------------------------------
+# Check if DIRAC executable available at DIRAC_BIN or on the PATH
+#-------------------------------------------------------------------
+if(NOT QMC_NO_SLOW_CUSTOM_TESTING_COMMANDS)
+  include("CMake/FindDIRAC.cmake")
+  if(DIRAC_FOUND)
+    message(STATUS "Found and using DIRAC at ${DIRAC_EXE}")
+  else(DIRAC_FOUND)
+    message(STATUS "Did not find DIRAC. DIRAC tests will not be run.")
+  endif(DIRAC_FOUND)
+endif()
+
+#-------------------------------------------------------------------
 # If the timestamp of test_labels.py changes, unset any cached values
 #-------------------------------------------------------------------
 
