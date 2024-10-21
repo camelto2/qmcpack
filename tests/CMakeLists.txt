@@ -16,6 +16,11 @@ if(RMG_FOUND)
   message("adding RMG tests")
 endif()
 
+if(DIRAC_FOUND)
+  add_subdirectory(dirac)
+  message("adding DIRAC tests")
+endif()
+
 message("Adding system tests for QMCPACK")
 
 if(NOT TEST_MAX_PROCS)

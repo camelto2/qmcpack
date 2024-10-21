@@ -1,0 +1,1 @@
+messgage("HELLO from DIRAC")
