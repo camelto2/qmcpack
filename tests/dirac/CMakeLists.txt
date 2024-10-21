@@ -1,1 +1,18 @@
-messgage("HELLO from DIRAC")
+message("Adding DIRAC tests")
+
+if (NOT TEST_MAX_PROCS)
+  set(TEST_MAX_PROCS 16)
+  message("TEST_MAX_PROCS was unset. Set to 16.")
+endif()
+
+set(QMCAPP_ERR "")
+if((NOT ${TEST_MAX_PROCS}) OR (${TEST_MAX_PROCS} STREQUAL ""))
+  set(QMCAPP_ERR "${QMCAPP_ERR}  TEST_MAX_PROCS not set: '${TEST_MAX_PROCS}'\n")
+endif()
+
+
+if(NOT ${QMCAPP_ERR} STREQUAL "")
+  message("${QMCAPP_ERR}  skipping tests")
+else()
+  message("Running DIRAC tests with ${DIRAC_LAUNCHER}")
+endif()
