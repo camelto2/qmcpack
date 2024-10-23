@@ -3,6 +3,10 @@ if (QMC_NO_SLOW_CUSTOM_TESTING_COMMANDS)
   
   endfunction()
 
+  function(ADD_DIRAC_CONVERT_TEST)
+
+  endfunction()
+
   function(RUN_DIRAC_TEST)
 
   endfunction()
@@ -34,6 +38,11 @@ else(QMC_NO_SLOW_CUSTOM_TESTING_COMMNANDS)
       PROPERTY LABELS "converter")
   endfunction()
 
+  function(ADD_DIRAC_CONVERT_TEST TESTNAME PREFIX WORKDIR)
+    add_test(NAME ${TESTNAME} COMMAND $<TARGET_FILE:convert4qmc> -nojastrow -dirac input_system.out -prefix ${PREFIX})
+    set_tests_properties(${TESTNAME} PROPERTIES WORKING_DIRECTORY ${WORKDIR})
+    set_property(TEST ${TESTNAME} APPEND PROPERTY LABELS "converter;dirac")
+  endfunction()
 
   function(
     RUN_DIRAC_TEST
@@ -49,6 +58,9 @@ else(QMC_NO_SLOW_CUSTOM_TESTING_COMMNANDS)
     copy_directory("${SRC_DIR}" "${MY_WORKDIR}")
     message("workdir: ${MY_WORKDIR}")
     add_dirac_test(${FULL_NAME}-scf NPROCS ${DIRAC_LAUNCHER} ${MY_WORKDIR})
+    add_dirac_convert_test(${FULL_NAME}-dirac2qmc ${BASE_NAME} ${MY_WORKDIR})
+
+    set_tests_properties(${FULL_NAME}-dirac2qmc PROPERTIES DEPENDS ${FULL_NAME}-nscf) 
+
   endfunction()
 endif(QMC_NO_SLOW_CUSTOM_TESTING_COMMANDS)
-
