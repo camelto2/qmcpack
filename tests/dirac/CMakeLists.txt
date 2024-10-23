@@ -17,5 +17,12 @@ else()
   include("${qmcpack_SOURCE_DIR}/CMake/run_dirac.cmake")
   set(LAST_TEST_NAME "NONE")
   set(DIRAC_TEST_NAME "NONE")
+  
+  set(DIRAC_SYSTEM "Bi-cosci-ccECP")
+  run_dirac_test(
+    dirac-${DIRAC_SYSTEM} 
+    ${qmcpack_SOURCE_DIR}/examples/molecules/${DIRAC_SYSTEM}/dirac-inputs
+    12 
+    DIRAC_TEST_NAME)
 
 endif()

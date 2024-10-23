@@ -2,19 +2,21 @@ if (QMC_NO_SLOW_CUSTOM_TESTING_COMMANDS)
   function(ADD_DIRAC_TEST)
   
   endfunction()
+
+  function(RUN_DIRAC_TEST)
+
+  endfunction()
 else(QMC_NO_SLOW_CUSTOM_TESTING_COMMNANDS)
   function(
     ADD_DIRAC_TEST
     TESTNAME
     PROCS
     LAUNCHER
-    WORKDIR
-    TEST_INPUT
-    TEST_MOL)
+    WORKDIR)
     if (HAVE_MPI)
-      add_test(NAME ${TESTNAME} COMMAND ${LAUNCHER} --mpi=${MPIEXEC_NUMPROC_FLAG} --inp=${TEST_INPUT} --mol=${TEST_MOL})
+      add_test(NAME ${TESTNAME} COMMAND ${LAUNCHER} --mpi=${MPIEXEC_NUMPROC_FLAG} --inp=input.inp --mol=system.mol)
     else()
-      add_test(NAME ${TESTNAME} COMMAND ${LAUNCHER} --inp=${TEST_INPUT} --mol=${TEST_MOL})
+      add_test(NAME ${TESTNAME} COMMAND ${LAUNCHER} --inp=input.inp --mol=system.mol)
     endif()
     set_test_properties(
       ${TESTNAME}
@@ -32,5 +34,21 @@ else(QMC_NO_SLOW_CUSTOM_TESTING_COMMNANDS)
       PROPERTY LABELS "converter")
   endfunction()
 
+
+  function(
+    RUN_DIRAC_TEST
+    BASE_NAME
+    SRC_DIR
+    NPROCS
+    TEST_NAME
+  )
+    set(FULL_NAME ${BASE_NAME}-np-${NPROCS})
+    set(${TEST_NAME} ${FULL_NAME} PARENT_SCOPE)
+    set(MY_WORKDIR ${CMAKE_CURRENT_BINARY_DIR}/${FULL_NAME})
+    message(VERBOSE "Adding test ${FULL_NAME}")
+    copy_directory("${SRC_DIR}" "${MY_WORKDIR}")
+    message("workdir: ${MY_WORKDIR}")
+    add_dirac_test(${FULL_NAME}-scf NPROCS ${DIRAC_LAUNCHER} ${MY_WORKDIR})
+  endfunction()
 endif(QMC_NO_SLOW_CUSTOM_TESTING_COMMANDS)
 
