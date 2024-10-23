@@ -22,7 +22,7 @@ else(QMC_NO_SLOW_CUSTOM_TESTING_COMMNANDS)
     else()
       add_test(NAME ${TESTNAME} COMMAND ${LAUNCHER} --inp=input.inp --mol=system.mol)
     endif()
-    set_test_properties(
+    set_tests_properties(
       ${TESTNAME}
       PROPERTIES ENVIRONMENT
                  OMP_NUM_THREADS=1
