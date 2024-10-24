@@ -18,7 +18,7 @@ else()
   set(LAST_TEST_NAME "NONE")
   set(DIRAC_TEST_NAME "NONE")
   
-  set(DIRAC_SYSTEM "Bi-cosci-ccECP")
+  set(DIRAC_SYSTEM "Bi_cosci_ccECP")
   run_dirac_test(
     dirac-${DIRAC_SYSTEM} 
     ${qmcpack_SOURCE_DIR}/examples/molecules/${DIRAC_SYSTEM}
