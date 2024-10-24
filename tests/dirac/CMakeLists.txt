@@ -21,7 +21,7 @@ else()
   set(DIRAC_SYSTEM "Bi-cosci-ccECP")
   run_dirac_test(
     dirac-${DIRAC_SYSTEM} 
-    ${qmcpack_SOURCE_DIR}/examples/molecules/${DIRAC_SYSTEM}/dirac-inputs
+    ${qmcpack_SOURCE_DIR}/examples/molecules/${DIRAC_SYSTEM}
     12 
     DIRAC_TEST_NAME)
 
