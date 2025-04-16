@@ -1109,7 +1109,7 @@ void QMCCostFunctionBatched::klDivergenceGradient(std::vector<Return_rt>& derivs
     std::vector<int> params_per_crowd(opt_num_crowds + 1);
     FairDivide(getNumParams(), opt_num_crowds, params_per_crowd);
 
-    auto calcKLGradientSample = [](int crowd_id, std::vector<int>& crowd_ranges, int num_params, const Return_rt weight, const Return_rt tau, const Return_rt* HDsaved, std::vector<Return_rt>& derivs)
+    auto calcKLGradientSample = [](int crowd_id, std::vector<int>& crowd_ranges, int num_params, const Return_rt weight, const Return_rt tau, const Return_rt eloc, const Return_rt* HDsaved, std::vector<Return_rt>& derivs)
     {
       int local_pm_start = crowd_ranges[crowd_id];
       int local_pm_end   = crowd_ranges[crowd_id + 1];
@@ -1125,4 +1125,6 @@ void QMCCostFunctionBatched::klDivergenceGradient(std::vector<Return_rt>& derivs
   }
 
   myComm->allreduce(derivs);
+}
+
 } // namespace qmcplusplus
