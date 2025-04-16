@@ -1991,6 +1991,7 @@ void QMCFixedSampleLinearOptimizeBatched::kl_divergence()
 
   // return whether the cost function's report counter is positive
   return (optTarget->getReportCounter() > 0);
+}
 
 #ifdef HAVE_LMY_ENGINE
 //Function for optimizing using gradient descent
