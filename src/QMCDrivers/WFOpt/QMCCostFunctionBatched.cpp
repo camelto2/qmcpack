@@ -1118,7 +1118,7 @@ void QMCCostFunctionBatched::klDivergenceGradient(std::vector<Return_rt>& derivs
       {
         derivs[pm] = weight * HDsaved[pm] / ( 1 - tau * eloc);
       }
-    }
+    };
 
     ParallelExecutor<> crowd_tasks;
     crowd_tasks(opt_num_crowds, calcKLGradientSample, params_per_crowd, getNumParams(), weight, tau, eloc, HDsaved, derivs);
