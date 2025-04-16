@@ -355,7 +355,6 @@ void QMCCostFunctionBatched::checkConfigurations(EngineHandle& handle)
         for (int ib = 0; ib < current_batch_size; ib++)
         {
           const int is = base_sample_index + ib;
-          ElocRecords[is] = energy_list[ib];
           for (int j = 0; j < nparams; j++)
           {
             //dlogpsi is in general complex if psi is complex.
@@ -1097,6 +1096,7 @@ void QMCCostFunctionBatched::klDivergenceGradient(std::vector<Return_rt>& derivs
   ScopedTimer tmp_timer(fill_timer_);
 
   std::fill(derivs.begin(), derivs.end(), 0.0);
+  Return_rt wgtinv = 1.0 / SumValue[SUM_WGT];
 
   for (int iw = 0; iw < rank_local_num_samples_; iw++)
   {

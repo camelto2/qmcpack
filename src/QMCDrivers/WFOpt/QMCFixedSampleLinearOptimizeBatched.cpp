@@ -1943,7 +1943,7 @@ bool QMCFixedSampleLinearOptimizeBatched::stochastic_reconfiguration_conjugate_g
   return (optTarget->getReportCounter() > 0);
 }
 
-void QMCFixedSampleLinearOptimizeBatched::kl_divergence()
+bool QMCFixedSampleLinearOptimizeBatched::kl_divergence()
 {
   app_log() << std::endl
             << "*****************************************************************************" << std::endl
