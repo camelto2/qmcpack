@@ -142,6 +142,7 @@ public:
   virtual Return_rt fillHamVec(std::vector<Return_rt>& ham);
   virtual void calcOvlParmVec(const std::vector<Return_rt>& parm,
                               std::vector<Return_rt>& ovlParmVec);
+  virtual void klDivergenceGradient(std::vector<Return_rt>& derivs, const Return_rt tau);
 
 #ifdef HAVE_LMY_ENGINE
   Return_rt LMYEngineCost(const bool needDeriv, cqmc::engine::LMYEngine<Return_t>* EngineObj);
