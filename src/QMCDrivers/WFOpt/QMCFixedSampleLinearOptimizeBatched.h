@@ -121,6 +121,9 @@ private:
   // simple stochastic reconfig
   bool stochastic_reconfiguration_conjugate_gradient();
 
+  // simple stochastic reconfig
+  bool kl_divergence();
+
   // perform optimization using a gradient descent algorithm
   bool descent_run();
 
@@ -204,6 +207,9 @@ private:
   RealType sr_regularization;
   /// tolerance for CG solution in SR
   RealType sr_tolerance;
+
+  RealType kl_tau;
+  RealType kl_eta;
 
   // ------------------------------------
   // Parameters in this struct are used by one or more of the adaptive LM, descent, or hybrid optimizers

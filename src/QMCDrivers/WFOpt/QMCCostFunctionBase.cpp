@@ -141,6 +141,11 @@ void QMCCostFunctionBase::calcOvlParmVec(const std::vector<Return_rt>& parm, std
   throw std::runtime_error("Need to implement calcOvlParmVec");
 }
 
+void QMCCostFunctionBase::klDivergenceGradient(std::vector<Return_rt>& derivs, const Return_rt tau) 
+{
+  throw std::runtime_error("Need to implement klDivergenceGradient");
+}
+
 void QMCCostFunctionBase::checkConfigurationsSR(EngineHandle& handle)
 {
   throw std::runtime_error("Need to implement checkConfigurationsSR");

@@ -65,6 +65,7 @@ public:
   Return_rt fillOverlapHamiltonianMatrices(Matrix<Return_rt>& Left, Matrix<Return_rt>& Right) override;
   Return_rt fillHamVec(std::vector<Return_rt>& ham) override;
   void calcOvlParmVec(const std::vector<Return_rt>& parm, std::vector<Return_rt>& ovlParmVec) override;
+  void klDivergenceGradient(std::vector<Return_rt>& derivs, const Return_rt tau) override;
 
 protected:
   /// H components used in correlated sampling. It can be KE or KE+NLPP

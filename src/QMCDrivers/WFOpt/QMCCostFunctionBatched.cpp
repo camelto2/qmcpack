@@ -355,6 +355,7 @@ void QMCCostFunctionBatched::checkConfigurations(EngineHandle& handle)
         for (int ib = 0; ib < current_batch_size; ib++)
         {
           const int is = base_sample_index + ib;
+          ElocRecords[is] = energy_list[ib];
           for (int j = 0; j < nparams; j++)
           {
             //dlogpsi is in general complex if psi is complex.
@@ -1090,4 +1091,38 @@ void QMCCostFunctionBatched::calcOvlParmVec(const std::vector<Return_rt>& parm, 
   }
   myComm->allreduce(ovlParmVec);
 }
+
+void QMCCostFunctionBatched::klDivergenceGradient(std::vector<Return_rt>& derivs, const Return_rt tau)
+{
+  ScopedTimer tmp_timer(fill_timer_);
+
+  std::fill(derivs.begin(), derivs.end(), 0.0);
+
+  for (int iw = 0; iw < rank_local_num_samples_; iw++)
+  {
+    const Return_rt* restrict saved = RecordsOnNode_[iw];
+    Return_rt weight                = saved[REWEIGHT] * wgtinv;
+    Return_rt eloc                  = saved[ENERGY_NEW];
+    const Return_rt* HDsaved        = HDerivRecords_[iw];
+
+    size_t opt_num_crowds = walkers_per_crowd_.size();
+    std::vector<int> params_per_crowd(opt_num_crowds + 1);
+    FairDivide(getNumParams(), opt_num_crowds, params_per_crowd);
+
+    auto calcKLGradientSample = [](int crowd_id, std::vector<int>& crowd_ranges, int num_params, const Return_rt weight, const Return_rt tau, const Return_rt* HDsaved, std::vector<Return_rt>& derivs)
+    {
+      int local_pm_start = crowd_ranges[crowd_id];
+      int local_pm_end   = crowd_ranges[crowd_id + 1];
+
+      for (int pm = local_pm_start; pm < local_pm_end; pm++)
+      {
+        derivs[pm] = weight * HDsaved[pm] / ( 1 - tau * eloc);
+      }
+    }
+
+    ParallelExecutor<> crowd_tasks;
+    crowd_tasks(opt_num_crowds, calcKLGradientSample, params_per_crowd, getNumParams(), weight, tau, eloc, HDsaved, derivs);
+  }
+
+  myComm->allreduce(derivs);
 } // namespace qmcplusplus
