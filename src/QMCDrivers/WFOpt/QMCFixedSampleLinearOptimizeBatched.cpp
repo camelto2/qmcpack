@@ -85,6 +85,12 @@ QMCFixedSampleLinearOptimizeBatched::QMCFixedSampleLinearOptimizeBatched(
       sr_tau(0.01),
       sr_regularization(0.01),
       sr_tolerance(1e-6),
+      kl_tau(1e-3),
+      kl_eta(1e-3),
+      kl_iter(1),
+      kl_b1(0.9),
+      kl_b2(0.999),
+      kl_eps(1e-08),
       MinMethod("OneShiftOnly"),
       do_output_matrices_csv_(false),
       do_output_matrices_hdf_(false),
@@ -118,8 +124,12 @@ QMCFixedSampleLinearOptimizeBatched::QMCFixedSampleLinearOptimizeBatched(
   m_param.add(sr_tau, "sr_tau");
   m_param.add(sr_regularization, "sr_regularization");
   m_param.add(sr_tolerance, "sr_tolerance");
-  m_param.add(kl_tau, "kl_tau");
   m_param.add(kl_eta, "kl_eta");
+  m_param.add(kl_tau, "kl_tau");
+  m_param.add(kl_iter, "kl_iter");
+  m_param.add(kl_eps, "kl_eps");
+  m_param.add(kl_b1, "kl_b1");
+  m_param.add(kl_b2, "kl_b2");
   // options_LMY_
   m_param.add(options_LMY_.targetExcited, "options_LMY_.targetExcited");
   m_param.add(options_LMY_.block_lm, "options_LMY_.block_lm");
@@ -1949,13 +1959,6 @@ bool QMCFixedSampleLinearOptimizeBatched::kl_divergence()
             << "*****************************************************************************" << std::endl
             << "                   KL Divergence method                   " << std::endl
             << "*****************************************************************************" << std::endl;
-  // ensure the cost function is set to compute derivative vectors
-  optTarget->setneedGrads(true);
-
-  // generate samples and compute weights, local energies, and derivative vectors
-  // Note: this has a switch for checkConfigurations or checkConfigurationsSR to do stochastic reconfiguration
-  // The SR version avoids calculating the dhpsioverpsi terms and only does dlogpsi
-  start();
 
   // get number of optimizable parameters
   const int numParams = optTarget->getNumParams();
@@ -1963,33 +1966,49 @@ bool QMCFixedSampleLinearOptimizeBatched::kl_divergence()
   // get dimension of the linear method matrices
   const int N = numParams;
 
-  // prepare vectors to hold the initial and current parameters
-  std::vector<RealType> currentParameters(numParams, 0.0);
+  std::vector<RealType> moment;
+  moment.assign(N, 0.0);
+  std::vector<RealType> bias;
+  bias.assign(N, 0.0);
 
-  // initialize the initial and current parameter vectors
-  for (int i = 0; i < numParams; i++)
-    currentParameters.at(i) = std::real(optTarget->Params(i));
+  for (int it = 0; it < kl_iter; it++)
+  {
+    std::cout << "Iter: " << it << std::endl;
+    // ensure the cost function is set to compute derivative vectors
+    optTarget->setneedGrads(true);
 
-  // prepare vectors to hold the parameter update directions for each shift
-  std::vector<RealType> parameterDirections;
-  parameterDirections.assign(N, 0.0);
+    // generate samples and compute weights, local energies, and derivative vectors
+    // Note: this has a switch for checkConfigurations or checkConfigurationsSR to do stochastic reconfiguration
+    // The SR version avoids calculating the dhpsioverpsi terms and only does dlogpsi
+    start();
 
-  optTarget->klDivergenceGradient(parameterDirections, kl_tau);
+    // prepare vectors to hold the initial and current parameters
+    std::vector<RealType> currentParameters(numParams, 0.0);
 
-  for (int i = 0; i < numParams; i++)
-    optTarget->Params(i) = currentParameters.at(i) + 2 * kl_eta * kl_tau * parameterDirections.at(i);
+    // initialize the initial and current parameter vectors
+    for (int i = 0; i < numParams; i++)
+      currentParameters.at(i) = std::real(optTarget->Params(i));
 
-  app_log() << std::endl
-            << "*****************************************************************************" << std::endl
-            << "Applying the update for shift_i = " << std::scientific << std::right << std::setw(12)
-            << std::setprecision(4) << bestShift_i << "     and shift_s = " << std::scientific << std::right
-            << std::setw(12) << std::setprecision(4) << bestShift_s << std::endl
-            << "*****************************************************************************" << std::endl;
+    // prepare vectors to hold the parameter update directions for each shift
+    std::vector<RealType> parameterDirections;
+    parameterDirections.assign(N, 0.0);
 
-  // perform some finishing touches for this linear method iteration
-  finish();
+    optTarget->klDivergenceGradient(parameterDirections, kl_tau);
 
-  // return whether the cost function's report counter is positive
+    for (int i = 0; i < numParams; i++)
+    {
+      RealType m = kl_b1 * moment.at(i) + (1 - kl_b1) * parameterDirections.at(i);
+      RealType b = kl_b2 * bias.at(i) + (1 - kl_b2) * parameterDirections.at(i) * parameterDirections.at(i);
+      moment.at(i) = m;
+      bias.at(i)   = b;
+      m = m / (1 - std::pow(kl_b1, it + 1));
+      b = b / (1 - std::pow(kl_b2, it + 1));
+      optTarget->Params(i) = currentParameters.at(i) - kl_eta * m / (std::sqrt(b) + kl_eps); 
+    }
+
+    // perform some finishing touches for this linear method iteration
+    finish();
+  }
   return (optTarget->getReportCounter() > 0);
 }
 

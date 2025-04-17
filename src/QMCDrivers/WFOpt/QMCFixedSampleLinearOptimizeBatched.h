@@ -210,6 +210,10 @@ private:
 
   RealType kl_tau;
   RealType kl_eta;
+  int kl_iter;
+  RealType kl_b1;
+  RealType kl_b2;
+  RealType kl_eps;
 
   // ------------------------------------
   // Parameters in this struct are used by one or more of the adaptive LM, descent, or hybrid optimizers
