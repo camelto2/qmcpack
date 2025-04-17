@@ -1977,7 +1977,7 @@ bool QMCFixedSampleLinearOptimizeBatched::kl_divergence()
   optTarget->klDivergenceGradient(parameterDirections, kl_tau);
 
   for (int i = 0; i < numParams; i++)
-    optTarget->Params(i) = currentParameters.at(i) + 2 * kl_eta * kl_tau * parameterDirections.at(i + 1);
+    optTarget->Params(i) = currentParameters.at(i) + 2 * kl_eta * kl_tau * parameterDirections.at(i);
 
   app_log() << std::endl
             << "*****************************************************************************" << std::endl
