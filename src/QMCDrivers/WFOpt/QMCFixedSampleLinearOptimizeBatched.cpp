@@ -1997,7 +1997,7 @@ bool QMCFixedSampleLinearOptimizeBatched::kl_divergence()
 
 //    optTarget->klDivergenceGradient(parameterDirections, kl_tau);
     optTarget->enOvlMLE(parameterDirections, loss);
-    std::cout << "LOSS: " << loss << std::endl;
+    app_log() << "LOSS: " << loss << std::endl;
 
     for (int i = 0; i < numParams; i++)
     {
