@@ -1125,4 +1125,79 @@ void QMCCostFunctionBatched::klDivergenceGradient(std::vector<Return_rt>& derivs
   myComm->allreduce(derivs);
 }
 
+void QMCCostFunctionBatched::enOvlMLE(std::vector<Return_rt>& derivs, Return_rt& current_loss)
+{
+  ScopedTimer tmp_timer(fill_timer_);
+
+  std::fill(derivs.begin(), derivs.end(), 0.0);
+  Return_rt wgtinv = 1.0 / SumValue[SUM_WGT];
+
+  Return_rt norm = 0.0;
+  Return_rt eavg = 0.0;
+  for (int iw = 0; iw < rank_local_num_samples_; iw++)
+  {
+    const Return_rt* restrict saved = RecordsOnNode_[iw];
+    Return_rt weight                = saved[REWEIGHT] * wgtinv;
+    Return_rt eloc                  = saved[ENERGY_NEW];
+    Return_rt lnpsi                 = saved[LOGPSI_FREE] + saved[LOGPSI_FIXED];
+
+    eavg += weight * eloc;
+    norm += weight * std::exp(lnpsi) * std::exp(lnpsi);
+  }
+  myComm->allreduce(eavg);
+  myComm->allreduce(norm);
+
+  Return_rt loss = 0.0;
+  for (int iw = 0; iw < rank_local_num_samples_; iw++)
+  {
+    const Return_rt* restrict saved = RecordsOnNode_[iw];
+    Return_rt weight                = saved[REWEIGHT] * wgtinv;
+    Return_rt eloc                  = saved[ENERGY_NEW];
+    Return_rt lnpsi                 = saved[LOGPSI_FREE] + saved[LOGPSI_FIXED];
+
+    loss -= weight * eloc / eavg * std::log( std::exp(2 * lnpsi) / norm );
+  }
+  myComm->allreduce(loss);
+
+  current_loss = loss;
+
+  for (int iw = 0; iw < rank_local_num_samples_; iw++)
+  {
+    const Return_rt* restrict saved = RecordsOnNode_[iw];
+    Return_rt weight                = saved[REWEIGHT] * wgtinv;
+    Return_rt eloc                  = saved[ENERGY_NEW];
+    Return_rt lnpsi                 = saved[LOGPSI_FREE] + saved[LOGPSI_FIXED];
+    const Return_rt* HDsaved        = HDerivRecords_[iw];
+    const Return_t* Dsaved          = DerivRecords_[iw];
+
+    size_t opt_num_crowds = walkers_per_crowd_.size();
+    std::vector<int> params_per_crowd(opt_num_crowds + 1);
+    FairDivide(getNumParams(), opt_num_crowds, params_per_crowd);
+
+    auto calcGradLoss = [](int crowd_id, std::vector<int>& crowd_ranges, int num_params, const Return_rt weight, const Return_rt eloc, const Return_rt lnpsi, const Return_rt eavg, const Return_rt norm, const Return_rt loss, const Return_t* Dsaved, const Return_rt* HDsaved, std::vector<Return_rt>& derivs)
+    {
+      int local_pm_start = crowd_ranges[crowd_id];
+      int local_pm_end   = crowd_ranges[crowd_id + 1];
+
+      for (int pm = local_pm_start; pm < local_pm_end; pm++)
+      {
+        Return_rt dg = 2 * std::exp(lnpsi) * std::real(Dsaved[pm]);
+        Return_rt term1 = dg / norm;
+
+        Return_rt term2 = -(eloc * dg / std::exp(2 * lnpsi) + std::log( std::exp(2 * lnpsi)/norm ) * HDsaved[pm] ) / eavg;
+
+        Return_rt term3 = HDsaved[pm] / eavg * loss;
+
+        //need sign
+        derivs[pm] += weight * (term1 + term2 + term3);
+      }
+    };
+
+    ParallelExecutor<> crowd_tasks;
+    crowd_tasks(opt_num_crowds, calcGradLoss, params_per_crowd, getNumParams(), weight, eloc, lnpsi, eavg, norm, loss, Dsaved, HDsaved, derivs);
+  }
+
+  myComm->allreduce(derivs);
+}
+
 } // namespace qmcplusplus

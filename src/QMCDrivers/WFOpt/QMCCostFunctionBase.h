@@ -143,6 +143,7 @@ public:
   virtual void calcOvlParmVec(const std::vector<Return_rt>& parm,
                               std::vector<Return_rt>& ovlParmVec);
   virtual void klDivergenceGradient(std::vector<Return_rt>& derivs, const Return_rt tau);
+  virtual void enOvlMLE(std::vector<Return_rt>& derivs, Return_rt& current_loss);
 
 #ifdef HAVE_LMY_ENGINE
   Return_rt LMYEngineCost(const bool needDeriv, cqmc::engine::LMYEngine<Return_t>* EngineObj);

@@ -1971,6 +1971,8 @@ bool QMCFixedSampleLinearOptimizeBatched::kl_divergence()
   std::vector<RealType> bias;
   bias.assign(N, 0.0);
 
+  RealType loss = 0.0;
+
   for (int it = 0; it < kl_iter; it++)
   {
     std::cout << "Iter: " << it << std::endl;
@@ -1993,7 +1995,9 @@ bool QMCFixedSampleLinearOptimizeBatched::kl_divergence()
     std::vector<RealType> parameterDirections;
     parameterDirections.assign(N, 0.0);
 
-    optTarget->klDivergenceGradient(parameterDirections, kl_tau);
+//    optTarget->klDivergenceGradient(parameterDirections, kl_tau);
+    optTarget->enOvlMLE(parameterDirections, loss);
+    std::cout << "LOSS: " << loss << std::endl;
 
     for (int i = 0; i < numParams; i++)
     {

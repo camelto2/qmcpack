@@ -66,6 +66,7 @@ public:
   Return_rt fillHamVec(std::vector<Return_rt>& ham) override;
   void calcOvlParmVec(const std::vector<Return_rt>& parm, std::vector<Return_rt>& ovlParmVec) override;
   void klDivergenceGradient(std::vector<Return_rt>& derivs, const Return_rt tau) override;
+  void enOvlMLE(std::vector<Return_rt>& derivs, Return_rt& current_loss) override;
 
 protected:
   /// H components used in correlated sampling. It can be KE or KE+NLPP

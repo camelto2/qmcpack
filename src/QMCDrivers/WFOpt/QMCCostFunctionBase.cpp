@@ -145,6 +145,10 @@ void QMCCostFunctionBase::klDivergenceGradient(std::vector<Return_rt>& derivs, c
 {
   throw std::runtime_error("Need to implement klDivergenceGradient");
 }
+void QMCCostFunctionBase::enOvlMLE(std::vector<Return_rt>& derivs, Return_rt& current_loss) 
+{
+  throw std::runtime_error("Need to implement enOvlMLE");
+}
 
 void QMCCostFunctionBase::checkConfigurationsSR(EngineHandle& handle)
 {
