@@ -1182,11 +1182,12 @@ void QMCCostFunctionBatched::enOvlMLE(std::vector<Return_rt>& derivs, Return_rt&
       for (int pm = local_pm_start; pm < local_pm_end; pm++)
       {
         Return_rt dg = 2 * std::exp(lnpsi) * std::real(Dsaved[pm]);
+        Return_rt g = std::exp(2 * lnpsi);
         Return_rt term1 = dg / norm;
 
-        Return_rt term2 = -(eloc * dg / std::exp(2 * lnpsi) + std::log( std::exp(2 * lnpsi)/norm ) * HDsaved[pm] ) / eavg;
+        Return_rt term2 = -(eloc * dg / g + std::log( g / norm ) * HDsaved[pm] ) / eavg;
 
-        Return_rt term3 = HDsaved[pm] / eavg * loss;
+        Return_rt term3 = -HDsaved[pm] / eavg * loss;
 
         //need sign
         derivs[pm] += weight * (term1 + term2 + term3);
