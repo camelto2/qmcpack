@@ -53,16 +53,10 @@ public:
   // Active orbital rotation parameter indices
   RotationIndices m_act_rot_inds_;
 
-  // Full set of rotation values for global rotation
-  RotationIndices m_full_rot_inds_;
-
   // Construct a list of the matrix indices for non-zero rotation parameters.
   // (The structure for a sparse representation of the matrix)
   // Only core->active rotations are created.
   static void createRotationIndices(int nel, int nmo, RotationIndices& rot_indices);
-
-  // Construct a list for all the matrix indices, including core->active, core->core and active->active
-  static void createRotationIndicesFull(int nel, int nmo, RotationIndices& rot_indices);
 
   // Takes a sparse representation of the antisymmetric/antihermitian K' matrix ( (i->j) excitation indices rot_indices
   // and and coefficient vector param and constructs a dense antisymmetric/antihermitian K matrix (rot_mat).
@@ -72,44 +66,12 @@ public:
                                            const std::vector<ValueType>& param,
                                            ValueMatrix& rot_mat);
 
-  // Extract the list of rotation parameters from the entries in an antisymmetric matrix
-  // This function expects rot_indices and param are the same length.
-  static void extractParamsFromAntiSymmetricMatrix(const RotationIndices& rot_indices,
-                                                   const ValueMatrix& rot_mat,
-                                                   std::vector<ValueType>& param);
-
   //function to perform orbital rotations
   void apply_rotation(const std::vector<ValueType>& param, bool use_stored_copy);
-
-  // For global rotation, inputs are the old parameters and the delta parameters.
-  // The corresponding rotation matrices are constructed, multiplied together,
-  // and the new parameters extracted.
-  // The new rotation is applied to the underlying SPO coefficients
-  void applyDeltaRotation(const std::vector<ValueType>& delta_param,
-                          const std::vector<ValueType>& old_param,
-                          std::vector<ValueType>& new_param);
-
-  // Perform the construction of matrices and extraction of parameters for a delta rotation.
-  // Split out and made static for testing.
-  static void constructDeltaRotation(const std::vector<ValueType>& delta_param,
-                                     const std::vector<ValueType>& old_param,
-                                     const RotationIndices& act_rot_inds,
-                                     const RotationIndices& full_rot_inds,
-                                     std::vector<ValueType>& new_param,
-                                     ValueMatrix& new_rot_mat);
-
-  // This function applies the global rotation (similar to apply_rotation, but for the full
-  // set of rotation parameters)
-  void applyFullRotation(const std::vector<ValueType>& full_param, bool use_stored_copy);
 
   // Compute matrix exponential of an antisymmetric/antihermitian matrix for
   // the real/complex case.  Overwrites matrix with its exponential (result is rotation matrix)
   static void exponentiate_antisym_matrix(ValueMatrix& mat);
-
-  // Compute matrix log of rotation matrix to produce antisymmetric matrix.  Technically, this
-  // performs the log of any matrix where the eigenproblem is stable, but we only take logs of
-  // matrices of the form A=e^K, where K is antisymmetric/antihermitian.
-  static void log_antisym_matrix(const ValueMatrix& mat, ValueMatrix& output);
 
   //A particular SPOSet used for Orbitals
   std::unique_ptr<SPOSet> Phi_;
@@ -143,7 +105,7 @@ public:
   void buildOptVariables(size_t nel);
 
   // For the MSD case rotations must be created in MultiSlaterDetTableMethod class
-  void buildOptVariables(const RotationIndices& rotations, const RotationIndices& full_rotations);
+  void buildOptVariables(const RotationIndices& rotations);
 
 
   void evaluateDerivatives(ParticleSet& P,

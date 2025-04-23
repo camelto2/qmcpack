@@ -290,29 +290,15 @@ TEST_CASE("RotatedSPOs createRotationIndices", "[wavefunction]")
   RotatedSPOs::createRotationIndices(nel, nmo, rot_ind);
   CHECK(rot_ind.size() == 2);
 
-  // Full rotation contains all rotations
-  // Size should be number of pairs of orbitals: nmo*(nmo-1)/2
-  RotatedSPOs::RotationIndices full_rot_ind;
-  RotatedSPOs::createRotationIndicesFull(nel, nmo, full_rot_ind);
-  CHECK(full_rot_ind.size() == 3);
-
   nel = 2;
   RotatedSPOs::RotationIndices rot_ind2;
   RotatedSPOs::createRotationIndices(nel, nmo, rot_ind2);
   CHECK(rot_ind2.size() == 2);
 
-  RotatedSPOs::RotationIndices full_rot_ind2;
-  RotatedSPOs::createRotationIndicesFull(nel, nmo, full_rot_ind2);
-  CHECK(full_rot_ind2.size() == 3);
-
   nmo = 4;
   RotatedSPOs::RotationIndices rot_ind3;
   RotatedSPOs::createRotationIndices(nel, nmo, rot_ind3);
   CHECK(rot_ind3.size() == 4);
-
-  RotatedSPOs::RotationIndices full_rot_ind3;
-  RotatedSPOs::createRotationIndicesFull(nel, nmo, full_rot_ind3);
-  CHECK(full_rot_ind3.size() == 6);
 }
 
 TEST_CASE("RotatedSPOs constructAntiSymmetricMatrix", "[wavefunction]")
@@ -342,11 +328,6 @@ TEST_CASE("RotatedSPOs constructAntiSymmetricMatrix", "[wavefunction]")
   CheckMatrixResult check_matrix_result = checkMatrix(m3, expected_m3, true);
   CHECKED_ELSE(check_matrix_result.result) { FAIL(check_matrix_result.result_message); }
 
-  std::vector<ValueType> params_out(2);
-  RotatedSPOs::extractParamsFromAntiSymmetricMatrix(rot_ind, m3, params_out);
-  //Using ComplexApprox handles real or complex builds.  In any case, no imaginary component expected.
-  CHECK(std::real(params_out[0]) == Approx(0.1));
-  CHECK(std::real(params_out[1]) == Approx(0.2));
 }
 
 // Expected values of the matrix exponential come from gen_matrix_ops.py
@@ -419,143 +400,6 @@ TEST_CASE("RotatedSPOs exponentiate matrix", "[wavefunction]")
 
   CheckMatrixResult check_matrix_result4 = checkMatrix(m3_cmplx, m3_cmplx_expected, true);
   CHECKED_ELSE(check_matrix_result4.result) { FAIL(check_matrix_result4.result_message); }
-#endif
-}
-
-TEST_CASE("RotatedSPOs log matrix", "[wavefunction]")
-{
-  using ValueType   = SPOSet::ValueType;
-  using ValueMatrix = SPOSet::ValueMatrix;
-  using RealType    = SPOSet::RealType;
-
-  std::vector<SPOSet::ValueType> mat1_data = {1.0};
-  SPOSet::ValueMatrix m1(mat1_data.data(), 1, 1);
-  SPOSet::ValueMatrix out_m1(1, 1);
-  RotatedSPOs::log_antisym_matrix(m1, out_m1);
-  // Should always be 1.0 (the only possible anti-symmetric 1x1 matrix is 0)
-  CHECK(out_m1(0, 0) == ValueApprox(0.0));
-
-  // clang-format off
-  std::vector<ValueType> start_rot2 = {  0.995004165278026,  -0.0998334166468282,
-                                         0.0998334166468282,  0.995004165278026 };
-
-  std::vector<SPOSet::ValueType> mat2_data = { 0.0, -0.1,
-                                               0.1,  0.0 };
-  // clang-format on
-
-  ValueMatrix rot_m2(start_rot2.data(), 2, 2);
-  ValueMatrix out_m2(2, 2);
-  RotatedSPOs::log_antisym_matrix(rot_m2, out_m2);
-
-  SPOSet::ValueMatrix m2(mat2_data.data(), 2, 2);
-  CheckMatrixResult check_matrix_result2 = checkMatrix(m2, out_m2, true);
-  CHECKED_ELSE(check_matrix_result2.result) { FAIL(check_matrix_result2.result_message); }
-
-  // clang-format off
-  std::vector<ValueType> start_rot3 = {  0.950580617906092, -0.302932713402637, -0.0680313164049401,
-                                         0.283164960565074,  0.935754803277919, -0.210191705950743,
-                                         0.127334574917630,  0.180540076694398,  0.975290308953046 };
-
-  std::vector<ValueType> m3_input_data = { 0.0,  -0.3, -0.1,
-                                           0.3,   0.0, -0.2,
-                                           0.1,   0.2,  0.0 };
-  // clang-format on
-  ValueMatrix rot_m3(start_rot3.data(), 3, 3);
-  ValueMatrix out_m3(3, 3);
-  RotatedSPOs::log_antisym_matrix(rot_m3, out_m3);
-
-  SPOSet::ValueMatrix m3(m3_input_data.data(), 3, 3);
-  CheckMatrixResult check_matrix_result3 = checkMatrix(m3, out_m3, true);
-  CHECKED_ELSE(check_matrix_result3.result) { FAIL(check_matrix_result3.result_message); }
-
-#ifdef QMC_COMPLEX
-  using cmplx_t                           = std::complex<RealType>;
-  std::vector<cmplx_t> m3_input_data_cplx = {cmplx_t(0, 0),       cmplx_t(0.3, 0.1),   cmplx_t(0.1, -0.3),
-                                             cmplx_t(-0.3, 0.1),  cmplx_t(0, 0),       cmplx_t(0.2, 0.01),
-                                             cmplx_t(-0.1, -0.3), cmplx_t(-0.2, 0.01), cmplx_t(0, 0)};
-
-  std::vector<cmplx_t> start_rot_cmplx = {cmplx_t(0.90198269, -0.00652118),  cmplx_t(0.27999104, 0.12545423),
-                                          cmplx_t(0.12447606, -0.27704993),  cmplx_t(-0.29632557, 0.06664911),
-                                          cmplx_t(0.93133822, -0.00654092),  cmplx_t(0.19214149, 0.05828413),
-                                          cmplx_t(-0.06763124, -0.29926537), cmplx_t(-0.19210869, -0.03907491),
-                                          cmplx_t(0.93133822, -0.00654092)};
-
-  //packing vector data into matrix form.
-  Matrix<std::complex<RealType>> m3_cmplx_rot(start_rot_cmplx.data(), 3, 3);
-  Matrix<std::complex<RealType>> m3_cmplx_ref_data(m3_input_data_cplx.data(), 3, 3);
-  Matrix<std::complex<RealType>> result_matrix(3, 3);
-  RotatedSPOs::log_antisym_matrix(m3_cmplx_rot, result_matrix);
-
-  CheckMatrixResult check_matrix_result4 = checkMatrix(result_matrix, m3_cmplx_ref_data, true);
-  CHECKED_ELSE(check_matrix_result4.result) { FAIL(check_matrix_result4.result_message); }
-#endif
-}
-
-// Test round trip A -> exp(A) -> log(exp(A))
-// The log is multi-valued so this test may fail if the rotation parameters are too large.
-// The exponentials will be the same, though
-//   exp(log(exp(A))) == exp(A)
-TEST_CASE("RotatedSPOs exp-log matrix", "[wavefunction]")
-{
-  using ValueType   = SPOSet::ValueType;
-  using ValueMatrix = SPOSet::ValueMatrix;
-
-  RotatedSPOs::RotationIndices rot_ind;
-  int nel = 2;
-  int nmo = 4;
-  RotatedSPOs::createRotationIndices(nel, nmo, rot_ind);
-
-  ValueMatrix rot_m4(nmo, nmo);
-  rot_m4 = ValueType(0);
-
-  std::vector<ValueType> params4 = {-1.1, 1.5, 0.2, -0.15};
-
-  RotatedSPOs::constructAntiSymmetricMatrix(rot_ind, params4, rot_m4);
-  ValueMatrix orig_rot_m4 = rot_m4;
-  ValueMatrix out_m4(nmo, nmo);
-
-  RotatedSPOs::exponentiate_antisym_matrix(rot_m4);
-
-  RotatedSPOs::log_antisym_matrix(rot_m4, out_m4);
-
-  CheckMatrixResult check_matrix_result4 = checkMatrix(out_m4, orig_rot_m4, true);
-  CHECKED_ELSE(check_matrix_result4.result) { FAIL(check_matrix_result4.result_message); }
-
-  std::vector<ValueType> params4out(4);
-  RotatedSPOs::extractParamsFromAntiSymmetricMatrix(rot_ind, out_m4, params4out);
-  for (int i = 0; i < params4.size(); i++)
-  {
-    CHECK(std::real(params4[i]) == Approx(std::real(params4out[i])));
-  }
-
-#ifdef QMC_COMPLEX
-  ValueMatrix rot_m4_cmplx(nmo, nmo);
-  rot_m4_cmplx = ValueType(0);
-
-  //We have to be careful with the size of the components here. Exponentiate has
-  //a nice modulo 2pi property in it, and so log(A) is not uniquely defined without
-  //specifying a branch in the complex plane. Verified that the exp() and log() are one-to-one
-  //in this little regime.
-  std::vector<ValueType> params4_cmplx = {ValueType(-1.1, 0.3), ValueType(0.5, -0.2), ValueType(0.2, 1.1),
-                                          ValueType(-0.15, -.3)};
-
-  RotatedSPOs::constructAntiSymmetricMatrix(rot_ind, params4_cmplx, rot_m4_cmplx);
-  ValueMatrix orig_rot_m4_cmplx = rot_m4_cmplx;
-  ValueMatrix out_m4_cmplx(nmo, nmo);
-
-  RotatedSPOs::exponentiate_antisym_matrix(rot_m4_cmplx);
-  RotatedSPOs::log_antisym_matrix(rot_m4_cmplx, out_m4_cmplx);
-  CheckMatrixResult check_matrix_result5 = checkMatrix(out_m4_cmplx, orig_rot_m4_cmplx, true);
-  CHECKED_ELSE(check_matrix_result5.result) { FAIL(check_matrix_result5.result_message); }
-
-  std::vector<ValueType> params4out_cmplx(4);
-  RotatedSPOs::extractParamsFromAntiSymmetricMatrix(rot_ind, out_m4_cmplx, params4out_cmplx);
-  for (int i = 0; i < params4_cmplx.size(); i++)
-  {
-    CHECK(params4_cmplx[i] == ValueApprox(params4out_cmplx[i]));
-  }
-
-
 #endif
 }
 
@@ -671,67 +515,9 @@ TEST_CASE("RotatedSPOs hcpBe", "[wavefunction]")
   CHECK(std::real(dhpsioverpsi[0]) == Approx(32.96939041498753));
 }
 
-// Test construction of delta rotation
-TEST_CASE("RotatedSPOs construct delta matrix", "[wavefunction]")
-{
-  using ValueType   = SPOSet::ValueType;
-  using ValueMatrix = SPOSet::ValueMatrix;
-
-  int nel = 2;
-  int nmo = 4;
-  RotatedSPOs::RotationIndices rot_ind;
-  RotatedSPOs::createRotationIndices(nel, nmo, rot_ind);
-  RotatedSPOs::RotationIndices full_rot_ind;
-  RotatedSPOs::createRotationIndicesFull(nel, nmo, full_rot_ind);
-  // rot_ind size is 4 and full rot_ind size is 6
-
-  ValueMatrix rot_m4(nmo, nmo);
-  rot_m4 = ValueType(0);
-
-  // When comparing with gen_matrix_ops.py, be aware of the order of indices
-  // in full_rot
-  // rot_ind is (0,2) (0,3) (1,2) (1,3)
-  // full_rot_ind is (0,2) (0,3) (1,2) (1,3) (0,1) (2,3)
-  // The extra indices go at the back
-  std::vector<ValueType> old_params   = {1.5, 0.2, -0.15, 0.03, -1.1, 0.05};
-  std::vector<ValueType> delta_params = {0.1, 0.3, 0.2, -0.1};
-  std::vector<ValueType> new_params(6);
-
-  RotatedSPOs::constructDeltaRotation(delta_params, old_params, rot_ind, full_rot_ind, new_params, rot_m4);
-
-  // clang-format off
-  std::vector<ValueType> rot_data4 =
-    { -0.371126931484737,  0.491586564957393,   -0.784780958819798,   0.0687480658200083,
-      -0.373372784561548,  0.66111547793048,     0.610450337985578,   0.225542620014052,
-       0.751270334458895,  0.566737323353515,   -0.0297901110611425, -0.336918744155143,
-       0.398058348785074,  0.00881931472604944, -0.102867783149713,   0.911531672428406 };
-  // clang-format on
-
-  ValueMatrix new_rot_m4(rot_data4.data(), 4, 4);
-
-  CheckMatrixResult check_matrix_result4 = checkMatrix(rot_m4, new_rot_m4, true);
-  CHECKED_ELSE(check_matrix_result4.result) { FAIL(check_matrix_result4.result_message); }
-
-  // Reminder: Ordering!
-  std::vector<ValueType> expected_new_param = {1.6813965019790489,   0.3623564254653294,  -0.05486544454559908,
-                                               -0.20574472941408453, -0.9542513302873077, 0.27497788909911774};
-  for (int i = 0; i < new_params.size(); i++)
-    CHECK(new_params[i] == ValueApprox(expected_new_param[i]));
-
-
-  // Rotated back to original position
-
-  std::vector<ValueType> new_params2(6);
-  std::vector<ValueType> reverse_delta_params = {-0.1, -0.3, -0.2, 0.1};
-  RotatedSPOs::constructDeltaRotation(reverse_delta_params, new_params, rot_ind, full_rot_ind, new_params2, rot_m4);
-  for (int i = 0; i < new_params2.size(); i++)
-    CHECK(new_params2[i] == ValueApprox(old_params[i]));
-}
-
 namespace testing
 {
 const opt_variables_type& getMyVars(RotatedSPOs& rot) { return rot.myVars; }
-const std::vector<QMCTraits::ValueType>& getMyVarsFull(RotatedSPOs& rot) { return rot.myVarsFull_; }
 } // namespace testing
 
 // Test using global rotation
@@ -778,12 +564,6 @@ TEST_CASE("RotatedSPOs read and write parameters", "[wavefunction]")
   for (size_t i = 0; i < vs.size(); i++)
     CHECK(var[i] == Approx(vs[i]));
 
-  //add extra parameters for full set
-  vs_values.push_back(0.0);
-  vs_values.push_back(0.0);
-  auto& full_var = testing::getMyVarsFull(rot2);
-  for (size_t i = 0; i < full_var.size(); i++)
-    CHECK(full_var[i] == ValueApprox(vs_values[i]));
 }
 
 template<typename T>

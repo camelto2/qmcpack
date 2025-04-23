@@ -52,27 +52,6 @@ void RotatedSPOs::createRotationIndices(int nel, int nmo, RotationIndices& rot_i
       rot_indices.emplace_back(i, j);
 }
 
-void RotatedSPOs::createRotationIndicesFull(int nel, int nmo, RotationIndices& rot_indices)
-{
-  rot_indices.reserve(nmo * (nmo - 1) / 2);
-
-  // start with core-active rotations - put them at the beginning of the list
-  // so it matches the other list of rotation indices
-  for (int i = 0; i < nel; i++)
-    for (int j = nel; j < nmo; j++)
-      rot_indices.emplace_back(i, j);
-
-  // Add core-core rotations - put them at the end of the list
-  for (int i = 0; i < nel; i++)
-    for (int j = i + 1; j < nel; j++)
-      rot_indices.emplace_back(i, j);
-
-  // Add active-active rotations - put them at the end of the list
-  for (int i = nel; i < nmo; i++)
-    for (int j = i + 1; j < nmo; j++)
-      rot_indices.emplace_back(i, j);
-}
-
 void RotatedSPOs::constructAntiSymmetricMatrix(const RotationIndices& rot_indices,
                                                const std::vector<ValueType>& param,
                                                ValueMatrix& rot_mat)
@@ -94,53 +73,30 @@ void RotatedSPOs::constructAntiSymmetricMatrix(const RotationIndices& rot_indice
   }
 }
 
-void RotatedSPOs::extractParamsFromAntiSymmetricMatrix(const RotationIndices& rot_indices,
-                                                       const ValueMatrix& rot_mat,
-                                                       std::vector<ValueType>& param)
-{
-  assert(rot_indices.size() == param.size());
-  // Assumes rot_mat is of the correct size
-
-  for (int i = 0; i < rot_indices.size(); i++)
-  {
-    const int p = rot_indices[i].first;
-    const int q = rot_indices[i].second;
-    param[i]    = rot_mat[q][p];
-  }
-}
-
 void RotatedSPOs::resetParametersExclusive(const opt_variables_type& active)
 {
   const size_t nact_rot = m_act_rot_inds_.size();
-  std::vector<ValueType> delta_param(nact_rot);
 
-  //cast ValueType to RealType for delta param
-  //allows us to work with both real and complex since
-  //active and myVars are stored as only reals
-  auto* delta_param_data_alias = (RealType*)delta_param.data();
   for (int i = 0; i < myVars.size(); i++)
   {
     int loc                   = myVars.where(i);
-    delta_param_data_alias[i] = active[loc] - myVars[i];
     myVars[i]                 = active[loc];
   }
 
-  std::vector<ValueType> old_param(m_full_rot_inds_.size());
-  std::copy_n(myVarsFull_.data(), myVarsFull_.size(), old_param.data());
-
-  applyDeltaRotation(delta_param, old_param, myVarsFull_);
+  const size_t N = m_act_rot_inds_.size();
+  std::vector<ValueType> param(N);
+  //cast as RealType to copy from myVars into real or complex param vector
+  auto* param_data_alias = (RealType*)param.data();
+  //couldn't easily use std::copy since myVars is vector of pairs
+  for (size_t i = 0; i < myVars.size(); i++)
+    param_data_alias[i] = myVars[i];
+  apply_rotation(param, true);
 }
 
 void RotatedSPOs::writeVariationalParameters(hdf_archive& hout)
 {
   hout.push("RotatedSPOs");
 
-  hout.push("rotation_global");
-  const std::string rot_global_name = std::string("rotation_global_") + SPOSet::getName();
-
-  hout.write(myVarsFull_, rot_global_name);
-  hout.pop();
-  
   // Save myVars in order to restore object state exactly
   //  The values aren't meaningful, but they need to match those saved in VariableSet
   hout.push("rotation_params");
@@ -160,35 +116,6 @@ void RotatedSPOs::writeVariationalParameters(hdf_archive& hout)
 void RotatedSPOs::readVariationalParameters(hdf_archive& hin)
 {
   hin.push("RotatedSPOs", false);
-
-  bool grp_global_exists = hin.is_group("rotation_global");
-
-  if (grp_global_exists)
-  {
-    hin.push("rotation_global", false);
-    const std::string rot_global_name = std::string("rotation_global_") + SPOSet::getName();
-
-    std::vector<int> sizes(1);
-    if (!hin.getShape<ValueType>(rot_global_name, sizes))
-      throw std::runtime_error("Failed to read rotation_global in VP file");
-
-    if (myVarsFull_.size() != sizes[0])
-    {
-      std::ostringstream tmp_err;
-      tmp_err << "Expected number of full rotation parameters (" << myVarsFull_.size()
-              << ") does not match number in file (" << sizes[0] << ")";
-      throw std::runtime_error(tmp_err.str());
-    }
-    hin.read(myVarsFull_, rot_global_name);
-
-    hin.pop();
-
-    applyFullRotation(myVarsFull_, true);
-  }
-  else 
-  {
-    throw std::runtime_error("Error.  No global rotation group in h5.  Abort.");
-  }
 
   hin.push("rotation_params", false);
   std::string rot_param_name = std::string("rotation_params_") + SPOSet::getName();
@@ -217,6 +144,7 @@ void RotatedSPOs::readVariationalParameters(hdf_archive& hin)
   hin.pop();
 
   hin.pop();
+  apply_rotation(params, true);
 }
 
 void RotatedSPOs::buildOptVariables(const size_t nel)
@@ -237,24 +165,18 @@ void RotatedSPOs::buildOptVariables(const size_t nel)
     // create active rotation parameter indices
     RotationIndices created_m_act_rot_inds;
 
-    RotationIndices created_full_rot_inds;
-
-    createRotationIndicesFull(nel, nmo, created_full_rot_inds);
-
     createRotationIndices(nel, nmo, created_m_act_rot_inds);
 
-    buildOptVariables(created_m_act_rot_inds, created_full_rot_inds);
+    buildOptVariables(created_m_act_rot_inds);
   }
 }
 
-void RotatedSPOs::buildOptVariables(const RotationIndices& rotations, const RotationIndices& full_rotations)
+void RotatedSPOs::buildOptVariables(const RotationIndices& rotations)
 {
   const size_t nmo = Phi_->getOrbitalSetSize();
 
   // create active rotations
   m_act_rot_inds_ = rotations;
-
-  m_full_rot_inds_ = full_rotations;
 
   app_log() << "Orbital rotation using global rotation" << std::endl;
 
@@ -292,11 +214,6 @@ void RotatedSPOs::buildOptVariables(const RotationIndices& rotations, const Rota
     if constexpr (IsComplex_t<ValueType>::value)
       registerParameter(i, p, q, myVars, params_, false);
   }
-
-  const size_t nfull_rot = m_full_rot_inds_.size();
-  myVarsFull_.resize(nfull_rot);
-  for (int i = 0; i < nfull_rot; i++)
-    myVarsFull_[i] = (params_supplied_ && i < m_act_rot_inds_.size()) ? params_[i] : 0.0;
 
   //Printing the parameters
   if (true)
@@ -337,72 +254,6 @@ void RotatedSPOs::apply_rotation(const std::vector<ValueType>& param, bool use_s
     ScopedTimer local(apply_rotation_timer_);
     Phi_->applyRotation(rot_mat, use_stored_copy);
   }
-}
-
-void RotatedSPOs::applyDeltaRotation(const std::vector<ValueType>& delta_param,
-                                     const std::vector<ValueType>& old_param,
-                                     std::vector<ValueType>& new_param)
-{
-  const size_t nmo = Phi_->getOrbitalSetSize();
-  ValueMatrix new_rot_mat(nmo, nmo);
-  constructDeltaRotation(delta_param, old_param, m_act_rot_inds_, m_full_rot_inds_, new_param, new_rot_mat);
-
-  {
-    ScopedTimer local(apply_rotation_timer_);
-    Phi_->applyRotation(new_rot_mat, true);
-  }
-}
-
-void RotatedSPOs::constructDeltaRotation(const std::vector<ValueType>& delta_param,
-                                         const std::vector<ValueType>& old_param,
-                                         const RotationIndices& act_rot_inds,
-                                         const RotationIndices& full_rot_inds,
-                                         std::vector<ValueType>& new_param,
-                                         ValueMatrix& new_rot_mat)
-{
-  assert(delta_param.size() == act_rot_inds.size());
-  assert(old_param.size() == full_rot_inds.size());
-  assert(new_param.size() == full_rot_inds.size());
-
-  const size_t nmo = new_rot_mat.rows();
-  assert(new_rot_mat.rows() == new_rot_mat.cols());
-
-  ValueMatrix old_rot_mat(nmo, nmo);
-
-  constructAntiSymmetricMatrix(full_rot_inds, old_param, old_rot_mat);
-  exponentiate_antisym_matrix(old_rot_mat);
-
-  ValueMatrix delta_rot_mat(nmo, nmo);
-
-  constructAntiSymmetricMatrix(act_rot_inds, delta_param, delta_rot_mat);
-  exponentiate_antisym_matrix(delta_rot_mat);
-
-  // Apply delta rotation to old rotation.
-  BLAS::gemm('N', 'N', nmo, nmo, nmo, 1.0, delta_rot_mat.data(), nmo, old_rot_mat.data(), nmo, 0.0, new_rot_mat.data(),
-             nmo);
-
-  ValueMatrix log_rot_mat(nmo, nmo);
-  log_antisym_matrix(new_rot_mat, log_rot_mat);
-  extractParamsFromAntiSymmetricMatrix(full_rot_inds, log_rot_mat, new_param);
-}
-
-void RotatedSPOs::applyFullRotation(const std::vector<ValueType>& full_param, bool use_stored_copy)
-{
-  assert(full_param.size() == m_full_rot_inds_.size());
-
-  const size_t nmo = Phi_->getOrbitalSetSize();
-  ValueMatrix rot_mat(nmo, nmo);
-  rot_mat = ValueType(0);
-
-  constructAntiSymmetricMatrix(m_full_rot_inds_, full_param, rot_mat);
-
-  /*
-    rot_mat is now an anti-hermitian matrix. Now we convert
-    it into a unitary matrix via rot_mat = exp(-rot_mat).
-    Finally, apply unitary matrix to orbs.
-  */
-  exponentiate_antisym_matrix(rot_mat);
-  Phi_->applyRotation(rot_mat, use_stored_copy);
 }
 
 // compute exponential of a real, antisymmetric matrix by diagonalizing and exponentiating eigenvalues
@@ -470,101 +321,6 @@ void RotatedSPOs::exponentiate_antisym_matrix(ValueMatrix& mat)
       //For real build, the imaginary part is discarded.  For complex build,
       //the entire complex entry is copied.
       copy_with_complex_cast(mat_d[i + n * j], mat[i][j]);
-}
-
-void RotatedSPOs::log_antisym_matrix(const ValueMatrix& mat, ValueMatrix& output)
-{
-  const int n = mat.rows();
-  std::vector<ValueType> mat_h(n * n, 0);
-  std::vector<RealType> mat_l(n * n, 0);
-  std::vector<std::complex<RealType>> mat_cd(n * n, 0);
-  std::vector<std::complex<RealType>> mat_cl(n * n, 0);
-  std::vector<std::complex<RealType>> mat_ch(n * n, 0);
-
-  for (int i = 0; i < n; ++i)
-    for (int j = 0; j < n; ++j)
-      //we copy input mat in row major form to column major array for LAPACK consumption.
-      mat_h[i + n * j] = mat[i][j];
-
-  // diagonalize the matrix
-  char JOBL('V'); //Compute left eigenvectors.
-  char JOBR('N'); //Don't compute right eigenvectors.
-  int N(n);
-  int LDA(n);
-  int LWORK(-1);
-  int info = 0;
-
-#ifndef QMC_COMPLEX
-  std::vector<RealType> eval_r(n, 0);
-  std::vector<RealType> eval_i(n, 0);
-  std::vector<RealType> work(1, 0);
-  LAPACK::geev(&JOBL, &JOBR, &N, &mat_h.at(0), &LDA, &eval_r.at(0), &eval_i.at(0), &mat_l.at(0), &LDA, nullptr, &LDA,
-               &work.at(0), &LWORK, &info);
-  LWORK = int(work[0]);
-  work.resize(LWORK);
-  LAPACK::geev(&JOBL, &JOBR, &N, &mat_h.at(0), &LDA, &eval_r.at(0), &eval_i.at(0), &mat_l.at(0), &LDA, nullptr, &LDA,
-               &work.at(0), &LWORK, &info);
-#else
-  std::vector<ValueType> eval(n, 0);
-  std::vector<ValueType> work(1, 0);
-  std::vector<RealType> rwork(2 * n, 0);
-  LAPACK::geev(&JOBL, &JOBR, &N, &mat_h.at(0), &LDA, &eval.at(0), &mat_cl.at(0), &LDA, nullptr, &LDA, &work.at(0),
-               &LWORK, &rwork.at(0), &info);
-  LWORK = int(work[0].real());
-  work.resize(LWORK);
-  LAPACK::geev(&JOBL, &JOBR, &N, &mat_h.at(0), &LDA, &eval.at(0), &mat_cl.at(0), &LDA, nullptr, &LDA, &work.at(0),
-               &LWORK, &rwork.at(0), &info);
-#endif
-  if (info != 0)
-  {
-    std::ostringstream msg;
-    msg << "heev failed with info = " << info << " in RotatedSPOs::log_antisym_matrix";
-    throw std::runtime_error(msg.str());
-  }
-
-  // iterate through diagonal matrix, take log
-  for (int i = 0; i < n; ++i)
-  {
-    for (int j = 0; j < n; ++j)
-    {
-#ifndef QMC_COMPLEX
-      auto tmp = (i == j) ? std::log(std::complex<RealType>(eval_r[i], eval_i[i])) : std::complex<RealType>(0.0, 0.0);
-      if (eval_i[j] > 0.0)
-      {
-        mat_cl[i + j * n]       = std::complex<RealType>(mat_l[i + j * n], mat_l[i + (j + 1) * n]);
-        mat_cl[i + (j + 1) * n] = std::complex<RealType>(mat_l[i + j * n], -mat_l[i + (j + 1) * n]);
-      }
-      else if (!(eval_i[j] < 0.0))
-      {
-        mat_cl[i + j * n] = std::complex<RealType>(mat_l[i + j * n], 0.0);
-      }
-#else
-      auto tmp     = (i == j) ? std::log(eval[i]) : ValueType(0.0);
-#endif
-      mat_cd[i + j * n] = tmp;
-    }
-  }
-
-  RealType one(1.0);
-  RealType zero(0.0);
-  BLAS::gemm('N', 'N', n, n, n, one, &mat_cl.at(0), n, &mat_cd.at(0), n, zero, &mat_ch.at(0), n);
-  BLAS::gemm('N', 'C', n, n, n, one, &mat_ch.at(0), n, &mat_cl.at(0), n, zero, &mat_cd.at(0), n);
-
-
-  for (int i = 0; i < n; ++i)
-    for (int j = 0; j < n; ++j)
-    {
-#ifndef QMC_COMPLEX
-      if (mat_cd[i + n * j].imag() > 1e-12)
-      {
-        app_log() << "warning: large imaginary value in antisymmetric matrix: (i,j) = (" << i << "," << j
-                  << "), im = " << mat_cd[i + n * j].imag() << std::endl;
-      }
-      output[i][j] = mat_cd[i + n * j].real();
-#else
-      output[i][j] = mat_cd[i + n * j];
-#endif
-    }
 }
 
 void RotatedSPOs::evaluateDerivRatios(const VirtualParticleSet& VP,
@@ -1568,9 +1324,7 @@ std::unique_ptr<SPOSet> RotatedSPOs::makeClone() const
   myclone->params_          = this->params_;
   myclone->params_supplied_ = this->params_supplied_;
   myclone->m_act_rot_inds_  = this->m_act_rot_inds_;
-  myclone->m_full_rot_inds_ = this->m_full_rot_inds_;
   myclone->myVars           = this->myVars;
-  myclone->myVarsFull_      = this->myVarsFull_;
   return myclone;
 }
 
