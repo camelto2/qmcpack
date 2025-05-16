@@ -25,19 +25,10 @@
 #include "QMCWaveFunctions/Fermion/DiracDeterminantBase.h"
 #include <PlatformSelector.hpp>
 #include "DiracMatrix.h"
-#include "QMCWaveFunctions/Fermion/DelayedUpdate.h"
+#include "Fermion/DelayedUpdate.h"
 #if defined(ENABLE_CUDA) || defined(ENABLE_SYCL)
-#include "QMCWaveFunctions/Fermion/DelayedUpdateCUDA.h"
-#if defined(ENABLE_CUDA)
-#if defined(QMC_CUDA2HIP)
-#include "rocSolverInverter.hpp"
-#else
-#include "cuSolverInverter.hpp"
-#endif
-#endif
-#if defined(ENABLE_SYCL)
-#include "syclSolverInverter.hpp"
-#endif
+#include "InverterAccel.hpp"
+#include "Fermion/DelayedUpdateAccel.h"
 #endif
 
 namespace qmcplusplus
@@ -52,27 +43,13 @@ struct AccelEngine<PlatformKind::CPU, T, FP_T>
   DelayedUpdate<T> update_eng_;
 };
 
-#if defined(ENABLE_CUDA)
-template<typename T, typename FP_T>
-struct AccelEngine<PlatformKind::CUDA, T, FP_T>
+#if defined(ENABLE_CUDA) || defined(ENABLE_SYCL)
+template<PlatformKind P, typename T, typename FP_T>
+struct AccelEngine
 {
   static constexpr bool inverter_supported = true;
-  DelayedUpdateCUDA<PlatformKind::CUDA, T> update_eng_;
-#if defined(QMC_CUDA2HIP)
-  rocSolverInverter<FP_T> inverter_;
-#else
-  cuSolverInverter<FP_T> inverter_;
-#endif
-};
-#endif
-
-#if defined(ENABLE_SYCL)
-template<typename T, typename FP_T>
-struct AccelEngine<PlatformKind::SYCL, T, FP_T>
-{
-  static constexpr bool inverter_supported = true;
-  DelayedUpdateCUDA<PlatformKind::SYCL, T> update_eng_;
-  syclSolverInverter<FP_T> inverter_;
+  DelayedUpdateAccel<P, T> update_eng_;
+  typename InverterAccel<P, FP_T>::Inverter inverter_;
 };
 #endif
 
@@ -108,7 +85,7 @@ public:
    *@param last index of last particle
    *@param ndelay delayed update rank
    */
-  DiracDeterminant(std::unique_ptr<SPOSet>&& spos,
+  DiracDeterminant(SPOSet& phi,
                    int first,
                    int last,
                    int ndelay                          = 1,
@@ -266,12 +243,6 @@ public:
 
   void evaluateHessian(ParticleSet& P, HessVector& grad_grad_psi) override;
 
-  void createResource(ResourceCollection& collection) const override;
-  void acquireResource(ResourceCollection& collection,
-                       const RefVectorWithLeader<WaveFunctionComponent>& wf_list) const override;
-  void releaseResource(ResourceCollection& collection,
-                       const RefVectorWithLeader<WaveFunctionComponent>& wf_list) const override;
-
   /** cloning function
    * @param tqp target particleset
    * @param spo spo set
@@ -279,7 +250,7 @@ public:
    * This interface is exposed only to SlaterDet and its derived classes
    * can overwrite to clone itself correctly.
    */
-  std::unique_ptr<DiracDeterminantBase> makeCopy(std::unique_ptr<SPOSet>&& spo) const override;
+  std::unique_ptr<DiracDeterminantBase> makeCopy(SPOSet& phi) const override;
 
   void evaluateRatiosAlltoOne(ParticleSet& P, std::vector<ValueType>& ratios) override;
 
