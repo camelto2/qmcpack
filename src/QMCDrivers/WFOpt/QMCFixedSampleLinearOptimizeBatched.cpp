@@ -85,6 +85,8 @@ QMCFixedSampleLinearOptimizeBatched::QMCFixedSampleLinearOptimizeBatched(
       sr_tau(0.01),
       sr_regularization(0.01),
       sr_tolerance(1e-6),
+      sr_norm_constraint(1e-3),
+      sr_decay_rate(-1),
       MinMethod("OneShiftOnly"),
       do_output_matrices_csv_(false),
       do_output_matrices_hdf_(false),
@@ -118,6 +120,8 @@ QMCFixedSampleLinearOptimizeBatched::QMCFixedSampleLinearOptimizeBatched(
   m_param.add(sr_tau, "sr_tau");
   m_param.add(sr_regularization, "sr_regularization");
   m_param.add(sr_tolerance, "sr_tolerance");
+  m_param.add(sr_norm_constraint, "sr_norm_constraint");
+  m_param.add(sr_decay_rate, "sr_decay_rate");
   // options_LMY_
   m_param.add(options_LMY_.targetExcited, "options_LMY_.targetExcited");
   m_param.add(options_LMY_.block_lm, "options_LMY_.block_lm");
@@ -1855,27 +1859,28 @@ bool QMCFixedSampleLinearOptimizeBatched::stochastic_reconfiguration_conjugate_g
 
       std::vector<RealType> param_update;
       std::vector<RealType> bvec(numParams, 0);
+
       for (int i = 0; i < numParams; i++)
-        bvec[i] = -sr_tau * ham[i + 1];
+        bvec[i] = -ham[i + 1];
       ConjugateGradient cg(sr_tolerance, sr_regularization);
       int iterations = cg.run(*optTarget, bvec, param_update);
       app_log() << "Solved iterative krylov in " << iterations << " iterations" << std::endl;
       // compute the scaling constant to apply to the update
       for (int i = 0; i < numParams; i++)
         parameterDirections[i + 1] = param_update[i];
-      objFuncWrapper_.Lambda = cg.getNonLinearRescale(*optTarget);
     }
   }
 
   //We get the parameter direction from the SR solve above using CG algorithm
-  //Then, we can either use a line search with correlated sampling to find the best update along that direction, 
-  //or we can use a simple approach where we just accept the move based on the size of the step...sr_tau in this case. 
-  //The line search with correlated sampling converges faster, but can have issues if the weight from correlated 
+  //Then, we can either use a line search with correlated sampling to find the best update along that direction,
+  //or we can use a simple approach where we just accept the move based on the size of the step...sr_tau in this case.
+  //The line search with correlated sampling converges faster, but can have issues if the weight from correlated
   //sampling gets small and stays small. Otherwise, just taking a small sr_tau will work, but can take a lot of iterations
   //
   //im sure there are better ways to do this
   if (use_line_search_)
   {
+    objFuncWrapper_.Lambda = 1.0;
     optTarget->setneedGrads(false);
 
     optdir.resize(numParams, 0);
@@ -1905,18 +1910,40 @@ bool QMCFixedSampleLinearOptimizeBatched::stochastic_reconfiguration_conjugate_g
     if (Valid || (!Valid && std::abs(objFuncWrapper_.Lambda) > 0.0))
     {
       for (int i = 0; i < numParams; i++)
-        optTarget->Params(i) = optparam[i] + objFuncWrapper_.Lambda * optdir[i];
+        optTarget->Params(i) = optparam[i] + sr_tau * objFuncWrapper_.Lambda * optdir[i];
     }
     else
     {
       for (int i = 0; i < numParams; i++)
-        optTarget->Params(i) = currentParameters.at(i) + objFuncWrapper_.Lambda * parameterDirections.at(i + 1);
+        optTarget->Params(i) =
+            currentParameters.at(i) + sr_tau * objFuncWrapper_.Lambda * parameterDirections.at(i + 1);
     }
   }
   else
   {
-    for (int i = 0; i < numParams; i++)
-      optTarget->Params(i) = currentParameters.at(i) + objFuncWrapper_.Lambda * parameterDirections.at(i + 1);
+    if (sr_decay_rate > 0)
+    {
+      RealType mag = 0.0;
+      for (int i = 0; i < numParams; i++)
+        mag += parameterDirections.at(i + 1) * parameterDirections(i + 1);
+      mag = std::sqrt(mag);
+
+      int series               = project_data_.getSeriesIndex();
+      RealType learn           = sr_tau / (1 + sr_decay_rate * series);
+      RealType norm_constraint = np.sqrt(sr_norm_constraint / mag);
+      RealType scale           = std::min(learn, norm_constraint);
+      app_log() << "Scaling parameters using learning rate and norm constraint" << std::endl;
+      app_log() << "  learning rate tau_k = sr_tau / (1 + r * k)   : " << learn << std::endl;
+      app_log() << "  norm constraint n   = sqrt(C) / ||dp||sr_tau : " << norm_constraint << std::endl;
+      app_log() << "  scale               = min(tau_k, n)          : " << scale << std::endl;
+      for (int i = 0; i < numParams; i++)
+        optTarget->Params(i) = currentParameters.at(i) + scale * parameterDirections.at(i + 1);
+    }
+    else
+    {
+      for (int i = 0; i < numParams; i++)
+        optTarget->Params(i) = currentParameters.at(i) + sr_tau * parameterDirections.at(i + 1);
+    }
   }
 
   // say what we are doing
