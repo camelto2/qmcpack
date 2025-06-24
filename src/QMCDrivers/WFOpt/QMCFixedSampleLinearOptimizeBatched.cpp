@@ -1930,7 +1930,7 @@ bool QMCFixedSampleLinearOptimizeBatched::stochastic_reconfiguration_conjugate_g
 
       int series               = project_data_.getSeriesIndex();
       RealType learn           = sr_tau / (1 + sr_decay_rate * series);
-      RealType norm_constraint = np.sqrt(sr_norm_constraint / mag);
+      RealType norm_constraint = std::sqrt(sr_norm_constraint / mag);
       RealType scale           = std::min(learn, norm_constraint);
       app_log() << "Scaling parameters using learning rate and norm constraint" << std::endl;
       app_log() << "  learning rate tau_k = sr_tau / (1 + r * k)   : " << learn << std::endl;
