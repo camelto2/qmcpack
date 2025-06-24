@@ -1944,9 +1944,9 @@ bool QMCFixedSampleLinearOptimizeBatched::stochastic_reconfiguration_conjugate_g
           parameterDirections.at(i + 1) = (1 - sr_momentum) * parameterDirections.at(i + 1) + sr_momentum * prevDirections.at(i + 1);
       if (is_manager())
       {
-        app_log() << "Storing parameter directions for SR with momentum" << std::endl;
         hdf_archive hout;
         std::string newh5 = project_data_.getProjectRoot() + ".parameter_change.h5";
+        app_log() << "Storing parameter directions for SR with momentum to " << newh5 <<  std::endl;
         hout.create(newh5, H5F_ACC_TRUNC);
         hout.write(parameterDirections, "parameter_directions");
       }
