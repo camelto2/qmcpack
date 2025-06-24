@@ -1923,6 +1923,32 @@ bool QMCFixedSampleLinearOptimizeBatched::stochastic_reconfiguration_conjugate_g
   }
   else
   {
+    if (sr_momentum > 1)
+    {
+      app_log() << "Using SR with momentum" << std::endl;
+      int series = project_data_.getSeriesIndex();
+      std::vector<RealType> prevDirections(N, 0.0);
+      if (is_manager() && series > 0)
+      {
+        hdf_archive hin;
+        std::string root = get_root_name();
+        std::string h5 = project_data_.previousRoot(root) + ".parameter_change.h5";
+        app_log() << "Reading previous paramater updates from " << h5 << std::endl;
+        hin.open(h5);
+        hin.read(prevDirections, "parameter_directions");
+      }
+      myComm->bcast(prevDirections);
+      for (int i = 0; i < numParms; i++)
+        parameterDirections.at(i + 1) = (1 - sr_momentum) * parameterDirections.at(i + 1) + sr_momentum * prevDirections.at(i + 1);
+      if (is_manager())
+      {
+        app_log() << "Storing parameter directions for SR with momentum" << std::endl;
+        hdf_archive hout;
+        std::string newh5 = get_root_name() + ".parameter_change.h5";
+        hout.create(newh5, H5F_ACC_TRUNC);
+        hout.write(parameterDirections, "parameter_directions");
+      }
+    }
     if (sr_decay_rate > 0)
     {
       RealType mag = 0.0;
@@ -1948,32 +1974,6 @@ bool QMCFixedSampleLinearOptimizeBatched::stochastic_reconfiguration_conjugate_g
         optTarget->Params(i) = currentParameters.at(i) + sr_tau * parameterDirections.at(i + 1);
     }
 
-    if (sr_momentum > 1)
-    {
-      app_log() << "Storing parameter directions for SR with momentum" << std::endl;
-      if (is_manager())
-      {
-        hdf_archive hout;
-        std::string newh5 = get_root_name() + ".parameter_change.h5";
-        hout.create(newh5, H5F_ACC_TRUNC);
-        hout.write(parameterDirections, "parameter_directions");
-      }
-      int series = project_data_.getSeriesIndex();
-      std::vector<RealType> prevDirections(N, 0.0);
-      if (is_manager() && series > 0)
-      {
-        hdf_archive hin;
-        std::string root = get_root_name();
-        std::string h5 = project_data_.previousRoot(root) + ".parameter_change.h5";
-        app_log() << "Reading previous paramater updates from " << h5 << std::endl;
-        hin.open(h5);
-        hin.read(prevDirections, "parameter_directions");
-      }
-      myComm->bcast(prevDirections);
-      for (int i = 0; i < numParams; i++)
-        optTarget->Params(i) += sr_momentum * prevDirections.at(i + 1);
-
-    }
   }
 
   // say what we are doing
