@@ -1963,7 +1963,8 @@ bool QMCFixedSampleLinearOptimizeBatched::stochastic_reconfiguration_conjugate_g
       if (is_manager() && series > 0)
       {
         hdf_archive hin;
-        std::string h5 = project_data_.previousRoot(get_root_name()) + ".parameter_change.h5";
+        std::string root = get_root_name();
+        std::string h5 = project_data_.previousRoot(root) + ".parameter_change.h5";
         app_log() << "Reading previous paramater updates from " << h5 << std::endl;
         hin.open(h5);
         hin.read(prevDirections, "parameter_directions");
