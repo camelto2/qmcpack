@@ -252,6 +252,8 @@ const std::string& ProjectData::getTitle() const noexcept { return title_; }
 
 const std::string& ProjectData::currentMainRoot() const noexcept { return project_main_; }
 
+const std::string& ProjectData::getProjectRoot() const noexcept { return project_root_; }
+
 const std::string& ProjectData::nextRoot() const noexcept { return next_root_; }
 
 int ProjectData::getSeriesIndex() const noexcept { return series_; }

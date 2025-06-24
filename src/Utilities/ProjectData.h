@@ -86,6 +86,7 @@ public:
    * translate to project_main_ = "det_qmc_short_sdbatch_vmcbatch_mwalkers.s000"
    */
   const std::string& currentMainRoot() const noexcept;
+  const std::string& getProjectRoot() const noexcept;
 
   /** 
    * @brief returns the nextroot of the project, the series id is incremented at every QMC section
