@@ -1963,9 +1963,9 @@ bool QMCFixedSampleLinearOptimizeBatched::stochastic_reconfiguration_conjugate_g
       RealType norm_constraint = std::sqrt(sr_norm_constraint / mag);
       RealType scale           = std::min(learn, norm_constraint);
       app_log() << "Scaling parameters using learning rate and norm constraint" << std::endl;
-      app_log() << "  learning rate tau_k = sr_tau / (1 + r * k)   : " << learn << std::endl;
-      app_log() << "  norm constraint n   = sqrt(C) / ||dp||sr_tau : " << norm_constraint << std::endl;
-      app_log() << "  scale               = min(tau_k, n)          : " << scale << std::endl;
+      app_log() << "  learning rate tau_k = sr_tau / (1 + r * k) : " << learn << std::endl;
+      app_log() << "  norm constraint n   = sqrt(C) / ||dp||     : " << norm_constraint << std::endl;
+      app_log() << "  scale               = min(tau_k, n)        : " << scale << std::endl;
 
       for (int i = 0; i < numParams; i++)
         optTarget->Params(i) = currentParameters.at(i) + scale * parameterDirections.at(i + 1);
