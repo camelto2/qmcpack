@@ -1938,7 +1938,7 @@ bool QMCFixedSampleLinearOptimizeBatched::stochastic_reconfiguration_conjugate_g
         hin.read(prevDirections, "parameter_directions");
       }
       myComm->bcast(prevDirections);
-      for (int i = 0; i < numParms; i++)
+      for (int i = 0; i < numParams; i++)
         parameterDirections.at(i + 1) = (1 - sr_momentum) * parameterDirections.at(i + 1) + sr_momentum * prevDirections.at(i + 1);
       if (is_manager())
       {
