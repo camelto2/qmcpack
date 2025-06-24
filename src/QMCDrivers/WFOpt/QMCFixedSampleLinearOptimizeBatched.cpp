@@ -1925,7 +1925,7 @@ bool QMCFixedSampleLinearOptimizeBatched::stochastic_reconfiguration_conjugate_g
     {
       RealType mag = 0.0;
       for (int i = 0; i < numParams; i++)
-        mag += parameterDirections.at(i + 1) * parameterDirections(i + 1);
+        mag += parameterDirections.at(i + 1) * parameterDirections.at(i + 1);
       mag = std::sqrt(mag);
 
       int series               = project_data_.getSeriesIndex();
