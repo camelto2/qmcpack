@@ -205,9 +205,9 @@ private:
   /// tolerance for CG solution in SR
   RealType sr_tolerance;
 
-  /// norm constraint
   RealType sr_norm_constraint;
   RealType sr_decay_rate;
+  RealType sr_momentum;
 
   // ------------------------------------
   // Parameters in this struct are used by one or more of the adaptive LM, descent, or hybrid optimizers

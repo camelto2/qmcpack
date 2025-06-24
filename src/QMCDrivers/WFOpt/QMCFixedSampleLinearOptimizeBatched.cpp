@@ -87,6 +87,7 @@ QMCFixedSampleLinearOptimizeBatched::QMCFixedSampleLinearOptimizeBatched(
       sr_tolerance(1e-6),
       sr_norm_constraint(1e-3),
       sr_decay_rate(-1),
+      sr_momentum(-1),
       MinMethod("OneShiftOnly"),
       do_output_matrices_csv_(false),
       do_output_matrices_hdf_(false),
@@ -122,6 +123,7 @@ QMCFixedSampleLinearOptimizeBatched::QMCFixedSampleLinearOptimizeBatched(
   m_param.add(sr_tolerance, "sr_tolerance");
   m_param.add(sr_norm_constraint, "sr_norm_constraint");
   m_param.add(sr_decay_rate, "sr_decay_rate");
+  m_param.add(sr_momentum, "sr_momentum");
   // options_LMY_
   m_param.add(options_LMY_.targetExcited, "options_LMY_.targetExcited");
   m_param.add(options_LMY_.block_lm, "options_LMY_.block_lm");
@@ -1927,7 +1929,7 @@ bool QMCFixedSampleLinearOptimizeBatched::stochastic_reconfiguration_conjugate_g
       for (int i = 0; i < numParams; i++)
         mag += parameterDirections.at(i + 1) * parameterDirections.at(i + 1);
       mag = std::sqrt(mag);
-
+      
       int series               = project_data_.getSeriesIndex();
       RealType learn           = sr_tau / (1 + sr_decay_rate * series);
       RealType norm_constraint = std::sqrt(sr_norm_constraint / mag);
@@ -1936,6 +1938,7 @@ bool QMCFixedSampleLinearOptimizeBatched::stochastic_reconfiguration_conjugate_g
       app_log() << "  learning rate tau_k = sr_tau / (1 + r * k)   : " << learn << std::endl;
       app_log() << "  norm constraint n   = sqrt(C) / ||dp||sr_tau : " << norm_constraint << std::endl;
       app_log() << "  scale               = min(tau_k, n)          : " << scale << std::endl;
+
       for (int i = 0; i < numParams; i++)
         optTarget->Params(i) = currentParameters.at(i) + scale * parameterDirections.at(i + 1);
     }
@@ -1943,6 +1946,32 @@ bool QMCFixedSampleLinearOptimizeBatched::stochastic_reconfiguration_conjugate_g
     {
       for (int i = 0; i < numParams; i++)
         optTarget->Params(i) = currentParameters.at(i) + sr_tau * parameterDirections.at(i + 1);
+    }
+
+    if (sr_momentum > 1)
+    {
+      app_log() << "Storing parameter directions for SR with momentum" << std::endl;
+      if (is_manager())
+      {
+        hdf_archive hout;
+        std::string newh5 = get_root_name() + ".parameter_change.h5";
+        hout.create(newh5, H5F_ACC_TRUNC);
+        hout.write(parameterDirections, "parameter_directions");
+      }
+      int series = project_data_.getSeriesIndex();
+      std::vector<RealType> prevDirections(N, 0.0);
+      if (is_manager() && series > 0)
+      {
+        hdf_archive hin;
+        std::string h5 = project_data_.previousRoot(get_root_name()) + ".parameter_change.h5";
+        app_log() << "Reading previous paramater updates from " << h5 << std::endl;
+        hin.open(h5);
+        hin.read(prevDirections, "parameter_directions");
+      }
+      myComm->bcast(prevDirections);
+      for (int i = 0; i < numParams; i++)
+        optTarget->Params(i) += sr_momentum * prevDirections.at(i + 1);
+
     }
   }
 
