@@ -330,6 +330,9 @@ bool QMCFixedSampleLinearOptimizeBatched::run()
   if (options_LMY_.current_optimizer_type == OptimizerType::STOCHASTIC_RECONFIGURATION_CG)
     return stochastic_reconfiguration_conjugate_gradient();
 
+  if (options_LMY_.current_optimizer_type == OptimizerType::MIN_STOCHASTIC_RECONFIGURATION)
+    return min_stochastic_reconfiguration();
+
   return previous_linear_methods_run();
 }
 
@@ -1930,6 +1933,96 @@ bool QMCFixedSampleLinearOptimizeBatched::stochastic_reconfiguration_conjugate_g
             << std::setprecision(4) << bestShift_i << "     and shift_s = " << std::scientific << std::right
             << std::setw(12) << std::setprecision(4) << bestShift_s << std::endl
             << "*****************************************************************************" << std::endl;
+
+  // perform some finishing touches for this linear method iteration
+  finish();
+
+  // return whether the cost function's report counter is positive
+  return (optTarget->getReportCounter() > 0);
+}
+
+bool QMCFixedSampleLinearOptimizeBatched::min_stochastic_reconfiguration()
+{
+  app_log() << std::endl
+            << "*****************************************************************************" << std::endl
+            << "                   Running MinSR                   " << std::endl
+            << "*****************************************************************************" << std::endl;
+  // ensure the cost function is set to compute derivative vectors
+  optTarget->setneedGrads(true);
+
+  // generate samples and compute weights, local energies, and derivative vectors
+  // Note: this has a switch for checkConfigurations or checkConfigurationsSR to do stochastic reconfiguration
+  // The SR version avoids calculating the dhpsioverpsi terms and only does dlogpsi
+  start();
+
+  // get number of optimizable parameters
+  const int numParams = optTarget->getNumParams();
+  const int numSamples = optTarget->getNumSamples();
+  if (numSamples > numParams)
+    throw std::runtime_error("MinSR works in the limit that Nsamples < Nparameters");
+
+  // prepare vectors to hold the initial and current parameters
+  std::vector<RealType> currentParameters(numParams, 0.0);
+
+  // initialize the initial and current parameter vectors
+  for (int i = 0; i < numParams; i++)
+    currentParameters.at(i) = std::real(optTarget->Params(i));
+
+  // prepare vectors to hold the parameter update directions for each shift
+  std::vector<RealType> parameterDirections;
+  parameterDirections.assign(numParams, 0.0);
+
+  // compute the initial cost
+  const RealType initCost = optTarget->computedCost();
+
+  std::vector<RealType> ham(numSamples, 0);
+  Matrix<RealType> derivMat(numSamples, numParams);
+  Matrix<RealType> ovlMat(numSamples, numSamples);
+
+  {
+    ScopedTimer local(build_olv_ham_timer_);
+    Timer t_build_matrices;
+    // say what we are doing
+    app_log() << std::endl
+              << "********************************************************" << std::endl
+              << "Building <Psi_i/Psi_0 Psi_j/Psi_0> and <Psi_i/Psi_0 E_L>" << std::endl
+              << "********************************************************" << std::endl;
+
+    //This constructs \langle \psi_i/\Psi_0 * E_L \rangle
+    optTarget->getMinSRData(ham, derivMat, ovlMat);
+
+    /*
+    {
+      ScopedTimer local(sr_solver_timer_);
+      Timer t_eigen;
+      app_log() << std::endl
+                << "*********************" << std::endl
+                << "Solving linear system" << std::endl
+                << "*********************" << std::endl;
+
+
+      std::vector<RealType> param_update;
+      std::vector<RealType> bvec(numParams, 0);
+      for (int i = 0; i < numParams; i++)
+        bvec[i] =  -ham[i + 1];
+      ConjugateGradient cg(sr_tolerance, sr_regularization);
+      int iterations = cg.run(*optTarget, bvec, param_update);
+      app_log() << "Solved iterative krylov in " << iterations << " iterations" << std::endl;
+      // compute the scaling constant to apply to the update
+      for (int i = 0; i < numParams; i++)
+        parameterDirections[i + 1] = param_update[i];
+      objFuncWrapper_.Lambda = cg.getNonLinearRescale(*optTarget);
+    }
+  }
+  */
+
+  for (int i = 0; i < numParams; i++)
+    optTarget->Params(i) = currentParameters.at(i) + sr_tau * parameterDirections.at(i + 1);
+
+  // say what we are doing
+  app_log() << std::endl << "The new set of parameters is valid. Updating the trial wave function!" << std::endl;
+  accept_history <<= 1;
+  accept_history.set(0, true);
 
   // perform some finishing touches for this linear method iteration
   finish();

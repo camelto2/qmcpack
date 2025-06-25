@@ -140,6 +140,11 @@ void QMCCostFunctionBase::calcOvlParmVec(const std::vector<Return_rt>& parm, std
   throw std::runtime_error("Need to implement calcOvlParmVec");
 }
 
+void QMCCostFunctionBase::getMinSRData(std::vector<Return_rt>& ham, Matrix<Return_rt>& derivMat, Matrix<Return_rt>& ovlMat) 
+{
+  throw std::runtime_error("Need to implement getMinSRData");
+}
+
 void QMCCostFunctionBase::checkConfigurationsSR(EngineHandle& handle)
 {
   throw std::runtime_error("Need to implement checkConfigurationsSR");

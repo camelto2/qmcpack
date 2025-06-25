@@ -1081,4 +1081,39 @@ void QMCCostFunctionBatched::calcOvlParmVec(const std::vector<Return_rt>& parm, 
   }
   myComm->allreduce(ovlParmVec);
 }
+
+void QMCCostFunctionBatched::getMinSRData(std::vector<Return_rt>& ham, Matrix<Return_rt>& derivMat, Matrix<Return_rt>& ovlMat)
+{
+  ScopedTimer tmp_timer(fill_timer_);
+
+  std::fill(ham.begin(), ham.end(), 0.0);
+  std::fill(derivMat.begin(), derivMat.end(), 0.0);
+  std::fill(ovlMat.begin(), derivMat.end(), 0.0);
+
+  //calculate averages
+  Return_rt eavg   = SumValue[SUM_E_WGT] / SumValue[SUM_WGT];
+  std::vector<Return_t> derivAvg(getNumParams(), 0.0);
+  Return_rt wgtinv = 1.0 / SumValue[SUM_WGT];
+  for (int iw = 0; iw < rank_local_num_samples_; iw++)
+  {
+    const Return_rt* restrict saved = RecordsOnNode_[iw];
+    Return_rt weight                = saved[REWEIGHT] * wgtinv;
+    const Return_t* Dsaved          = DerivRecords_[iw];
+    for (int pm = 0; pm < getNumParams(); pm++)
+      derivAvg[pm] += Dsaved[pm] * weight;
+  }
+  myComm->allreduce(derivAvg);
+
+  Matrix<Return_rt> localDerivDiffs(rank_local_num_samples_, getNumParams());
+  std::vector<Return_rt> localEnergyDiffs(rank_local_num_samples_);
+  for (int iw = 0; iw < rank_local_num_samples_; iw++)
+  {
+    const Return_rt* restrict saved = RecordsOnNode_[iw];
+    const Return_t* Dsaved          = DerivRecords_[iw];
+    Return_rt eloc                  = saved[ENERGY_NEW];
+    for (int pm = 0; pm < getNumParams(); pm++)
+      localDerivDiffs[iw, pm] = std::sqrt(wgtinv) * (Dsaved[pm] - Davg[pm]);
+    localEnergyDiffs[iw] = -std::sqrt(wgtinv) * (eloc - eavg);
+  }
+}
 } // namespace qmcplusplus
