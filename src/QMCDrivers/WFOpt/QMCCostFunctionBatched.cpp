@@ -1118,7 +1118,16 @@ void QMCCostFunctionBatched::getMinSRData(Vector<Return_rt>& ham, Matrix<Return_
       localDerivDiffs[iw * getNumParams() + pm] = std::sqrt(wgtinv) * std::real(Dsaved[pm] - derivAvg[pm]);
     localEnergyDiffs[iw] = -std::sqrt(wgtinv) * (eloc - eavg);
   }
-  //get Ovl matrix per node
+
+  //gather local energies into global energies
+  myComm->gather(localEnergyDiffs, ham);
+
+  //gather local derivs into global derivs
+  std::vector<Return_rt> derivVec(getNumSamples() * getNumParams());
+  myComm->gather(localDerivDiffs, derivVec);
+  std::copy(derivMat.begin(), derivMat.end(), derivVec.begin());
+
+  //gather local ovls into global ovl
   BLAS::gemm('T','N', rank_local_num_samples_, rank_local_num_samples_, getNumParams(), 1.0, localDerivDiffs.data(), getNumParams(), localDerivDiffs.data(), rank_local_num_samples_, 0.0, localOvlMat.data(), rank_local_num_samples_);
 
   std::vector<Return_rt> ovlVec(getNumSamples() * getNumParams());
