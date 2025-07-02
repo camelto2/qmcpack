@@ -1119,8 +1119,10 @@ void QMCCostFunctionBatched::getMinSRData(Vector<Return_rt>& ham, Matrix<Return_
     localEnergyDiffs[iw] = -std::sqrt(wgtinv) * (eloc - eavg);
   }
 
+  std::vector<Return_rt> hamVec(getNumSamples());
   //gather local energies into global energies
-  myComm->gather(localEnergyDiffs, ham);
+  myComm->gather(localEnergyDiffs, hamVec);
+  std::copy(ham.begin(), ham.end(), hamVec.begin());
 
   //gather local derivs into global derivs
   std::vector<Return_rt> derivVec(getNumSamples() * getNumParams());
