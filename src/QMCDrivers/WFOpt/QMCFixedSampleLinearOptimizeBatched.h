@@ -120,6 +120,8 @@ private:
 
   // simple stochastic reconfig
   bool stochastic_reconfiguration_conjugate_gradient();
+  // simple stochastic reconfig
+  bool min_stochastic_reconfiguration();
 
   // perform optimization using a gradient descent algorithm
   bool descent_run();

@@ -35,7 +35,7 @@ const std::map<std::string, OptimizerType> OptimizerNames =
      {"descent", OptimizerType::DESCENT}, {"hybrid", OptimizerType::HYBRID},
      {"gradient_test", OptimizerType::GRADIENT_TEST},
      {"sr_cg", OptimizerType::STOCHASTIC_RECONFIGURATION_CG},
-     {"minSR", OptimizerType::MIN_STOCHASTIC_RECONFIGURATION};
+     {"minSR", OptimizerType::MIN_STOCHASTIC_RECONFIGURATION}};
 
 } // namespace qmcplusplus
 #endif

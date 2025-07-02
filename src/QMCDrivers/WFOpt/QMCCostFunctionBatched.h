@@ -65,7 +65,7 @@ public:
   Return_rt fillOverlapHamiltonianMatrices(Matrix<Return_rt>& Left, Matrix<Return_rt>& Right) override;
   Return_rt fillHamVec(std::vector<Return_rt>& ham) override;
   void calcOvlParmVec(const std::vector<Return_rt>& parm, std::vector<Return_rt>& ovlParmVec) override;
-  void getMinSRData(std::vector<Return_rt>& ham, Matrix<Return_rt>& derivMat, Matrix<Return_rt>& ovlMat) override;
+  void getMinSRData(Vector<Return_rt>& ham, Matrix<Return_rt>& derivMat, Matrix<Return_rt>& ovlMat) override;
 
 protected:
   /// H components used in correlated sampling. It can be KE or KE+NLPP

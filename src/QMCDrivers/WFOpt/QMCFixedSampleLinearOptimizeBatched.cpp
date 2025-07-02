@@ -1871,9 +1871,9 @@ bool QMCFixedSampleLinearOptimizeBatched::stochastic_reconfiguration_conjugate_g
   }
 
   //We get the parameter direction from the SR solve above using CG algorithm
-  //Then, we can either use a line search with correlated sampling to find the best update along that direction, 
-  //or we can use a simple approach where we just accept the move based on the size of the step...sr_tau in this case. 
-  //The line search with correlated sampling converges faster, but can have issues if the weight from correlated 
+  //Then, we can either use a line search with correlated sampling to find the best update along that direction,
+  //or we can use a simple approach where we just accept the move based on the size of the step...sr_tau in this case.
+  //The line search with correlated sampling converges faster, but can have issues if the weight from correlated
   //sampling gets small and stays small. Otherwise, just taking a small sr_tau will work, but can take a lot of iterations
   //
   //im sure there are better ways to do this
@@ -1956,7 +1956,7 @@ bool QMCFixedSampleLinearOptimizeBatched::min_stochastic_reconfiguration()
   start();
 
   // get number of optimizable parameters
-  const int numParams = optTarget->getNumParams();
+  const int numParams  = optTarget->getNumParams();
   const int numSamples = optTarget->getNumSamples();
   if (numSamples > numParams)
     throw std::runtime_error("MinSR works in the limit that Nsamples < Nparameters");
@@ -1975,9 +1975,12 @@ bool QMCFixedSampleLinearOptimizeBatched::min_stochastic_reconfiguration()
   // compute the initial cost
   const RealType initCost = optTarget->computedCost();
 
-  std::vector<RealType> ham(numSamples, 0);
+  Vector<RealType> ham(numSamples);
   Matrix<RealType> derivMat(numSamples, numParams);
   Matrix<RealType> ovlMat(numSamples, numSamples);
+  Matrix<RealType> invMat(numSamples, numSamples);
+  Matrix<RealType> prod(numParams, numSamples);
+  Vector<RealType> dp(numParams);
 
   {
     ScopedTimer local(build_olv_ham_timer_);
@@ -1990,34 +1993,23 @@ bool QMCFixedSampleLinearOptimizeBatched::min_stochastic_reconfiguration()
 
     //This constructs \langle \psi_i/\Psi_0 * E_L \rangle
     optTarget->getMinSRData(ham, derivMat, ovlMat);
-
-    /*
-    {
-      ScopedTimer local(sr_solver_timer_);
-      Timer t_eigen;
-      app_log() << std::endl
-                << "*********************" << std::endl
-                << "Solving linear system" << std::endl
-                << "*********************" << std::endl;
-
-
-      std::vector<RealType> param_update;
-      std::vector<RealType> bvec(numParams, 0);
-      for (int i = 0; i < numParams; i++)
-        bvec[i] =  -ham[i + 1];
-      ConjugateGradient cg(sr_tolerance, sr_regularization);
-      int iterations = cg.run(*optTarget, bvec, param_update);
-      app_log() << "Solved iterative krylov in " << iterations << " iterations" << std::endl;
-      // compute the scaling constant to apply to the update
-      for (int i = 0; i < numParams; i++)
-        parameterDirections[i + 1] = param_update[i];
-      objFuncWrapper_.Lambda = cg.getNonLinearRescale(*optTarget);
-    }
   }
-  */
+
+  if (is_manager())
+  {
+    ScopedTimer local(sr_solver_timer_);
+    //dp = O.T * (S + lambda I)^-1 * e 
+    invMat.copy(ovlMat);
+    for (int i = 0; i < numSamples; i++)
+      invMat(i,i) += sr_regularization;
+    invert_matrix(invMat, false);
+    MatrixOperators::product_AtB(derivMat, invMat, prod);
+    MatrixOperators::product(prod, ham, dp);
+  }
+  myComm->bcast(dp);
 
   for (int i = 0; i < numParams; i++)
-    optTarget->Params(i) = currentParameters.at(i) + sr_tau * parameterDirections.at(i + 1);
+    optTarget->Params(i) = currentParameters.at(i) + sr_tau * dp[i];
 
   // say what we are doing
   app_log() << std::endl << "The new set of parameters is valid. Updating the trial wave function!" << std::endl;

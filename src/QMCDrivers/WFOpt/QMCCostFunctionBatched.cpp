@@ -23,6 +23,7 @@
 #include "Message/CommOperators.h"
 #include "QMCDrivers/Optimizers/DescentEngine.h"
 #include "Concurrency/ParallelExecutor.hpp"
+#include "Platforms/CPU/BLAS.hpp"
 //#define QMCCOSTFUNCTION_DEBUG
 
 namespace qmcplusplus
@@ -1082,7 +1083,7 @@ void QMCCostFunctionBatched::calcOvlParmVec(const std::vector<Return_rt>& parm, 
   myComm->allreduce(ovlParmVec);
 }
 
-void QMCCostFunctionBatched::getMinSRData(std::vector<Return_rt>& ham, Matrix<Return_rt>& derivMat, Matrix<Return_rt>& ovlMat)
+void QMCCostFunctionBatched::getMinSRData(Vector<Return_rt>& ham, Matrix<Return_rt>& derivMat, Matrix<Return_rt>& ovlMat)
 {
   ScopedTimer tmp_timer(fill_timer_);
 
@@ -1104,7 +1105,9 @@ void QMCCostFunctionBatched::getMinSRData(std::vector<Return_rt>& ham, Matrix<Re
   }
   myComm->allreduce(derivAvg);
 
-  Matrix<Return_rt> localDerivDiffs(rank_local_num_samples_, getNumParams());
+  //set these up in row major layout
+  std::vector<Return_rt> localDerivDiffs(rank_local_num_samples_ * getNumParams());
+  std::vector<Return_rt> localOvlMat(rank_local_num_samples_ * getNumParams());
   std::vector<Return_rt> localEnergyDiffs(rank_local_num_samples_);
   for (int iw = 0; iw < rank_local_num_samples_; iw++)
   {
@@ -1112,8 +1115,15 @@ void QMCCostFunctionBatched::getMinSRData(std::vector<Return_rt>& ham, Matrix<Re
     const Return_t* Dsaved          = DerivRecords_[iw];
     Return_rt eloc                  = saved[ENERGY_NEW];
     for (int pm = 0; pm < getNumParams(); pm++)
-      localDerivDiffs[iw, pm] = std::sqrt(wgtinv) * (Dsaved[pm] - Davg[pm]);
+      localDerivDiffs[iw * getNumParams() + pm] = std::sqrt(wgtinv) * std::real(Dsaved[pm] - derivAvg[pm]);
     localEnergyDiffs[iw] = -std::sqrt(wgtinv) * (eloc - eavg);
   }
+  //get Ovl matrix per node
+  BLAS::gemm('T','N', rank_local_num_samples_, rank_local_num_samples_, getNumParams(), 1.0, localDerivDiffs.data(), getNumParams(), localDerivDiffs.data(), rank_local_num_samples_, 0.0, localOvlMat.data(), rank_local_num_samples_);
+
+  std::vector<Return_rt> ovlVec(getNumSamples() * getNumParams());
+  myComm->gather(localOvlMat, ovlVec);
+  std::copy(ovlMat.begin(), ovlMat.end(), ovlVec.begin());
+
 }
 } // namespace qmcplusplus
