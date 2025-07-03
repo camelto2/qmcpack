@@ -1130,7 +1130,7 @@ void QMCCostFunctionBatched::getMinSRData(Vector<Return_rt>& ham, Matrix<Return_
   std::copy(derivMat.begin(), derivMat.end(), derivVec.begin());
 
   //gather local ovls into global ovl
-  BLAS::gemm('T','N', rank_local_num_samples_, rank_local_num_samples_, getNumParams(), 1.0, localDerivDiffs.data(), getNumParams(), localDerivDiffs.data(), rank_local_num_samples_, 0.0, localOvlMat.data(), rank_local_num_samples_);
+  BLAS::gemm('T','N', rank_local_num_samples_, rank_local_num_samples_, getNumParams(), 1.0, localDerivDiffs.data(), getNumParams(), localDerivDiffs.data(), getNumParams(), 0.0, localOvlMat.data(), rank_local_num_samples_);
 
   std::vector<Return_rt> ovlVec(getNumSamples() * getNumParams());
   myComm->gather(localOvlMat, ovlVec);
