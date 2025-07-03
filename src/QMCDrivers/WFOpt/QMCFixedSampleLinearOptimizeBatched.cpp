@@ -213,7 +213,7 @@ void QMCFixedSampleLinearOptimizeBatched::start()
     optTarget->getConfigurations("");
     optTarget->setRng(vmcEngine->getRngRefs());
     NullEngineHandle handle;
-    if (options_LMY_.current_optimizer_type == OptimizerType::STOCHASTIC_RECONFIGURATION_CG || options_LMY_.current_optimizer_typ == OptimizerType::MIN_STOCHASTIC_RECONFIGURATION)
+    if (options_LMY_.current_optimizer_type == OptimizerType::STOCHASTIC_RECONFIGURATION_CG || options_LMY_.current_optimizer_type == OptimizerType::MIN_STOCHASTIC_RECONFIGURATION)
       optTarget->checkConfigurationsSR(handle);
     else
       optTarget->checkConfigurations(handle);
