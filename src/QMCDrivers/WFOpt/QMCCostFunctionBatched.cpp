@@ -1122,19 +1122,19 @@ void QMCCostFunctionBatched::getMinSRData(Vector<Return_rt>& ham, Matrix<Return_
   std::vector<Return_rt> hamVec(getNumSamples());
   //gather local energies into global energies
   myComm->gather(localEnergyDiffs, hamVec);
-  std::copy(ham.begin(), ham.end(), hamVec.begin());
+  std::copy(hamVec.begin(), hamVec.end(), ham.begin());
 
   //gather local derivs into global derivs
   std::vector<Return_rt> derivVec(getNumSamples() * getNumParams());
   myComm->gather(localDerivDiffs, derivVec);
-  std::copy(derivMat.begin(), derivMat.end(), derivVec.begin());
+  std::copy(derivVec.begin(), derivVec.end(), derivMat.begin());
 
   //gather local ovls into global ovl
   BLAS::gemm('T','N', rank_local_num_samples_, rank_local_num_samples_, getNumParams(), 1.0, localDerivDiffs.data(), getNumParams(), localDerivDiffs.data(), getNumParams(), 0.0, localOvlMat.data(), rank_local_num_samples_);
 
   std::vector<Return_rt> ovlVec(getNumSamples() * getNumParams());
   myComm->gather(localOvlMat, ovlVec);
-  std::copy(ovlMat.begin(), ovlMat.end(), ovlVec.begin());
+  std::copy(ovlVec.begin(), ovlVec.end(), ovlMat.begin());
 
 }
 } // namespace qmcplusplus
