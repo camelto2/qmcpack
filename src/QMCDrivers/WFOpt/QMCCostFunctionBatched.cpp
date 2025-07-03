@@ -1089,7 +1089,7 @@ void QMCCostFunctionBatched::getMinSRData(Vector<Return_rt>& ham, Matrix<Return_
 
   std::fill(ham.begin(), ham.end(), 0.0);
   std::fill(derivMat.begin(), derivMat.end(), 0.0);
-  std::fill(ovlMat.begin(), derivMat.end(), 0.0);
+  std::fill(ovlMat.begin(), ovlMat.end(), 0.0);
 
   //calculate averages
   Return_rt eavg   = SumValue[SUM_E_WGT] / SumValue[SUM_WGT];
