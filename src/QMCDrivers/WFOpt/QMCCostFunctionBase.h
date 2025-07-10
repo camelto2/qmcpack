@@ -142,7 +142,7 @@ public:
   virtual Return_rt fillHamVec(std::vector<Return_rt>& ham);
   virtual void calcOvlParmVec(const std::vector<Return_rt>& parm,
                               std::vector<Return_rt>& ovlParmVec);
-  virtual void getMinSRData(Vector<Return_rt>& ham, Matrix<Return_rt>& derivMat, Matrix<Return_rt>& ovlMat);
+  virtual void getMinSRData(Vector<Return_rt>& ham, Matrix<Return_rt>& derivMat);
 
 #ifdef HAVE_LMY_ENGINE
   Return_rt LMYEngineCost(const bool needDeriv, cqmc::engine::LMYEngine<Return_t>* EngineObj);

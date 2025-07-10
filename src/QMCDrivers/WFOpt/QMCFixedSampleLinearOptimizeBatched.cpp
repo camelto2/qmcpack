@@ -1992,12 +1992,14 @@ bool QMCFixedSampleLinearOptimizeBatched::min_stochastic_reconfiguration()
               << "********************************************************" << std::endl;
 
     //This constructs \langle \psi_i/\Psi_0 * E_L \rangle
-    optTarget->getMinSRData(ham, derivMat, ovlMat);
+    optTarget->getMinSRData(ham, derivMat);
   }
 
   if (is_manager())
   {
     ScopedTimer local(sr_solver_timer_);
+
+    MatrixOperators::product_ABt(derivMat, derivMat, ovlMat);
     //dp = O.T * (S + lambda I)^-1 * e 
     invMat.copy(ovlMat);
     for (int i = 0; i < numSamples; i++)

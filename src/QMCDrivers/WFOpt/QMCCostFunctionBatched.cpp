@@ -1083,13 +1083,12 @@ void QMCCostFunctionBatched::calcOvlParmVec(const std::vector<Return_rt>& parm, 
   myComm->allreduce(ovlParmVec);
 }
 
-void QMCCostFunctionBatched::getMinSRData(Vector<Return_rt>& ham, Matrix<Return_rt>& derivMat, Matrix<Return_rt>& ovlMat)
+void QMCCostFunctionBatched::getMinSRData(Vector<Return_rt>& ham, Matrix<Return_rt>& derivMat)
 {
   ScopedTimer tmp_timer(fill_timer_);
 
   std::fill(ham.begin(), ham.end(), 0.0);
   std::fill(derivMat.begin(), derivMat.end(), 0.0);
-  std::fill(ovlMat.begin(), ovlMat.end(), 0.0);
 
   //calculate averages
   Return_rt eavg   = SumValue[SUM_E_WGT] / SumValue[SUM_WGT];
@@ -1107,7 +1106,6 @@ void QMCCostFunctionBatched::getMinSRData(Vector<Return_rt>& ham, Matrix<Return_
 
   //set these up in row major layout
   std::vector<Return_rt> localDerivDiffs(rank_local_num_samples_ * getNumParams());
-  std::vector<Return_rt> localOvlMat(rank_local_num_samples_ * getNumParams());
   std::vector<Return_rt> localEnergyDiffs(rank_local_num_samples_);
   for (int iw = 0; iw < rank_local_num_samples_; iw++)
   {
@@ -1128,13 +1126,6 @@ void QMCCostFunctionBatched::getMinSRData(Vector<Return_rt>& ham, Matrix<Return_
   std::vector<Return_rt> derivVec(getNumSamples() * getNumParams());
   myComm->gather(localDerivDiffs, derivVec);
   std::copy(derivVec.begin(), derivVec.end(), derivMat.begin());
-
-  //gather local ovls into global ovl
-  BLAS::gemm('T','N', rank_local_num_samples_, rank_local_num_samples_, getNumParams(), 1.0, localDerivDiffs.data(), getNumParams(), localDerivDiffs.data(), getNumParams(), 0.0, localOvlMat.data(), rank_local_num_samples_);
-
-  std::vector<Return_rt> ovlVec(getNumSamples() * getNumParams());
-  myComm->gather(localOvlMat, ovlVec);
-  std::copy(ovlVec.begin(), ovlVec.end(), ovlMat.begin());
 
 }
 } // namespace qmcplusplus
