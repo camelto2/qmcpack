@@ -121,6 +121,9 @@ private:
   // simple stochastic reconfig
   bool stochastic_reconfiguration_conjugate_gradient();
 
+  // straighforward implementation of PII from https://doi.org/10.48550/arXiv.2507.10835
+  bool projected_inverse_iteration();
+
   // perform optimization using a gradient descent algorithm
   bool descent_run();
 

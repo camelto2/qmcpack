@@ -1938,6 +1938,25 @@ bool QMCFixedSampleLinearOptimizeBatched::stochastic_reconfiguration_conjugate_g
   return (optTarget->getReportCounter() > 0);
 }
 
+bool QMCFixedSampleLinearOptimizeBatched::projected_inverse_iteration()
+{
+  app_log() << std::endl
+            << "*****************************************************************************" << std::endl
+            << "                   Projected Inverse Iteration                               " << std::endl
+            << "*****************************************************************************" << std::endl;
+  // ensure the cost function is set to compute derivative vectors
+  optTarget->setneedGrads(true);
+
+  // generate samples and compute weights, local energies, and derivative vectors
+  // Note: this has a switch for checkConfigurations or checkConfigurationsSR to do stochastic reconfiguration
+  // The SR version avoids calculating the dhpsioverpsi terms and only does dlogpsi
+  start();
+
+  finish();
+
+  return (optTarget->getReportCounter() > 0);
+}
+
 #ifdef HAVE_LMY_ENGINE
 //Function for optimizing using gradient descent
 bool QMCFixedSampleLinearOptimizeBatched::descent_run()
