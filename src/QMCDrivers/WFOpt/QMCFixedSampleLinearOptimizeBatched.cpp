@@ -2048,7 +2048,7 @@ bool QMCFixedSampleLinearOptimizeBatched::projected_inverse_iteration()
       MatrixOperators::product_AtB(derivMat, invMat, prodMat);
       app_log() << "  Execution time Y = Ot*X : " << std::setprecision(4) << timer4.elapsed() << std::endl;
 
-      Timer timer;
+      Timer timer5;
       MatrixOperators::product(prodMat, ham, dp);
       app_log() << "  Execution time Y*r : " << std::setprecision(4) << timer5.elapsed() << std::endl;
     }
