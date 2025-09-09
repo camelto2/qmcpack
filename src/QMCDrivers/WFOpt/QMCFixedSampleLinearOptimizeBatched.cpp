@@ -32,6 +32,7 @@
 #include "EstimatorInputDelegates.h"
 #include "Message/UniformCommunicateError.h"
 #include <cassert>
+#include <ostream>
 #ifdef HAVE_LMY_ENGINE
 #include "formic/utils/matrix.h"
 #include "formic/utils/random.h"
@@ -85,6 +86,9 @@ QMCFixedSampleLinearOptimizeBatched::QMCFixedSampleLinearOptimizeBatched(
       sr_tau(0.01),
       sr_regularization(0.01),
       sr_tolerance(1e-6),
+      pii_regularization(0.01),
+      pii_spectral_shift(0.0),
+      pii_tau(0.01),
       MinMethod("OneShiftOnly"),
       do_output_matrices_csv_(false),
       do_output_matrices_hdf_(false),
@@ -1868,9 +1872,9 @@ bool QMCFixedSampleLinearOptimizeBatched::stochastic_reconfiguration_conjugate_g
   }
 
   //We get the parameter direction from the SR solve above using CG algorithm
-  //Then, we can either use a line search with correlated sampling to find the best update along that direction, 
-  //or we can use a simple approach where we just accept the move based on the size of the step...sr_tau in this case. 
-  //The line search with correlated sampling converges faster, but can have issues if the weight from correlated 
+  //Then, we can either use a line search with correlated sampling to find the best update along that direction,
+  //or we can use a simple approach where we just accept the move based on the size of the step...sr_tau in this case.
+  //The line search with correlated sampling converges faster, but can have issues if the weight from correlated
   //sampling gets small and stays small. Otherwise, just taking a small sr_tau will work, but can take a lot of iterations
   //
   //im sure there are better ways to do this
@@ -1951,6 +1955,82 @@ bool QMCFixedSampleLinearOptimizeBatched::projected_inverse_iteration()
   // Note: this has a switch for checkConfigurations or checkConfigurationsSR to do stochastic reconfiguration
   // The SR version avoids calculating the dhpsioverpsi terms and only does dlogpsi
   start();
+
+  const int num_samples = optTarget->getNumSamples();
+  const int num_params  = optTarget->getNumParams();
+
+  std::vector<RealType> currentParams(num_params, 0.0);
+  for (int ip = 0; ip < num_params; ip++)
+    currentParams.at(ip) = std::real(optTarget->Params(ip));
+
+  std::vector<RealType> parameterDirections(num_params, 0.0);
+
+  const RealType initCost = optTarget->computedCost();
+
+  Vector<RealType> ham(num_samples);
+  Vector<RealType> dp(num_samples);
+  Matrix<RealType> derivMat(num_samples, num_params);
+  Matrix<RealType> hamDerivMat(num_samples, num_params);
+  Matrix<RealType> prodMat(num_samples, num_params);
+
+  {
+    ScopedTimer local(build_olv_ham_timer_);
+    app_log() << std::endl
+              << "*****************************************************************************" << std::endl
+              << " calculating r, O, A from https://doi.org/10.48550/arXiv.2507.10835          " << std::endl
+              << "*****************************************************************************" << std::endl;
+    optTarget->constructDerivativeMatrices(ham, derivMat, hamDerivMat);
+  }
+
+  if (is_manager())
+  {
+    ScopedTimer local(eigenvalue_timer_);
+
+    if (pii_spectral_shift == 0.0)
+        throw std::runtime_error("Must set spectral shift. Try something lower than estimated ground state energy");
+    
+    if (num_samples >= num_params) {
+      Matrix<RealType> ovlMat(num_params, num_params);
+      MatrixOperators::product_AtB(derivMat, derivMat, ovlMat);
+
+      Matrix<RealType> hMat(num_params, num_params);
+      MatrixOperators::product_AtB(derivMat, hamDerivMat, hMat);
+
+      Matrix<RealType> invMat(num_params, num_params);
+      invMat = hMat - pii_spectral_shift * ovlMat;
+      for (int pm = 0; pm < num_params; pm++)
+        invMat(pm, pm) += pii_regularization;
+      invert_matrix(invMat, false);
+
+      Matrix<RealType> prodMat(num_samples, num_params);
+      MatrixOperators::product_ABt(invMat, derivMat, prodMat);
+      MatrixOperators::product(prodMat, ham, dp);
+    }
+    else {
+      Matrix<RealType> ovlMat(num_samples, num_samples);
+      MatrixOperators::product_ABt(derivMat, derivMat, ovlMat);
+
+      Matrix<RealType> hMat(num_samples, num_samples);
+      MatrixOperators::product_ABt(hamDerivMat, derivMat, hMat);
+
+      Matrix<RealType> invMat(num_samples, num_samples);
+      invMat = hMat - pii_spectral_shift * ovlMat;
+      for (int iw = 0; iw < num_samples; iw++)
+        invMat(iw, iw) += pii_regularization;
+      invert_matrix(invMat, false);
+
+      Matrix<RealType> prodMat(num_params, num_samples);
+      MatrixOperators::product_AtB(derivMat, invMat, prodMat);
+      MatrixOperators::product(prodMat, ham, dp);
+    }
+  }
+  myComm->bcast(dp);
+
+  for (int pm = 0; pm < num_params; pm++)
+    optTarget->Params(pm) = currentParams.at(pm) + sr_tau * dp[pm];
+
+  accept_history <<= 1;
+  accept_history.set(0, true);
 
   finish();
 

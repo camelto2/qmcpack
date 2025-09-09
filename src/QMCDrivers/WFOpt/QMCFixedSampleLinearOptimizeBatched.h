@@ -208,6 +208,10 @@ private:
   /// tolerance for CG solution in SR
   RealType sr_tolerance;
 
+  RealType pii_regularization;
+  RealType pii_spectral_shift;
+  RealType pii_tau; 
+
   // ------------------------------------
   // Parameters in this struct are used by one or more of the adaptive LM, descent, or hybrid optimizers
 

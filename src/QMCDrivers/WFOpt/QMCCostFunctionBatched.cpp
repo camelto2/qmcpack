@@ -1081,4 +1081,65 @@ void QMCCostFunctionBatched::calcOvlParmVec(const std::vector<Return_rt>& parm, 
   }
   myComm->allreduce(ovlParmVec);
 }
+
+void QMCCostFunctionBatched::constructDerivativeMatrices(Vector<Return_rt>& ham,
+                                                         Matrix<Return_rt>& derivMat,
+                                                         Matrix<Return_rt>& hamDerivMat)
+{
+  ScopedTimer tmp_timer(fill_timer_);
+
+  std::fill(ham.begin(), ham.end(), 0.0);
+  std::fill(derivMat.begin(), derivMat.end(), 0.0);
+  std::fill(hamDerivMat.begin(), hamDerivMat.end(), 0.0);
+
+  const int num_params = getNumParams();
+  Return_rt eavg       = SumValue[SUM_E_WGT] / SumValue[SUM_WGT];
+  std::vector<Return_t> derivAvg(num_params, 0.0);
+  Return_rt wgtinv = 1.0 / SumValue[SUM_WGT];
+
+  for (int iw = 0; iw < rank_local_num_samples_; iw++)
+  {
+    const Return_rt* restrict saved = RecordsOnNode_[iw];
+    Return_rt weight                = saved[REWEIGHT] * wgtinv;
+    const Return_t* Dsaved          = DerivRecords_[iw];
+    for (int pm = 0; pm < num_params; pm++)
+      derivAvg[pm] += Dsaved[pm] * weight;
+  }
+  myComm->allreduce(derivAvg);
+
+  std::vector<Return_rt> localDerivs(rank_local_num_samples_ * getNumParams());
+  std::vector<Return_rt> localHamDerivs(rank_local_num_samples_ * getNumParams());
+  std::vector<Return_rt> localHams(rank_local_num_samples_);
+
+  for (int iw = 0; iw < rank_local_num_samples_; iw++)
+  {
+    const Return_rt* restrict saved = RecordsOnNode_[iw];
+    const Return_t* Dsaved          = DerivRecords_[iw];
+    const Return_rt* HDsaved        = HDerivRecords_[iw];
+    Return_rt eloc                  = saved[ENERGY_NEW];
+    Return_rt weight                = saved[REWEIGHT] * wgtinv;
+    for (int pm = 0; pm < num_params; pm++)
+    {
+      const int idx       = iw * num_params + pm;
+      localDerivs[idx]    = std::sqrt(wgtinv) * std::real(Dsaved[pm] - derivAvg[pm]) * weight;
+      localHamDerivs[idx] = std::sqrt(wgtinv) * (HDsaved[pm] - eloc * localDerivs[idx]) * weight;
+    }
+    localHams[iw] = -2.0 * std::sqrt(wgtinv) * (eloc - eavg) * weight;
+  }
+
+  const int num_samples = getNumSamples();
+  std::vector<Return_rt> hamVec(num_samples);
+  myComm->gather(localHams, hamVec);
+  std::copy(hamVec.begin(), hamVec.end(), ham.begin());
+
+  std::vector<Return_rt> derivVec(num_samples * num_params);
+  myComm->gather(localDerivs, derivVec);
+  std::copy(derivVec.begin(), derivVec.end(), derivMat.begin());
+
+  std::vector<Return_rt> hamDerivVec(num_samples * num_params);
+  myComm->gather(localHamDerivs, hamDerivVec);
+  std::copy(hamDerivVec.begin(), hamDerivVec.end(), hamDerivMat.begin());
+
+}
+
 } // namespace qmcplusplus
