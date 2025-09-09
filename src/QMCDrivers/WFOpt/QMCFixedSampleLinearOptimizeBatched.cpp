@@ -122,6 +122,9 @@ QMCFixedSampleLinearOptimizeBatched::QMCFixedSampleLinearOptimizeBatched(
   m_param.add(sr_tau, "sr_tau");
   m_param.add(sr_regularization, "sr_regularization");
   m_param.add(sr_tolerance, "sr_tolerance");
+  m_param.add(pii_regularization, "pii_regularization");
+  m_param.add(pii_spectral_shift, "pii_spectral_shift");
+  m_param.add(pii_tau, "pii_tau");
   // options_LMY_
   m_param.add(options_LMY_.targetExcited, "options_LMY_.targetExcited");
   m_param.add(options_LMY_.block_lm, "options_LMY_.block_lm");
@@ -335,7 +338,7 @@ bool QMCFixedSampleLinearOptimizeBatched::run()
     return stochastic_reconfiguration_conjugate_gradient();
 
   if (options_LMY_.current_optimizer_type == OptimizerType::PROJECTED_INVERSE_ITERATION)
-    return projected_inverse_iteration();
+    return stochastic_reconfiguration_conjugate_gradient();
 
   return previous_linear_methods_run();
 }
