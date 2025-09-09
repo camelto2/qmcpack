@@ -1979,54 +1979,80 @@ bool QMCFixedSampleLinearOptimizeBatched::projected_inverse_iteration()
 
   {
     ScopedTimer local(build_olv_ham_timer_);
+    Timer timer;
     app_log() << std::endl
               << "*****************************************************************************" << std::endl
               << " calculating r, O, A from https://doi.org/10.48550/arXiv.2507.10835          " << std::endl
               << "*****************************************************************************" << std::endl;
     optTarget->constructDerivativeMatrices(ham, derivMat, hamDerivMat);
+    app_log() << "  Execution time (construction) = " << std::setprecision(4) << timer.elapsed() << std::endl;
   }
 
   if (is_manager())
   {
     ScopedTimer local(eigenvalue_timer_);
+    Timer timer_total;
 
     if (pii_spectral_shift == 0.0)
         throw std::runtime_error("Must set spectral shift. Try something lower than estimated ground state energy");
     
     if (num_samples >= num_params) {
       Matrix<RealType> ovlMat(num_params, num_params);
+      Timer timer1;
       MatrixOperators::product_AtB(derivMat, derivMat, ovlMat);
+      app_log() << "  Execution time (S = Ot * O) : " << std::setprecision(4) << timer1.elapsed() << std::endl;
 
       Matrix<RealType> hMat(num_params, num_params);
+      Timer timer2;
       MatrixOperators::product_AtB(derivMat, hamDerivMat, hMat);
+      app_log() << "  Execution time (H = Ot * A) : " << std::setprecision(4) << timer2.elapsed() << std::endl;
 
       Matrix<RealType> invMat(num_params, num_params);
       invMat = hMat - pii_spectral_shift * ovlMat;
       for (int pm = 0; pm < num_params; pm++)
         invMat(pm, pm) += pii_regularization;
+      Timer timer3;
       invert_matrix(invMat, false);
+      app_log() << "  Execution time X = inv(H - tau*S + eI) : " << std::setprecision(4) << timer3.elapsed() << std::endl;
 
-      Matrix<RealType> prodMat(num_samples, num_params);
+      Matrix<RealType> prodMat(num_params, num_samples);
+      Timer timer4;
       MatrixOperators::product_ABt(invMat, derivMat, prodMat);
+      app_log() << "  Execution time Y=X*Ot : " << std::setprecision(4) << timer4.elapsed() << std::endl;
+
+      Timer timer5;
       MatrixOperators::product(prodMat, ham, dp);
+      app_log() << "  Execution time Y*r : " << std::setprecision(4) << timer5.elapsed() << std::endl;
     }
     else {
       Matrix<RealType> ovlMat(num_samples, num_samples);
+      Timer timer1;
       MatrixOperators::product_ABt(derivMat, derivMat, ovlMat);
+      app_log() << "  Execution time S = (O * Ot) : " << std::setprecision(4) << timer1.elapsed() << std::endl;
 
       Matrix<RealType> hMat(num_samples, num_samples);
+      Timer timer2;
       MatrixOperators::product_ABt(hamDerivMat, derivMat, hMat);
+      app_log() << "  Execution time H = (A*Ot) : " << std::setprecision(4) << timer2.elapsed() << std::endl;
 
       Matrix<RealType> invMat(num_samples, num_samples);
       invMat = hMat - pii_spectral_shift * ovlMat;
       for (int iw = 0; iw < num_samples; iw++)
         invMat(iw, iw) += pii_regularization;
+      Timer timer3;
       invert_matrix(invMat, false);
+      app_log() << "  Execution time X = inv(H - tau*S + eI) : " << std::setprecision(4) << timer3.elapsed() << std::endl;
 
       Matrix<RealType> prodMat(num_params, num_samples);
+      Timer timer4;
       MatrixOperators::product_AtB(derivMat, invMat, prodMat);
+      app_log() << "  Execution time Y = Ot*X : " << std::setprecision(4) << timer4.elapsed() << std::endl;
+
+      Timer timer5;
       MatrixOperators::product(prodMat, ham, dp);
+      app_log() << "  Execution time Y*r : " << std::setprecision(4) << timer5.elapsed() << std::endl;
     }
+    app_log() << "  Execution time (construction) = " << std::setprecision(4) << timer_total.elapsed() << std::endl;
   }
   myComm->bcast(dp);
 
