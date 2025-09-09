@@ -1121,10 +1121,10 @@ void QMCCostFunctionBatched::constructDerivativeMatrices(Vector<Return_rt>& ham,
     for (int pm = 0; pm < num_params; pm++)
     {
       const int idx       = iw * num_params + pm;
-      localDerivs[idx]    = std::sqrt(wgtinv) * std::real(Dsaved[pm] - derivAvg[pm]) * weight;
-      localHamDerivs[idx] = std::sqrt(wgtinv) * (HDsaved[pm] - eloc * localDerivs[idx]) * weight;
+      localDerivs[idx]    = std::sqrt(weight * wgtinv) * std::real(Dsaved[pm] - derivAvg[pm]);
+      localHamDerivs[idx] = std::sqrt(weight * wgtinv) * (HDsaved[pm] + eloc * localDerivs[idx]);
     }
-    localHams[iw] = -2.0 * std::sqrt(wgtinv) * (eloc - eavg) * weight;
+    localHams[iw] = 2.0 * std::sqrt(weight * wgtinv) * (eloc - eavg);
   }
 
   const int num_samples = getNumSamples();
