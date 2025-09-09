@@ -2027,7 +2027,7 @@ bool QMCFixedSampleLinearOptimizeBatched::projected_inverse_iteration()
   myComm->bcast(dp);
 
   for (int pm = 0; pm < num_params; pm++)
-    optTarget->Params(pm) = currentParams.at(pm) + sr_tau * dp[pm];
+    optTarget->Params(pm) = currentParams.at(pm) - sr_tau * dp[pm];
 
   accept_history <<= 1;
   accept_history.set(0, true);
