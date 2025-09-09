@@ -338,7 +338,7 @@ bool QMCFixedSampleLinearOptimizeBatched::run()
     return stochastic_reconfiguration_conjugate_gradient();
 
   if (options_LMY_.current_optimizer_type == OptimizerType::PROJECTED_INVERSE_ITERATION)
-    return stochastic_reconfiguration_conjugate_gradient();
+    return projected_inverse_iteration();
 
   return previous_linear_methods_run();
 }
