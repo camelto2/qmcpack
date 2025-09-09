@@ -1,4 +1,5 @@
 //////////////////////////////////////////////////////////////////////////////////////
+
 // This file is distributed under the University of Illinois/NCSA Open Source License.
 // See LICENSE file in top directory for details.
 //
@@ -1969,15 +1970,12 @@ bool QMCFixedSampleLinearOptimizeBatched::projected_inverse_iteration()
   for (int ip = 0; ip < num_params; ip++)
     currentParams.at(ip) = std::real(optTarget->Params(ip));
 
-  std::vector<RealType> parameterDirections(num_params, 0.0);
-
   const RealType initCost = optTarget->computedCost();
 
   Vector<RealType> ham(num_samples);
-  Vector<RealType> dp(num_samples);
+  Vector<RealType> dp(num_params);
   Matrix<RealType> derivMat(num_samples, num_params);
   Matrix<RealType> hamDerivMat(num_samples, num_params);
-  Matrix<RealType> prodMat(num_samples, num_params);
 
   {
     ScopedTimer local(build_olv_ham_timer_);
