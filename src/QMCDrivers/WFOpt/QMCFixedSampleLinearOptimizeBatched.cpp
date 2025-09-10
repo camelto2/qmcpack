@@ -1994,7 +1994,7 @@ bool QMCFixedSampleLinearOptimizeBatched::projected_inverse_iteration()
     Timer timer_total;
 
     if (pii_spectral_shift == 0.0)
-        throw std::runtime_error("Must set spectral shift. Try something lower than estimated ground state energy");
+        throw std::runtime_error("Must set spectral shift fraction. Should be something like (1.2-1.5)*E_gs ");
     
     if (num_samples >= num_params) {
       Matrix<RealType> ovlMat(num_params, num_params);

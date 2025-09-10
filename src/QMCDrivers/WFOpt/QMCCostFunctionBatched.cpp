@@ -1124,7 +1124,7 @@ void QMCCostFunctionBatched::constructDerivativeMatrices(Vector<Return_rt>& ham,
     FairDivide(getNumParams(), opt_num_crowds, params_per_crowd);
 
     auto build = [](int crowd_id, std::vector<int>& crowd_ranges, int num_params, int iw, const Return_t* Dsaved,
-                    const Return_rt* HDsaved, Return_rt weight, Return_rt wgtinv, Return_rt eloc, 
+                    const Return_rt* HDsaved, Return_rt weight, Return_rt eloc, 
                     std::vector<Return_t>& derivAvg, std::vector<Return_rt>& localDerivs, std::vector<Return_rt>& localHamDerivs)
     {
       int local_pm_start = crowd_ranges[crowd_id];
@@ -1133,13 +1133,13 @@ void QMCCostFunctionBatched::constructDerivativeMatrices(Vector<Return_rt>& ham,
       for (int pm = local_pm_start; pm < local_pm_end; pm++)
       {
         const int idx       = iw * num_params + pm;
-        localDerivs[idx]    = std::sqrt(weight * wgtinv) * std::real(Dsaved[pm] - derivAvg[pm]);
-        localHamDerivs[idx] = std::sqrt(weight * wgtinv) * (HDsaved[pm] + eloc * localDerivs[idx]);
+        localDerivs[idx]    = std::sqrt(weight) * std::real(Dsaved[pm] - derivAvg[pm]);
+        localHamDerivs[idx] = std::sqrt(weight) * (HDsaved[pm] + eloc * localDerivs[idx]);
       }
     };
     ParallelExecutor<> crowd_tasks;
-    crowd_tasks(opt_num_crowds, build, params_per_crowd, num_params, iw, Dsaved, HDsaved, weight, wgtinv, eloc, derivAvg, localDerivs, localHamDerivs);
-    localHams[iw] = 2.0 * std::sqrt(weight * wgtinv) * (eloc - eavg);
+    crowd_tasks(opt_num_crowds, build, params_per_crowd, num_params, iw, Dsaved, HDsaved, weight, eloc, derivAvg, localDerivs, localHamDerivs);
+    localHams[iw] = 2.0 * std::sqrt(weight) * (eloc - eavg);
   }
 
   const int num_samples = getNumSamples();
