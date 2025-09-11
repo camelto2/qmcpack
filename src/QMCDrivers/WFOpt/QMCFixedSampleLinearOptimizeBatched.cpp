@@ -1972,8 +1972,8 @@ bool QMCFixedSampleLinearOptimizeBatched::projected_inverse_iteration()
 
   const RealType initCost = optTarget->computedCost();
 
-  Vector<RealType> ham(num_samples);
   Vector<RealType> dp(num_params);
+  Vector<RealType> ham(num_samples);
   Matrix<RealType> derivMat(num_samples, num_params);
   Matrix<RealType> hamDerivMat(num_samples, num_params);
 

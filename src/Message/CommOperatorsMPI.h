@@ -769,7 +769,7 @@ template<>
 inline void Communicate::recv(int dest, int tag, std::vector<double>& g)
 {
   status s;
-  MPI_Recv(&(g[0]), g.size(), MPI_DOUBLE, dest, tag, myMPI, s);
+  MPI_Recv(&(g[0]), g.size(), MPI_DOUBLE, dest, tag, myMPI, &s);
 }
 
 template<>
