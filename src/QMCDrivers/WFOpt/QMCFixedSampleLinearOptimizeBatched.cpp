@@ -1988,7 +1988,11 @@ bool QMCFixedSampleLinearOptimizeBatched::projected_inverse_iteration()
               << " calculating r, O, A from https://doi.org/10.48550/arXiv.2507.10835          " << std::endl
               << "*****************************************************************************" << std::endl;
     optTarget->constructDerivativeMatrices(loc_ham, loc_deriv_mat, loc_ham_deriv_mat);
+    app_log() << "  Execution time (construct local matrices) = " << std::setprecision(4) << timer.elapsed() << std::endl;
+  }
 
+  {
+    Timer timer;
     if (is_manager())
     {
       ham.resize(num_samples);
@@ -2018,7 +2022,7 @@ bool QMCFixedSampleLinearOptimizeBatched::projected_inverse_iteration()
       myComm->send(0, myComm->rank(), loc_deriv_mat);
       myComm->send(0, myComm->rank(), loc_ham_deriv_mat);
     }
-    app_log() << "  Execution time (construction) = " << std::setprecision(4) << timer.elapsed() << std::endl;
+    app_log() << "  Execution time (collect local to global) = " << std::setprecision(4) << timer.elapsed() << std::endl;
   }
 
   if (is_manager())
