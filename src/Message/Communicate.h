@@ -171,6 +171,8 @@ public:
   template<typename T>
   void send(int dest, int tag, T&);
   template<typename T>
+  void recv(int source, int tag, T&);
+  template<typename T>
   void gather(T& sb, T& rb, int dest = 0);
   template<typename T, typename IT>
   void gatherv(T& sb, T& rb, IT& counts, IT& displ, int dest = 0);

@@ -1142,19 +1142,29 @@ void QMCCostFunctionBatched::constructDerivativeMatrices(Vector<Return_rt>& ham,
     localHams[iw] = 2.0 * std::sqrt(weight) * (eloc - eavg);
   }
 
-  const int num_samples = getNumSamples();
-  std::vector<Return_rt> hamVec(num_samples);
-  myComm->gather(localHams, hamVec);
-  std::copy(hamVec.begin(), hamVec.end(), ham.begin());
+  if (myComm->rank() == 0)
+  {
+    std::copy(localHams.begin(), localHams.end(), ham.begin());
+    std::copy(localDerivs.begin(), localDerivs.end(), derivMat.begin());
+    std::copy(localHamDerivs.begin(), localHamDerivs.end(), hamDerivMat.begin());
 
-  std::vector<Return_rt> derivVec(num_samples * num_params);
-  myComm->gather(localDerivs, derivVec);
-  std::copy(derivVec.begin(), derivVec.end(), derivMat.begin());
+    for (int ir = 1; ir < myComm->size(); ir++)
+    {
+      myComm->recv(ir, ir, localHams);
+      myComm->recv(ir, ir, localDerivs);
+      myComm->recv(ir, ir, localHamDerivs);
+      std::copy(localHams.begin(), localHams.end(), ham.begin() + ir * rank_local_num_samples_);
+      std::copy(localDerivs.begin(), localDerivs.end(), derivMat.begin() + ir * rank_local_num_samples_ * num_params);
+      std::copy(localHamDerivs.begin(), localHamDerivs.end(), hamDerivMat.begin() + ir * rank_local_num_samples_ * num_params);
+    }
 
-  std::vector<Return_rt> hamDerivVec(num_samples * num_params);
-  myComm->gather(localHamDerivs, hamDerivVec);
-  std::copy(hamDerivVec.begin(), hamDerivVec.end(), hamDerivMat.begin());
-
+  }
+  else 
+  {
+    myComm->send(0, myComm->rank(), localHams);
+    myComm->send(0, myComm->rank(), localDerivs);
+    myComm->send(0, myComm->rank(), localHamDerivs);
+  }
 }
 
 } // namespace qmcplusplus
