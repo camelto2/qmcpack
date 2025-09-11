@@ -1088,11 +1088,11 @@ void QMCCostFunctionBatched::constructDerivativeMatrices(Vector<Return_rt>& ham,
 {
   ScopedTimer tmp_timer(fill_timer_);
 
-  std::fill(ham.begin(), ham.end(), 0.0);
-  std::fill(derivMat.begin(), derivMat.end(), 0.0);
-  std::fill(hamDerivMat.begin(), hamDerivMat.end(), 0.0);
-
   const int num_params = getNumParams();
+  ham.resize(rank_local_num_samples_);
+  derivMat.resize(rank_local_num_samples_, num_params);
+  hamDerivMat.resize(rank_local_num_samples_, num_params);
+
   Return_rt eavg       = SumValue[SUM_E_WGT] / SumValue[SUM_WGT];
   std::vector<Return_t> derivAvg(num_params, 0.0);
   Return_rt wgtinv = 1.0 / SumValue[SUM_WGT];
