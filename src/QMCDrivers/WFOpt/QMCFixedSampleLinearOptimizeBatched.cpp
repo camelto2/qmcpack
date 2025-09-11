@@ -1973,10 +1973,13 @@ bool QMCFixedSampleLinearOptimizeBatched::projected_inverse_iteration()
   const RealType initCost = optTarget->computedCost();
 
   Vector<RealType> dp(num_params);
-  Vector<RealType> ham(num_samples);
-  Matrix<RealType> derivMat(num_samples, num_params);
-  Matrix<RealType> hamDerivMat(num_samples, num_params);
+  Vector<RealType> loc_ham;
+  Matrix<RealType> loc_deriv_mat;
+  Matrix<RealType> loc_ham_deriv_mat;
 
+  Vector<RealType> ham;
+  Matrix<RealType> derivMat;
+  Matrix<RealType> hamDerivMat;
   {
     ScopedTimer local(build_olv_ham_timer_);
     Timer timer;
@@ -1984,7 +1987,37 @@ bool QMCFixedSampleLinearOptimizeBatched::projected_inverse_iteration()
               << "*****************************************************************************" << std::endl
               << " calculating r, O, A from https://doi.org/10.48550/arXiv.2507.10835          " << std::endl
               << "*****************************************************************************" << std::endl;
-    optTarget->constructDerivativeMatrices(ham, derivMat, hamDerivMat);
+    optTarget->constructDerivativeMatrices(loc_ham, loc_deriv_mat, loc_ham_deriv_mat);
+
+    if (is_manager())
+    {
+      ham.resize(num_samples);
+      derivMat.resize(num_samples, num_params);
+      hamDerivMat.resize(num_samples, num_params);
+
+      assert(ham.size() == myComm->size() * loc_ham.size());
+      assert(derivMat.size() == myComm->size() * loc_deriv_mat.size());
+      assert(hamDerivMat.size() == myComm->size() * loc_ham_deriv_mat.size());
+      std::copy(loc_ham.begin(), loc_ham.end(), ham.begin());
+      std::copy(loc_deriv_mat.begin(), loc_deriv_mat.end(), derivMat.begin());
+      std::copy(loc_ham_deriv_mat.begin(), loc_ham_deriv_mat.end(), hamDerivMat.begin());
+
+      for (int ir = 1; ir < myComm->size(); ir++)
+      {
+        myComm->recv(ir, ir, loc_ham);
+        std::copy(loc_ham.begin(), loc_ham.end(), ham.begin() + ir * loc_ham.size());
+        myComm->recv(ir, ir, loc_deriv_mat);
+        std::copy(loc_deriv_mat.begin(), loc_deriv_mat.end(), derivMat.begin() + ir * loc_deriv_mat.size());
+        myComm->recv(ir, ir, loc_ham_deriv_mat);
+        std::copy(loc_ham_deriv_mat.begin(), loc_ham_deriv_mat.end(), hamDerivMat.begin() + ir * loc_ham_deriv_mat.size());
+      }
+    }
+    else 
+    {
+      myComm->send(0, myComm->rank(), loc_ham);
+      myComm->send(0, myComm->rank(), loc_deriv_mat);
+      myComm->send(0, myComm->rank(), loc_ham_deriv_mat);
+    }
     app_log() << "  Execution time (construction) = " << std::setprecision(4) << timer.elapsed() << std::endl;
   }
 

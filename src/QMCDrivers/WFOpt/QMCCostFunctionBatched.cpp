@@ -1107,10 +1107,6 @@ void QMCCostFunctionBatched::constructDerivativeMatrices(Vector<Return_rt>& ham,
   }
   myComm->allreduce(derivAvg);
 
-  std::vector<Return_rt> localDerivs(rank_local_num_samples_ * num_params);
-  std::vector<Return_rt> localHamDerivs(rank_local_num_samples_ * num_params);
-  std::vector<Return_rt> localHams(rank_local_num_samples_);
-
   for (int iw = 0; iw < rank_local_num_samples_; iw++)
   {
     const Return_rt* restrict saved = RecordsOnNode_[iw];
@@ -1125,45 +1121,20 @@ void QMCCostFunctionBatched::constructDerivativeMatrices(Vector<Return_rt>& ham,
 
     auto build = [](int crowd_id, std::vector<int>& crowd_ranges, int num_params, int iw, const Return_t* Dsaved,
                     const Return_rt* HDsaved, Return_rt weight, Return_rt eloc, 
-                    std::vector<Return_t>& derivAvg, std::vector<Return_rt>& localDerivs, std::vector<Return_rt>& localHamDerivs)
+                    std::vector<Return_t>& derivAvg, Matrix<Return_rt>& derivMat, Matrix<Return_rt>& hamDerivMat)
     {
       int local_pm_start = crowd_ranges[crowd_id];
       int local_pm_end   = crowd_ranges[crowd_id + 1];
 
       for (int pm = local_pm_start; pm < local_pm_end; pm++)
       {
-        const int idx       = iw * num_params + pm;
-        localDerivs[idx]    = std::sqrt(weight) * std::real(Dsaved[pm] - derivAvg[pm]);
-        localHamDerivs[idx] = std::sqrt(weight) * (HDsaved[pm] + eloc * localDerivs[idx]);
+        derivMat(iw, pm)    = std::sqrt(weight) * std::real(Dsaved[pm] - derivAvg[pm]);
+        hamDerivMat(iw, pm) = std::sqrt(weight) * (HDsaved[pm] + eloc * derivMat(iw, pm));
       }
     };
     ParallelExecutor<> crowd_tasks;
-    crowd_tasks(opt_num_crowds, build, params_per_crowd, num_params, iw, Dsaved, HDsaved, weight, eloc, derivAvg, localDerivs, localHamDerivs);
-    localHams[iw] = 2.0 * std::sqrt(weight) * (eloc - eavg);
-  }
-
-  if (myComm->rank() == 0)
-  {
-    std::copy(localHams.begin(), localHams.end(), ham.begin());
-    std::copy(localDerivs.begin(), localDerivs.end(), derivMat.begin());
-    std::copy(localHamDerivs.begin(), localHamDerivs.end(), hamDerivMat.begin());
-
-    for (int ir = 1; ir < myComm->size(); ir++)
-    {
-      myComm->recv(ir, ir, localHams);
-      myComm->recv(ir, ir, localDerivs);
-      myComm->recv(ir, ir, localHamDerivs);
-      std::copy(localHams.begin(), localHams.end(), ham.begin() + ir * rank_local_num_samples_);
-      std::copy(localDerivs.begin(), localDerivs.end(), derivMat.begin() + ir * rank_local_num_samples_ * num_params);
-      std::copy(localHamDerivs.begin(), localHamDerivs.end(), hamDerivMat.begin() + ir * rank_local_num_samples_ * num_params);
-    }
-
-  }
-  else 
-  {
-    myComm->send(0, myComm->rank(), localHams);
-    myComm->send(0, myComm->rank(), localDerivs);
-    myComm->send(0, myComm->rank(), localHamDerivs);
+    crowd_tasks(opt_num_crowds, build, params_per_crowd, num_params, iw, Dsaved, HDsaved, weight, eloc, derivAvg, derivMat, hamDerivMat);
+    ham[iw] = 2.0 * std::sqrt(weight) * (eloc - eavg);
   }
 }
 
