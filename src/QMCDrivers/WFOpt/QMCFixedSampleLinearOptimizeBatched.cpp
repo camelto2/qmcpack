@@ -2008,19 +2008,30 @@ bool QMCFixedSampleLinearOptimizeBatched::projected_inverse_iteration()
 
       for (int ir = 1; ir < myComm->size(); ir++)
       {
-        myComm->recv(ir, ir, loc_ham);
-        std::copy(loc_ham.begin(), loc_ham.end(), ham.begin() + ir * loc_ham.size());
-        myComm->recv(ir, ir, loc_deriv_mat);
-        std::copy(loc_deriv_mat.begin(), loc_deriv_mat.end(), derivMat.begin() + ir * loc_deriv_mat.size());
-        myComm->recv(ir, ir, loc_ham_deriv_mat);
-        std::copy(loc_ham_deriv_mat.begin(), loc_ham_deriv_mat.end(), hamDerivMat.begin() + ir * loc_ham_deriv_mat.size());
+        std::vector<RealType> tmp(loc_ham.size());
+        myComm->recv(ir, ir, tmp);
+        std::copy(tmp.begin(), tmp.end(), ham.begin() + ir * tmp.size());
+
+        tmp.resize(loc_deriv_mat.size());
+        myComm->recv(ir, ir, tmp);
+        std::copy(tmp.begin(), tmp.end(), derivMat.begin() + ir * tmp.size());
+
+        myComm->recv(ir, ir, tmp);
+        std::copy(tmp.begin(), tmp.end(), hamDerivMat.begin() + ir * tmp.size());
       }
     }
     else 
     {
-      myComm->send(0, myComm->rank(), loc_ham);
-      myComm->send(0, myComm->rank(), loc_deriv_mat);
-      myComm->send(0, myComm->rank(), loc_ham_deriv_mat);
+      std::vector<RealType> tmp(loc_ham.size());
+      std::copy(loc_ham.begin(), loc_ham.end(), tmp.begin());
+      myComm->send(0, myComm->rank(), tmp);
+
+      tmp.resize(loc_deriv_mat.size());
+      std::copy(loc_deriv_mat.begin(), loc_deriv_mat.end(), tmp.begin());
+      myComm->send(0, myComm->rank(), tmp);
+
+      std::copy(loc_ham_deriv_mat.begin(), loc_ham_deriv_mat.end(), tmp.begin());
+      myComm->send(0, myComm->rank(), tmp);
     }
     app_log() << "  Execution time (collect local to global) = " << std::setprecision(4) << timer.elapsed() << std::endl;
   }
