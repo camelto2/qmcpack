@@ -1107,8 +1107,8 @@ void QMCCostFunctionBatched::constructDerivativeMatrices(Vector<Return_rt>& ham,
   }
   myComm->allreduce(derivAvg);
 
-  std::vector<Return_rt> localDerivs(rank_local_num_samples_ * getNumParams());
-  std::vector<Return_rt> localHamDerivs(rank_local_num_samples_ * getNumParams());
+  std::vector<Return_rt> localDerivs(rank_local_num_samples_ * num_params);
+  std::vector<Return_rt> localHamDerivs(rank_local_num_samples_ * num_params);
   std::vector<Return_rt> localHams(rank_local_num_samples_);
 
   for (int iw = 0; iw < rank_local_num_samples_; iw++)

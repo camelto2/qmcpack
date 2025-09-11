@@ -766,10 +766,10 @@ inline void Communicate::send(int dest, int tag, std::vector<double>& g)
 }
 
 template<>
-inline void Communicate::recv(int dest, int tag, std::vector<double>& g)
+inline void Communicate::recv(int source, int tag, std::vector<double>& g)
 {
   status s;
-  MPI_Recv(&(g[0]), g.size(), MPI_DOUBLE, dest, tag, myMPI, &s);
+  MPI_Recv(&(g[0]), g.size(), MPI_DOUBLE, source, tag, myMPI, &s);
 }
 
 template<>
