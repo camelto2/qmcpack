@@ -38,11 +38,13 @@ protected:
    */
   bool use_drift_    = true;
   IndexType samples_ = -1;
+  RealType psi2_epsilon_ = 0.0;
   /** @} */
 
 public:
   bool get_use_drift() const { return use_drift_; }
   IndexType get_samples() const { return samples_; }
+  RealType get_psi2epsilon() const { return psi2_epsilon_; }
 
   friend std::ostream& operator<<(std::ostream& o_stream, const VMCDriverInput& vmci);
 };
