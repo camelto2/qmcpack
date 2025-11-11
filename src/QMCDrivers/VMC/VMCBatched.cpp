@@ -153,7 +153,7 @@ void VMCBatched::advanceWalkers(const StateForThread& sft,
           {
             RealType avg = 0.0;
             for (int iw = 0; iw < num_walkers; iw++)
-              avg += std::exp(2.0 * walker_twfs[iwf].getLogPsi()) / num_walkers;
+              avg += std::exp(2.0 * walker_twfs[iw].getLogPsi()) / num_walkers;
             app_log() << "Average |Psi|^2: " << avg << std::endl;
 
             for (int iw = 0; iw < num_walkers; iw++)
