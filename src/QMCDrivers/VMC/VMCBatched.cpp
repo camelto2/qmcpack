@@ -82,10 +82,10 @@ void VMCBatched::advanceWalkers(const StateForThread& sft,
 
   {
     ScopedTimer pbyp_local_timer(timers.movepbyp_timer);
-    const int num_walkers   = crowd.size();
-    auto& walker_leader     = walker_elecs.getLeader();
-    const int num_particles = walker_leader.getTotalNum();
-    const bool use_drift    = sft.vmcdrv_input.get_use_drift();
+    const int num_walkers    = crowd.size();
+    auto& walker_leader      = walker_elecs.getLeader();
+    const int num_particles  = walker_leader.getTotalNum();
+    const bool use_drift     = sft.vmcdrv_input.get_use_drift();
     const RealType psi_power = sft.vmcdrv_input.get_psi_power();
 
     std::vector<bool> are_valid(num_walkers);
@@ -151,7 +151,8 @@ void VMCBatched::advanceWalkers(const StateForThread& sft,
 
           std::transform(ratios.begin(), ratios.end(), prob.begin(), [](auto ratio) { return std::norm(ratio); });
           if (psi_power > 0)
-            std::transform(prob.begin(), prob.end(), prob.begin(), [](auto prob) { return std::power(prob, psi_power/2.0););
+            std::transform(prob.begin(), prob.end(), prob.begin(),
+                           [](auto prob) { return std::power(prob, psi_power / 2.0); });
 
           isAccepted.clear();
 
