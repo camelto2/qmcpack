@@ -154,9 +154,10 @@ void VMCBatched::advanceWalkers(const StateForThread& sft,
             RealType avg = 0.0;
             for (int iw = 0; iw < num_walkers; iw++)
               avg += std::exp(2.0 * walker_twfs[iwf].getLogPsi()) / num_walkers;
+            app_log() << "Average |Psi|^2: " << avg << std::endl;
 
             for (int iw = 0; iw < num_walkers; iw++)
-              prob[iw] = (std::norm(ratios[iw]) * std::exp(2.0 * walker_twfs[iw].getLogPsi()) + psi2_epsilon * avg) / (std::exp(2.0 * walker_twfs[iw].getLogPsi()) + psi2_epsilon * avg);
+              prob[iw] = (std::norm(ratios[iw]) * std::exp(2.0 * walker_twfs[iw].getLogPsi()) + psi2_epsilon) / (std::exp(2.0 * walker_twfs[iw].getLogPsi()) + psi2_epsilon);
           }
           else
             std::transform(ratios.begin(), ratios.end(), prob.begin(), [](auto ratio) { return std::norm(ratio); });
