@@ -152,7 +152,7 @@ void VMCBatched::advanceWalkers(const StateForThread& sft,
           std::transform(ratios.begin(), ratios.end(), prob.begin(), [](auto ratio) { return std::norm(ratio); });
           if (psi_power > 0)
             std::transform(prob.begin(), prob.end(), prob.begin(),
-                           [](auto prob) { return std::power(prob, psi_power / 2.0); });
+                           [](auto p) { return std::power(p, psi_power / 2.0); });
 
           isAccepted.clear();
 
