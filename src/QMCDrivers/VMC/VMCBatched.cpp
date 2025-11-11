@@ -86,7 +86,7 @@ void VMCBatched::advanceWalkers(const StateForThread& sft,
     auto& walker_leader     = walker_elecs.getLeader();
     const int num_particles = walker_leader.getTotalNum();
     const bool use_drift    = sft.vmcdrv_input.get_use_drift();
-    const RealType psi2_epsilon = sft.vmcdrv_input.get_psi2epsilon();
+    const RealType psi_power = sft.vmcdrv_input.get_psi_power();
 
     std::vector<bool> are_valid(num_walkers);
     std::vector<TrialWaveFunction::PsiValue> ratios(num_walkers);
@@ -149,18 +149,9 @@ void VMCBatched::advanceWalkers(const StateForThread& sft,
           else
             twf_dispatcher.flex_calcRatio(walker_twfs, walker_elecs, iat, ratios);
 
-          if (psi2_epsilon > 0) 
-          {
-            RealType avg = 0.0;
-            for (int iw = 0; iw < num_walkers; iw++)
-              avg += std::exp(2.0 * walker_twfs[iw].getLogPsi()) / num_walkers;
-            app_log() << "Average |Psi|^2: " << avg << std::endl;
-
-            for (int iw = 0; iw < num_walkers; iw++)
-              prob[iw] = (std::norm(ratios[iw]) * std::exp(2.0 * walker_twfs[iw].getLogPsi()) + psi2_epsilon) / (std::exp(2.0 * walker_twfs[iw].getLogPsi()) + psi2_epsilon);
-          }
-          else
-            std::transform(ratios.begin(), ratios.end(), prob.begin(), [](auto ratio) { return std::norm(ratio); });
+          std::transform(ratios.begin(), ratios.end(), prob.begin(), [](auto ratio) { return std::norm(ratio); });
+          if (psi_power > 0)
+            std::transform(prob.begin(), prob.end(), prob.begin(), [](auto prob) { return std::power(prob, psi_power/2.0););
 
           isAccepted.clear();
 
