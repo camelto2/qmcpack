@@ -153,7 +153,9 @@ set(DETERMINANT_SRC
     test_DiracMatrix.cpp
     test_ci_configuration.cpp
     test_multi_slater_determinant.cpp
-    test_SlaterDet.cpp)
+    test_SlaterDet.cpp
+    test_PfaffianSTU.cpp)
+
 
 add_library(sposets_for_testing FakeSPO.cpp ConstantSPOSet.cpp)
 target_include_directories(sposets_for_testing PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}")
