@@ -10,6 +10,8 @@
 //////////////////////////////////////////////////////////////////////////////////////
 
 #include "PfaffianSTU.h"
+#include "Numerics/DeterminantOperators.h"
+#include "Numerics/MatrixOperators.h"
 
 namespace qmcplusplus
 {
@@ -47,7 +49,15 @@ PfaffianSTU::GradType PfaffianSTU::evalGrad(ParticleSet& P, int iat) {}
 
 void PfaffianSTU::restore(int iat) {}
 
-void PfaffianSTU::acceptMove(ParticleSet& P, int iat, bool safe_to_delay) {}
+void PfaffianSTU::acceptMove(ParticleSet& P, int iat, bool safe_to_delay) 
+{
+  assert(iat == active_idx_);
+  std::transform(psi_delta_.begin(), psi_delta_.end(), psi_mat_[active_idx_], psi_mat_[active_idx_], [](auto v1, auto v2) { return v1 + v2; });
+  for (int i = 0; i < psi_mat_.rows(); i++)
+    psi_mat_(i, active_idx_) = -psi_mat_(active_idx_,i);
+  updateInverse();
+  active_idx_ = -1;
+}
 
 PfaffianSTU::PsiValue PfaffianSTU::ratio(ParticleSet& P, int iat) {}
 
@@ -66,7 +76,7 @@ void PfaffianSTU::resize()
   int rowsize = (num_elec_ % 2 == 0) ? num_elec_ : num_elec_ + 1;
   psi_mat_.resize(rowsize, rowsize);
   psi_matinv_.resize(rowsize, rowsize);
-  psi_val_.resize(rowsize);
+  psi_delta_.resize(rowsize);
 }
 
 int PfaffianSTU::rowPivot(ValueMatrix& mat, const int i) 
@@ -134,6 +144,65 @@ PfaffianSTU::ValueType PfaffianSTU::calculatePfaffian()
     pf *= tmp_mat(i, i+1);
   }
   return pf * ValueType(sign);
+}
+
+void PfaffianSTU::calculateInverse()
+{
+    std::copy(psi_mat_.begin(), psi_mat_.end(), psi_matinv_.begin());
+    invert_matrix(psi_matinv_, false);
+}
+
+PfaffianSTU::ValueType PfaffianSTU::calculateRatio(const ValueVector& newvals)
+{
+  assert(active_idx_ >= 0);
+  assert(newvals.size() == psi_mat_.rows());
+  std::transform(newvals.begin(), newvals.end(), psi_mat_[active_idx_], psi_delta_.begin(), [](auto v1, auto v2) { return v1 - v2;});
+
+  //can't use simd::dot since dotting into column of inverse matrix...not contiguous
+  ValueType ratio = 0.0;
+  for (int i = 0; i < psi_mat_.rows(); i++)
+    ratio += psi_delta_[i] * psi_matinv_(i, active_idx_);
+  return 1.0 + ratio;
+}
+
+void PfaffianSTU::updateInverse()
+{
+  const int n = psi_matinv_.rows();
+  ValueVector u(n, 0.0);
+  u[active_idx_] = 1.0;
+
+  ValueMatrix U(n, 2);
+  ValueMatrix V(2, n);
+
+  for (int i = 0; i < n; i++)
+  {
+    U(i,0) = u[i];
+    U(i,1) = psi_delta_[i];
+    V(0,i) = psi_delta_[i];
+    V(1,i) = -u[i];
+  }
+
+  ValueMatrix tmp(n, 2);
+  MatrixOperators::product(psi_matinv_, U, tmp);
+
+  ValueMatrix M(2,2);
+  MatrixOperators::product(V, tmp, M);
+
+  for (int i = 0; i < 2; i++)
+    M(i,i) += 1.0;
+
+  invert_matrix(M, false);
+
+  ValueMatrix tmp2(2,n);
+  MatrixOperators::product(V, psi_matinv_, tmp2);
+  MatrixOperators::product(U, M, tmp);
+
+  ValueMatrix tmp3(n,n);
+  ValueMatrix tmp4(n,n);
+  MatrixOperators::product(tmp, tmp2, tmp3);
+  MatrixOperators::product(psi_matinv_, tmp3, tmp4);
+
+  std::transform(psi_matinv_.begin(), psi_matinv_.end(), tmp4.begin(), psi_matinv_.begin(), [](auto v1, auto v2) { return v1 - v2; });
 }
 
 } // namespace qmcplusplus

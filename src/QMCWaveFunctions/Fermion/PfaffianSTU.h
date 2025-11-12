@@ -82,14 +82,21 @@ private:
   //Implements code from M. Bajdich thesis to calculate pfaffian from psi_mat_
   ValueType calculatePfaffian();
 
+  void calculateInverse();
+
+  ValueType calculateRatio(const ValueVector& newvals);
+
+  //called by acceptMove, updates the inverse with sherman-morrison-woodbury update
+  void updateInverse();
+
   //current matrix
   ValueMatrix psi_mat_;
 
   //current inverse
   ValueMatrix psi_matinv_;
 
-  //values to update
-  ValueVector psi_val_;
+  //change to row/column
+  ValueVector psi_delta_;
 
   //active row/column
   int active_idx_;

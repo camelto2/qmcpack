@@ -13,6 +13,7 @@
 
 #include "catch.hpp"
 #include "QMCWaveFunctions/Fermion/PfaffianSTU.h"
+#include "checkMatrix.hpp"
 
 namespace qmcplusplus
 {
@@ -23,11 +24,11 @@ namespace testing
 class PfaffianSTUTest
 {
   using ValueType   = PfaffianSTU::ValueType;
+  using RealType    = PfaffianSTU::RealType;
   using ValueVector = PfaffianSTU::ValueVector;
   using ValueMatrix = PfaffianSTU::ValueMatrix;
 
 public:
-
   std::unique_ptr<ParticleSet> createDummyElec(int nup, int ndn)
   {
     Lattice lattice;
@@ -66,34 +67,90 @@ public:
   void checkSizes(const int num_elec, const PfaffianSTU& pf)
   {
     CHECK(num_elec == Approx(pf.num_elec_));
-    if (num_elec%2 == 0)
+    if (num_elec % 2 == 0)
       CHECK(num_elec == Approx(pf.psi_mat_.rows()));
     else
-      CHECK(num_elec+1 == Approx(pf.psi_mat_.rows()));
+      CHECK(num_elec + 1 == Approx(pf.psi_mat_.rows()));
   }
 
-  void checkEvaluation(PfaffianSTU& pf)
+  void checkEvaluation(PfaffianSTU& pf, ParticleSet& elec)
   {
+    //refernce values coming from brute force evaluation of pfaffians in python
     CHECK(pf.psi_mat_.rows() == Approx(6));
-    ref_mat_.resize(6,6);
-    ValueVector row0 = { 0.,         -0.0476868 , -0.04611147, 0.00385507, -0.04720784,  0.31010055};
-    ValueVector row1 = { 0.0476868 ,  0.        , -0.1916138 , 0.07984651,  0.10802211,  0.0899957 };
-    ValueVector row2 = { 0.04611147,  0.1916138 ,  0.        , 0.04312142, -0.17709148,  0.44741451};
-    ValueVector row3 = {-0.00385507, -0.07984651, -0.04312142, 0.        , -0.24264741, -0.247939  };
-    ValueVector row4 = { 0.04720784, -0.10802211,  0.17709148, 0.24264741,  0.        ,  0.09156629};
-    ValueVector row5 = {-0.31010055, -0.0899957 , -0.44741451, 0.247939  , -0.09156629,  0.        };
+    ref_mat_.resize(6, 6);
+
+    ValueVector row0 = {0., 0.18250294, -0.20363673, -0.25720828, -0.02146717, 0.06856466};
+    ValueVector row1 = {-0.18250294, 0., 0.2460778, 0.0209037, 0.10986746, 0.3617668};
+    ValueVector row2 = {0.20363673, -0.2460778, 0., 0.07461913, -0.01233308, -0.12637421};
+    ValueVector row3 = {0.25720828, -0.0209037, -0.07461913, 0., -0.32933761, -0.09674686};
+    ValueVector row4 = {0.02146717, -0.10986746, 0.01233308, 0.32933761, 0., 0.06171134};
+    ValueVector row5 = {-0.06856466, -0.3617668, 0.12637421, 0.09674686, -0.06171134, 0.};
     for (int i = 0; i < 6; i++)
     {
-      ref_mat_(0,i) = row0[i];
-      ref_mat_(1,i) = row1[i];
-      ref_mat_(2,i) = row2[i];
-      ref_mat_(3,i) = row3[i];
-      ref_mat_(4,i) = row4[i];
-      ref_mat_(5,i) = row5[i];
+      ref_mat_(0, i) = row0[i];
+      ref_mat_(1, i) = row1[i];
+      ref_mat_(2, i) = row2[i];
+      ref_mat_(3, i) = row3[i];
+      ref_mat_(4, i) = row4[i];
+      ref_mat_(5, i) = row5[i];
     }
 
-    pf.psi_mat_ = ref_mat_;
-    CHECK(std::real(pf.calculatePfaffian()) == Approx(0.028319226149595082));
+    pf.psi_mat_  = ref_mat_;
+    RealType val = std::real(pf.calculatePfaffian());
+    CHECK(val == Approx(-0.024797647365574358));
+
+    //inverse of previous matrix
+    row0 = {-2.71503989e-16, 1.81595609e+00, 4.32396207e+00, 9.92372604e-01, -2.35068908e-01, -2.92715884e+00};
+    row1 = {-1.81595609e+00, -8.22199236e-17, -1.63444817e+00, 6.50271561e-01, -3.09990794e-01, -2.51198037e+00};
+    row2 = {-4.32396207e+00, 1.63444817e+00, -2.22921635e-16, 1.07113524e+00, -3.09811991e+00, -1.30234146e+00};
+    row3 = {-9.92372604e-01, -6.50271561e-01, -1.07113524e+00, 4.59511799e-17, 2.72112845e+00, -5.98429146e-01};
+    row4 = {2.35068908e-01, 3.09990794e-01, 3.09811991e+00, -2.72112845e+00, -1.03859069e-16, -1.83155586e+00};
+    row5 = {2.92715884e+00, 2.51198037e+00, 1.30234146e+00, 5.98429146e-01, 1.83155586e+00, -2.11660363e-17};
+    for (int i = 0; i < 6; i++)
+    {
+      ref_mat_(0, i) = row0[i];
+      ref_mat_(1, i) = row1[i];
+      ref_mat_(2, i) = row2[i];
+      ref_mat_(3, i) = row3[i];
+      ref_mat_(4, i) = row4[i];
+      ref_mat_(5, i) = row5[i];
+    }
+
+    pf.calculateInverse();
+    auto check = checkMatrix(ref_mat_, pf.psi_matinv_);
+    CHECKED_ELSE(check.result) { FAIL(check.result_message); }
+
+    //new row for update
+    //brute forcing update on particle 4
+    const int iat = 4;
+    pf.active_idx_     = iat;
+    ValueVector newrow = {0.56637198, 0.69536227, 0.3739933,  0.69729468, 0.,         0.24455721};
+
+    ValueType ratio = pf.calculateRatio(newrow);
+    CHECK(std::real(ratio * val) == Approx(-0.020779936550488032));
+  
+    //this should update the inverse matrix after accepting proposed move
+    pf.acceptMove(elec, iat);
+
+    row0 = {-3.01041281e-15, 3.37758625e+00, 1.51309430e+01,-7.84382153e+00, -2.80518464e-01,-1.03781944e+01};
+    row1 = {-3.37758625e+00,-1.78088739e-15,-7.96473187e+00, 7.07501492e+00, -3.69926172e-01,-1.70282163e-01};
+    row2 = {-1.51309430e+01, 7.96473187e+00, 8.66730070e-16, 9.71368287e+00, -3.69712798e+00,-1.53008423e+01};
+    row3 = { 7.84382153e+00,-7.07501492e+00,-9.71368287e+00,-2.52522350e-15,  3.24724686e+00, 1.68060062e+01};
+    row4 = { 2.80518464e-01, 3.69926172e-01, 3.69712798e+00,-3.24724686e+00, -4.24653502e-16,-2.18567926e+00};
+    row5 = { 1.03781944e+01, 1.70282163e-01, 1.53008423e+01,-1.68060062e+01,  2.18567926e+00,-8.15626218e-15};
+    for (int i = 0; i < 6; i++)
+    {
+      ref_mat_(0, i) = row0[i];
+      ref_mat_(1, i) = row1[i];
+      ref_mat_(2, i) = row2[i];
+      ref_mat_(3, i) = row3[i];
+      ref_mat_(4, i) = row4[i];
+      ref_mat_(5, i) = row5[i];
+    }
+    //ref_mat_ is inverse of updayed move
+    check = checkMatrix(ref_mat_, pf.psi_matinv_);
+    CHECKED_ELSE(check.result) { FAIL(check.result_message); }
+
   }
 
 
@@ -117,15 +174,14 @@ TEST_CASE("Pfaffian check sizes", "[wavefunction][fermion]")
   pftester.checkSizes(elec2->getTotalNum(), pf2);
 }
 
-TEST_CASE("Pfaffian evaluate", "[wavefunction][fermion]")
+TEST_CASE("Pfaffian checkEvaluations", "[wavefunction][fermion]")
 {
   Communicate* comm = OHMMS::Controller;
   testing::PfaffianSTUTest pftester;
 
-  std::unique_ptr<ParticleSet> elec1 = pftester.createDummyElec(3, 3);
-  PfaffianSTU pf((*elec1), "pfaffian");
-  pftester.checkEvaluation(pf);
-
+  std::unique_ptr<ParticleSet> elec = pftester.createDummyElec(3, 3);
+  PfaffianSTU pf((*elec), "pfaffian");
+  pftester.checkEvaluation(pf, (*elec));
 }
 
 } // namespace qmcplusplus
