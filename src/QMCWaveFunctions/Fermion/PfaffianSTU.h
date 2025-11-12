@@ -18,6 +18,11 @@
 namespace qmcplusplus
 {
 
+namespace testing
+{
+  class PfaffianSTUTest;
+}
+
 class PfaffianSTU : public WaveFunctionComponent
 {
   using ValueVector = SPOSet::ValueVector;
@@ -64,11 +69,18 @@ public:
 
   std::unique_ptr<WaveFunctionComponent> makeClone(ParticleSet& tqp) const override;
 
+  void evaluateDerivatives(ParticleSet& P, const opt_variables_type& active, Vector<ValueType>& dlogpsi, Vector<ValueType>& dhpsioverpsi) override;
   void evaluateDerivativesWF(ParticleSet& P, const opt_variables_type& active, Vector<ValueType>& dlogpsi) override;
 
 private:
 
   void resize();
+
+  //Implements code from M. Bajdich thesis to do row pivot used in calculatePfaffian. 
+  int rowPivot(ValueMatrix& mat, const int i);
+
+  //Implements code from M. Bajdich thesis to calculate pfaffian from psi_mat_
+  ValueType calculatePfaffian();
 
   //current matrix
   ValueMatrix psi_mat_;
@@ -83,6 +95,8 @@ private:
   int active_idx_;
   
   int num_elec_;
+
+  friend class testing::PfaffianSTUTest;
 };
 
 } // namespace qmcplusplus
