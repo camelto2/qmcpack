@@ -16,8 +16,8 @@
 namespace qmcplusplus
 {
 
-PfaffianSTU::PfaffianSTU(ParticleSet& targetPtcl, const std::string& class_name)
-    : active_idx_(-1), num_elec_(targetPtcl.getTotalNum())
+PfaffianSTU::PfaffianSTU(ParticleSet& targetPtcl, std::vector<std::unique_ptr<SPOSet>>&& sposets, const std::string& class_name)
+    : active_idx_(-1), num_elec_(targetPtcl.getTotalNum()), sposets_(std::move(sposets))
 {
   resize();
 }

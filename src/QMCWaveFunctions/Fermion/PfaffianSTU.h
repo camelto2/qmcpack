@@ -20,7 +20,7 @@ namespace qmcplusplus
 
 namespace testing
 {
-  class PfaffianSTUTest;
+class PfaffianSTUTest;
 }
 
 class PfaffianSTU : public WaveFunctionComponent
@@ -29,7 +29,9 @@ class PfaffianSTU : public WaveFunctionComponent
   using ValueMatrix = SPOSet::ValueMatrix;
 
 public:
-  PfaffianSTU(ParticleSet& targetPtcl, const std::string& class_name = "PfaffianSTU");
+  PfaffianSTU(ParticleSet& targetPtcl,
+              std::vector<std::unique_ptr<SPOSet>>&& sposets,
+              const std::string& class_name = "PfaffianSTU");
 
   ///destructor
   ~PfaffianSTU() override;
@@ -69,14 +71,16 @@ public:
 
   std::unique_ptr<WaveFunctionComponent> makeClone(ParticleSet& tqp) const override;
 
-  void evaluateDerivatives(ParticleSet& P, const opt_variables_type& active, Vector<ValueType>& dlogpsi, Vector<ValueType>& dhpsioverpsi) override;
+  void evaluateDerivatives(ParticleSet& P,
+                           const opt_variables_type& active,
+                           Vector<ValueType>& dlogpsi,
+                           Vector<ValueType>& dhpsioverpsi) override;
   void evaluateDerivativesWF(ParticleSet& P, const opt_variables_type& active, Vector<ValueType>& dlogpsi) override;
 
 private:
-
   void resize();
 
-  //Implements code from M. Bajdich thesis to do row pivot used in calculatePfaffian. 
+  //Implements code from M. Bajdich thesis to do row pivot used in calculatePfaffian.
   int rowPivot(ValueMatrix& mat, const int i);
 
   //Implements code from M. Bajdich thesis to calculate pfaffian from psi_mat_
@@ -100,8 +104,10 @@ private:
 
   //active row/column
   int active_idx_;
-  
+
   int num_elec_;
+
+  const std::vector<std::unique_ptr<SPOSet>> sposets_;
 
   friend class testing::PfaffianSTUTest;
 };

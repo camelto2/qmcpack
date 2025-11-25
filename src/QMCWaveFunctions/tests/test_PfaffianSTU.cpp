@@ -14,6 +14,7 @@
 #include "catch.hpp"
 #include "QMCWaveFunctions/Fermion/PfaffianSTU.h"
 #include "checkMatrix.hpp"
+#include "ConstantSPOSet.h"
 
 namespace qmcplusplus
 {
@@ -62,6 +63,12 @@ public:
     elec->resetGroups();
 
     return elec;
+  }
+
+  std::unique_ptr<SPOSet> createDummySPO(const std::string name, const int nelec, const int norb) 
+  {
+    auto spo_ptr = std::make_unique<ConstantSPOSet<ValueType>>(name, nelec, norb);
+    return spo_ptr;
   }
 
   void checkSizes(const int num_elec, const PfaffianSTU& pf)
@@ -150,9 +157,7 @@ public:
     //ref_mat_ is inverse of updayed move
     check = checkMatrix(ref_mat_, pf.psi_matinv_);
     CHECKED_ELSE(check.result) { FAIL(check.result_message); }
-
   }
-
 
 private:
   ValueMatrix ref_mat_;
@@ -166,9 +171,20 @@ TEST_CASE("Pfaffian check sizes", "[wavefunction][fermion]")
   testing::PfaffianSTUTest pftester;
 
   std::unique_ptr<ParticleSet> elec1 = pftester.createDummyElec(4, 2);
-  PfaffianSTU pf1((*elec1), "pfaffian1");
+  std::unique_ptr<SPOSet> upspo = pftester.createDummySPO("up", 3, 3);
+  std::unique_ptr<SPOSet> dnspo = pftester.createDummySPO("dn", 3, 3);
+  std::vector<std::unique_ptr<SPOSet>> spos; 
+  spos.emplace_back(std::move(upspo));
+  spos.emplace_back(std::move(dnspo));
+  PfaffianSTU pf1((*elec1), std::move(spos), "pfaffian1");
+
   std::unique_ptr<ParticleSet> elec2 = pftester.createDummyElec(5, 4);
-  PfaffianSTU pf2((*elec2), "pfaffian2");
+  std::unique_ptr<SPOSet> upspo2 = pftester.createDummySPO("up2", 3, 3);
+  std::unique_ptr<SPOSet> dnspo2 = pftester.createDummySPO("dn2", 3, 3);
+  std::vector<std::unique_ptr<SPOSet>> spos2;
+  spos2.emplace_back(std::move(upspo2));
+  spos2.emplace_back(std::move(dnspo2));
+  PfaffianSTU pf2((*elec2), std::move(spos2), "pfaffian2");
 
   pftester.checkSizes(elec1->getTotalNum(), pf1);
   pftester.checkSizes(elec2->getTotalNum(), pf2);
@@ -180,7 +196,12 @@ TEST_CASE("Pfaffian checkEvaluations", "[wavefunction][fermion]")
   testing::PfaffianSTUTest pftester;
 
   std::unique_ptr<ParticleSet> elec = pftester.createDummyElec(3, 3);
-  PfaffianSTU pf((*elec), "pfaffian");
+  std::unique_ptr<SPOSet> upspo = pftester.createDummySPO("up", 3, 3);
+  std::unique_ptr<SPOSet> dnspo = pftester.createDummySPO("dn", 3, 3);
+  std::vector<std::unique_ptr<SPOSet>> spos;
+  spos.emplace_back(std::move(upspo));
+  spos.emplace_back(std::move(dnspo));
+  PfaffianSTU pf((*elec), std::move(spos), "pfaffian");
   pftester.checkEvaluation(pf, (*elec));
 }
 

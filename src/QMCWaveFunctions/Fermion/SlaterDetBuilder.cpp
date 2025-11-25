@@ -33,6 +33,7 @@
 #include "QMCWaveFunctions/Fermion/DiracDeterminant.h"
 #include "QMCWaveFunctions/Fermion/DiracDeterminantBatched.h"
 #include "QMCWaveFunctions/Fermion/DiracDeterminantWithBackflow.h"
+#include "QMCWaveFunctions/Fermion/PfaffianSTU.h"
 #include <vector>
 //#include "QMCWaveFunctions/Fermion/ci_node.h"
 #include "QMCWaveFunctions/Fermion/ci_configuration.h"
@@ -243,6 +244,22 @@ std::unique_ptr<WaveFunctionComponent> SlaterDetBuilder::buildComponent(xmlNodeP
       // and then remove the orbital rotation parameters
       msd_fast->buildOptVariables();
       built_singledet_or_multidets = std::move(msd_fast);
+    }
+    else if (cname == pfaffian_tag)
+    {
+      app_summary() << std::endl;
+      app_summary() << "   Pfaffian Wavefunction" << std::endl;
+      app_summary() << "   -------------------------" << std::endl;
+      app_summary() << std::endl;
+
+      if (built_singledet_or_multidets)
+        myComm->barrier_and_abort("Only one fermionic component allowed in XML");
+
+      if (BFTrans)
+        throw std::runtime_error("Backflow currently not implemented for Pfaffians");
+
+        built_singledet_or_multidets =
+            std::make_unique<PfaffianSTU>(targetPtcl, std::move(unique_sposets));
     }
   });
 
