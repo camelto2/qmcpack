@@ -71,13 +71,17 @@ public:
     return spo_ptr;
   }
 
-  void checkSizes(const int num_elec, const PfaffianSTU& pf)
+  void checkSizes(const int num_elec, const int uporbs, const int dnorbs, const PfaffianSTU& pf)
   {
     CHECK(num_elec == Approx(pf.num_elec_));
     if (num_elec % 2 == 0)
       CHECK(num_elec == Approx(pf.psi_mat_.rows()));
     else
       CHECK(num_elec + 1 == Approx(pf.psi_mat_.rows()));
+
+    CHECK(uporbs*dnorbs == Approx(pf.singlet_mat_.size()));
+    CHECK(uporbs*uporbs == Approx(pf.uu_triplet_mat_.size()));
+    CHECK(dnorbs*dnorbs == Approx(pf.dd_triplet_mat_.size()));
   }
 
   void checkEvaluation(PfaffianSTU& pf, ParticleSet& elec)
@@ -170,24 +174,31 @@ TEST_CASE("Pfaffian check sizes", "[wavefunction][fermion]")
   Communicate* comm = OHMMS::Controller;
   testing::PfaffianSTUTest pftester;
 
-  std::unique_ptr<ParticleSet> elec1 = pftester.createDummyElec(4, 2);
-  std::unique_ptr<SPOSet> upspo = pftester.createDummySPO("up", 3, 3);
-  std::unique_ptr<SPOSet> dnspo = pftester.createDummySPO("dn", 3, 3);
+  int nup = 4;
+  int ndn = 2;
+  int uporbs = 4;
+  int dnorbs = 4;
+  std::unique_ptr<ParticleSet> elec1 = pftester.createDummyElec(nup, ndn);
+  std::unique_ptr<SPOSet> upspo = pftester.createDummySPO("up", nup, uporbs);
+  std::unique_ptr<SPOSet> dnspo = pftester.createDummySPO("dn", ndn, dnorbs);
   std::vector<std::unique_ptr<SPOSet>> spos; 
   spos.emplace_back(std::move(upspo));
   spos.emplace_back(std::move(dnspo));
   PfaffianSTU pf1((*elec1), std::move(spos), "pfaffian1");
+  pftester.checkSizes(elec1->getTotalNum(), uporbs, dnorbs, pf1);
 
-  std::unique_ptr<ParticleSet> elec2 = pftester.createDummyElec(5, 4);
-  std::unique_ptr<SPOSet> upspo2 = pftester.createDummySPO("up2", 3, 3);
-  std::unique_ptr<SPOSet> dnspo2 = pftester.createDummySPO("dn2", 3, 3);
+  nup = 5;
+  ndn = 4;
+  uporbs = 7;
+  dnorbs = 7;
+  std::unique_ptr<ParticleSet> elec2 = pftester.createDummyElec(nup, ndn);
+  std::unique_ptr<SPOSet> upspo2 = pftester.createDummySPO("up2", nup, uporbs);
+  std::unique_ptr<SPOSet> dnspo2 = pftester.createDummySPO("dn2", ndn, dnorbs);
   std::vector<std::unique_ptr<SPOSet>> spos2;
   spos2.emplace_back(std::move(upspo2));
   spos2.emplace_back(std::move(dnspo2));
   PfaffianSTU pf2((*elec2), std::move(spos2), "pfaffian2");
-
-  pftester.checkSizes(elec1->getTotalNum(), pf1);
-  pftester.checkSizes(elec2->getTotalNum(), pf2);
+  pftester.checkSizes(elec2->getTotalNum(), uporbs, dnorbs, pf2);
 }
 
 TEST_CASE("Pfaffian checkEvaluations", "[wavefunction][fermion]")

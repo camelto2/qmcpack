@@ -17,7 +17,7 @@ namespace qmcplusplus
 {
 
 PfaffianSTU::PfaffianSTU(ParticleSet& targetPtcl, std::vector<std::unique_ptr<SPOSet>>&& sposets, const std::string& class_name)
-    : active_idx_(-1), num_elec_(targetPtcl.getTotalNum()), sposets_(std::move(sposets))
+    : active_idx_(-1), num_elec_(targetPtcl.getTotalNum()), num_up_(targetPtcl.last(0)), num_dn_(num_elec_ - num_up_), sposets_(std::move(sposets))
 {
   resize();
 }
@@ -77,6 +77,21 @@ void PfaffianSTU::resize()
   psi_mat_.resize(rowsize, rowsize);
   psi_matinv_.resize(rowsize, rowsize);
   psi_delta_.resize(rowsize);
+  
+  //now size the pairing function coefficient matrices matrices
+  //up spos must be same size
+  assert(sposets_[0]->size() == sposets_[1]->size());
+  int norbs = sposets_[0]->size();
+  singlet_mat_.resize(norbs, norbs);
+  uu_triplet_mat_.resize(norbs, norbs);
+  dd_triplet_mat_.resize(norbs, norbs);
+
+  up_psi_mat_.resize(num_up_, norbs);
+  dn_psi_mat_.resize(num_dn_, norbs);
+  up_dpsi_mat_.resize(num_up_, norbs);
+  dn_dpsi_mat_.resize(num_dn_, norbs);
+  up_d2psi_mat_.resize(num_up_, norbs);
+  dn_d2psi_mat_.resize(num_dn_, norbs);
 }
 
 int PfaffianSTU::rowPivot(ValueMatrix& mat, const int i) 

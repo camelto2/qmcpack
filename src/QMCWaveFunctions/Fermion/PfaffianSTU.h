@@ -27,6 +27,7 @@ class PfaffianSTU : public WaveFunctionComponent
 {
   using ValueVector = SPOSet::ValueVector;
   using ValueMatrix = SPOSet::ValueMatrix;
+  using GradMatrix  = SPOSet::GradMatrix;
 
 public:
   PfaffianSTU(ParticleSet& targetPtcl,
@@ -106,6 +107,21 @@ private:
   int active_idx_;
 
   int num_elec_;
+  int num_up_;
+  int num_dn_;
+
+  //Pairing function coeffs
+  ValueMatrix singlet_mat_;
+  ValueMatrix uu_triplet_mat_;
+  ValueMatrix dd_triplet_mat_;
+
+  //Orbital values, grads, laps
+  ValueMatrix up_psi_mat_;
+  ValueMatrix dn_psi_mat_;
+  GradMatrix  up_dpsi_mat_;
+  GradMatrix  dn_dpsi_mat_;
+  ValueMatrix up_d2psi_mat_;
+  ValueMatrix dn_d2psi_mat_;
 
   const std::vector<std::unique_ptr<SPOSet>> sposets_;
 
