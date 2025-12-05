@@ -33,9 +33,75 @@ void PfaffianSTU::checkOutVariables(const opt_variables_type& active) {}
 PfaffianSTU::LogValue PfaffianSTU::evaluateLog(const ParticleSet& P,
                                                ParticleSet::ParticleGradient& G,
                                                ParticleSet::ParticleLaplacian& L)
-{}
+{
+  log_value_ = 0.0;
+  recompute(P);
+  ValueType val = calculatePfaffian();
+  log_value_ = {std::log(std::abs(val)), std::arg(val)};
+  calculateInverse();
+  return log_value_;
+}
 
-void PfaffianSTU::recompute(const ParticleSet& P) {}
+void PfaffianSTU::recompute(const ParticleSet& P) 
+{
+  //TODO:
+  //need to update grad and lap matrix
+
+  //update up
+  sposets_[0]->evaluate_notranspose(P, 0, num_up_, up_psi_mat_, up_dpsi_mat_, up_d2psi_mat_);
+  //update dn
+  sposets_[1]->evaluate_notranspose(P, 0, num_dn_, dn_psi_mat_, dn_dpsi_mat_, dn_d2psi_mat_);
+
+  const int norb = sposets_[0]->size();
+  ValueVector tmpvec(norb);
+
+  psi_mat_ = 0;
+  //update upper diagonal of matrix
+  for (int i = 0; i < num_elec_; i++)
+  {
+    for (int j = i + 1; j < num_elec_; j++)
+    {
+      //triplet uu
+      if ((i < num_up_) && (j < num_up_))
+      {
+        for (int k = 0; k < norb; k++)
+          for (int l = 0; l < norb; l++)
+             psi_mat_(i, j) += up_psi_mat_(i, k) * uu_triplet_mat_(k, l) * up_psi_mat_(j, l);
+      }
+      // up dn singlet
+      else if ( (i < num_up_) && (j >= num_up_) )
+      {
+        for (int k = 0; k < norb; k++)
+          for (int l = 0; l < norb; l++)
+             psi_mat_(i, j) += up_psi_mat_(i, k) * singlet_mat_(k, l) * dn_psi_mat_(j - num_up_, l);
+      }
+      //dn dn triplet
+      else if ( (i >= num_up_) && (j >= num_up_) )
+      {
+        for (int k = 0; k < norb; k++)
+          for (int l = 0; l < norb; l++)
+             psi_mat_(i, j) += dn_psi_mat_(i - num_up_, k) * dd_triplet_mat_(k, l) * dn_psi_mat_(j - num_up_, l);
+      }
+      psi_mat_(j, i) = -psi_mat_(i, j);
+    }
+  }
+  //Now need to update final col if odd num electrons
+  if (psi_mat_.rows() == num_elec_ + 1)
+  {
+    for (int i = 0; i < num_up_; i++)
+    {
+      ValueType x = up_psi_mat_(i, i);
+      psi_mat_(i, num_elec_) = x;
+      psi_mat_(num_elec_, i) = -x;
+    }
+    for (int i = 0; i < num_dn_; i++)
+    {
+      ValueType x = dn_psi_mat_(i, i);
+      psi_mat_(num_up_ + i, num_elec_) = x;
+      psi_mat_(num_elec_, num_up_ + i) = -x;
+    }
+  }
+}
 
 void PfaffianSTU::registerData(ParticleSet& P, WFBufferType& buf) {}
 
