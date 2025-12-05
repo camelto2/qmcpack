@@ -16,8 +16,14 @@
 namespace qmcplusplus
 {
 
-PfaffianSTU::PfaffianSTU(ParticleSet& targetPtcl, std::vector<std::unique_ptr<SPOSet>>&& sposets, const std::string& class_name)
-    : active_idx_(-1), num_elec_(targetPtcl.getTotalNum()), num_up_(targetPtcl.last(0)), num_dn_(num_elec_ - num_up_), sposets_(std::move(sposets))
+PfaffianSTU::PfaffianSTU(ParticleSet& targetPtcl,
+                         std::vector<std::unique_ptr<SPOSet>>&& sposets,
+                         const std::string& class_name)
+    : active_idx_(-1),
+      num_elec_(targetPtcl.getTotalNum()),
+      num_up_(targetPtcl.last(0)),
+      num_dn_(num_elec_ - num_up_),
+      sposets_(std::move(sposets))
 {
   resize();
 }
@@ -37,12 +43,12 @@ PfaffianSTU::LogValue PfaffianSTU::evaluateLog(const ParticleSet& P,
   log_value_ = 0.0;
   recompute(P);
   ValueType val = calculatePfaffian();
-  log_value_ = {std::log(std::abs(val)), std::arg(val)};
+  log_value_    = {std::log(std::abs(val)), std::arg(val)};
   calculateInverse();
   return log_value_;
 }
 
-void PfaffianSTU::recompute(const ParticleSet& P) 
+void PfaffianSTU::recompute(const ParticleSet& P)
 {
   //TODO:
   //need to update grad and lap matrix
@@ -65,24 +71,44 @@ void PfaffianSTU::recompute(const ParticleSet& P)
       if ((i < num_up_) && (j < num_up_))
       {
         for (int k = 0; k < norb; k++)
+        {
           for (int l = 0; l < norb; l++)
-             psi_mat_(i, j) += up_psi_mat_(i, k) * uu_triplet_mat_(k, l) * up_psi_mat_(j, l);
+          {
+            psi_mat_(i, j) += up_psi_mat_(i, k) * uu_triplet_mat_(k, l) * up_psi_mat_(j, l);
+            dpsi_mat_(i, j) += up_dpsi_mat_(i, k) * uu_triplet_mat_(k, l) * up_psi_mat_(j, l);
+            d2psi_mat_(i, j) += up_d2psi_mat_(i, k) * uu_triplet_mat_(k, l) * up_psi_mat_(j, l);
+          }
+        }
       }
       // up dn singlet
-      else if ( (i < num_up_) && (j >= num_up_) )
+      else if ((i < num_up_) && (j >= num_up_))
       {
         for (int k = 0; k < norb; k++)
+        {
           for (int l = 0; l < norb; l++)
-             psi_mat_(i, j) += up_psi_mat_(i, k) * singlet_mat_(k, l) * dn_psi_mat_(j - num_up_, l);
+          {
+            psi_mat_(i, j) += up_psi_mat_(i, k) * singlet_mat_(k, l) * dn_psi_mat_(j - num_up_, l);
+            dpsi_mat_(i, j) += up_dpsi_mat_(i, k) * singlet_mat_(k, l) * dn_psi_mat_(j - num_up_, l);
+            d2psi_mat_(i, j) += up_d2psi_mat_(i, k) * singlet_mat_(k, l) * dn_psi_mat_(j - num_up_, l);
+          }
+        }
       }
       //dn dn triplet
-      else if ( (i >= num_up_) && (j >= num_up_) )
+      else if ((i >= num_up_) && (j >= num_up_))
       {
         for (int k = 0; k < norb; k++)
+        {
           for (int l = 0; l < norb; l++)
-             psi_mat_(i, j) += dn_psi_mat_(i - num_up_, k) * dd_triplet_mat_(k, l) * dn_psi_mat_(j - num_up_, l);
+          {
+            psi_mat_(i, j) += dn_psi_mat_(i - num_up_, k) * dd_triplet_mat_(k, l) * dn_psi_mat_(j - num_up_, l);
+            dpsi_mat_(i, j) += dn_dpsi_mat_(i - num_up_, k) * dd_triplet_mat_(k, l) * dn_psi_mat_(j - num_up_, l);
+            d2psi_mat_(i, j) += dn_d2psi_mat_(i - num_up_, k) * dd_triplet_mat_(k, l) * dn_psi_mat_(j - num_up_, l);
+          }
+        }
       }
       psi_mat_(j, i) = -psi_mat_(i, j);
+      dpsi_mat_(j, i) = -dpsi_mat_(i, j);
+      d2psi_mat_(j, i) = -d2psi_mat_(i, j);
     }
   }
   //Now need to update final col if odd num electrons
@@ -90,15 +116,27 @@ void PfaffianSTU::recompute(const ParticleSet& P)
   {
     for (int i = 0; i < num_up_; i++)
     {
-      ValueType x = up_psi_mat_(i, i);
-      psi_mat_(i, num_elec_) = x;
-      psi_mat_(num_elec_, i) = -x;
+      ValueType v              = up_psi_mat_(i, i);
+      GradType g               = up_dpsi_mat_(i, i);
+      ValueType l              = up_d2psi_mat_(i, i);
+      psi_mat_(i, num_elec_)   = v;
+      psi_mat_(num_elec_, i)   = -v;
+      dpsi_mat_(i, num_elec_)  = g;
+      dpsi_mat_(num_elec_, i)  = -g;
+      d2psi_mat_(i, num_elec_) = l;
+      d2psi_mat_(num_elec_, i) = -l;
     }
     for (int i = 0; i < num_dn_; i++)
     {
-      ValueType x = dn_psi_mat_(i, i);
-      psi_mat_(num_up_ + i, num_elec_) = x;
-      psi_mat_(num_elec_, num_up_ + i) = -x;
+      ValueType v                        = dn_psi_mat_(i, i);
+      GradType g                         = dn_dpsi_mat_(i, i);
+      ValueType l                        = dn_d2psi_mat_(i, i);
+      psi_mat_(num_up_ + i, num_elec_)   = v;
+      psi_mat_(num_elec_, num_up_ + i)   = -v;
+      dpsi_mat_(num_up_ + i, num_elec_)  = g;
+      dpsi_mat_(num_elec_, num_up_ + i)  = -g;
+      d2psi_mat_(num_up_ + i, num_elec_) = l;
+      d2psi_mat_(num_elec_, num_up_ + i) = -l;
     }
   }
 }
@@ -115,12 +153,13 @@ PfaffianSTU::GradType PfaffianSTU::evalGrad(ParticleSet& P, int iat) {}
 
 void PfaffianSTU::restore(int iat) {}
 
-void PfaffianSTU::acceptMove(ParticleSet& P, int iat, bool safe_to_delay) 
+void PfaffianSTU::acceptMove(ParticleSet& P, int iat, bool safe_to_delay)
 {
   assert(iat == active_idx_);
-  std::transform(psi_delta_.begin(), psi_delta_.end(), psi_mat_[active_idx_], psi_mat_[active_idx_], [](auto v1, auto v2) { return v1 + v2; });
+  std::transform(psi_delta_.begin(), psi_delta_.end(), psi_mat_[active_idx_], psi_mat_[active_idx_],
+                 [](auto v1, auto v2) { return v1 + v2; });
   for (int i = 0; i < psi_mat_.rows(); i++)
-    psi_mat_(i, active_idx_) = -psi_mat_(active_idx_,i);
+    psi_mat_(i, active_idx_) = -psi_mat_(active_idx_, i);
   updateInverse();
   active_idx_ = -1;
 }
@@ -141,9 +180,13 @@ void PfaffianSTU::resize()
 {
   int rowsize = (num_elec_ % 2 == 0) ? num_elec_ : num_elec_ + 1;
   psi_mat_.resize(rowsize, rowsize);
+  dpsi_mat_.resize(rowsize, rowsize);
+  d2psi_mat_.resize(rowsize, rowsize);
   psi_matinv_.resize(rowsize, rowsize);
   psi_delta_.resize(rowsize);
-  
+  dpsi_delta_.resize(rowsize);
+  d2psi_delta_.resize(rowsize);
+
   //now size the pairing function coefficient matrices matrices
   //up spos must be same size
   assert(sposets_[0]->size() == sposets_[1]->size());
@@ -160,42 +203,42 @@ void PfaffianSTU::resize()
   dn_d2psi_mat_.resize(num_dn_, norbs);
 }
 
-int PfaffianSTU::rowPivot(ValueMatrix& mat, const int i) 
+int PfaffianSTU::rowPivot(ValueMatrix& mat, const int i)
 {
   const int size = mat.rows();
-  RealType tiny = 1.0e-20;
+  RealType tiny  = 1.0e-20;
   ValueType backup;
-  int sign = 1;
+  int sign     = 1;
   RealType big = 0.0;
 
   int k = 0;
   for (int j = i + 1; j < size; j++)
   {
-    RealType temp = std::abs(mat(i,j));
+    RealType temp = std::abs(mat(i, j));
     if (temp > big)
     {
       big = temp;
-      k = j;
+      k   = j;
     }
   }
-  if (big < tiny) 
+  if (big < tiny)
   {
     app_warning() << "Singular row in Pfaffian Matrix" << std::endl;
-    mat(i, i+1) = tiny;
+    mat(i, i + 1) = tiny;
   }
   if (k != (i + 1))
   {
     for (int j = i; j < size; j++)
     {
-      backup = mat(j, i+1);
-      mat(j, i+1) = mat(j, k);
-      mat(j,k) = backup;
+      backup        = mat(j, i + 1);
+      mat(j, i + 1) = mat(j, k);
+      mat(j, k)     = backup;
     }
     for (int j = i; j < size; j++)
     {
-      backup = mat(i+1, j);
-      mat(i+1,j) = mat(k, j);
-      mat(k, j) = backup;
+      backup        = mat(i + 1, j);
+      mat(i + 1, j) = mat(k, j);
+      mat(k, j)     = backup;
     }
     sign *= -1;
   }
@@ -208,36 +251,37 @@ PfaffianSTU::ValueType PfaffianSTU::calculatePfaffian()
   ValueMatrix tmp_mat(size, size);
   std::copy(psi_mat_.begin(), psi_mat_.end(), tmp_mat.begin());
 
-  ValueType pf  = 1.0;
-  int sign = 1;
+  ValueType pf = 1.0;
+  int sign     = 1;
   for (int i = 0; i < size; i += 2)
   {
     sign *= rowPivot(tmp_mat, i);
     for (int j = i + 2; j < size; j++)
     {
-      ValueType fac = -tmp_mat(i,j) / tmp_mat(i, i+1);
+      ValueType fac = -tmp_mat(i, j) / tmp_mat(i, i + 1);
       for (int k = i + 1; k < size; k++)
       {
-        tmp_mat(k,j) += fac * tmp_mat(k, i+1);
-        tmp_mat(j,k) += fac * tmp_mat(i+1, k);
+        tmp_mat(k, j) += fac * tmp_mat(k, i + 1);
+        tmp_mat(j, k) += fac * tmp_mat(i + 1, k);
       }
     }
-    pf *= tmp_mat(i, i+1);
+    pf *= tmp_mat(i, i + 1);
   }
   return pf * ValueType(sign);
 }
 
 void PfaffianSTU::calculateInverse()
 {
-    std::copy(psi_mat_.begin(), psi_mat_.end(), psi_matinv_.begin());
-    invert_matrix(psi_matinv_, false);
+  std::copy(psi_mat_.begin(), psi_mat_.end(), psi_matinv_.begin());
+  invert_matrix(psi_matinv_, false);
 }
 
 PfaffianSTU::ValueType PfaffianSTU::calculateRatio(const ValueVector& newvals)
 {
   assert(active_idx_ >= 0);
   assert(newvals.size() == psi_mat_.rows());
-  std::transform(newvals.begin(), newvals.end(), psi_mat_[active_idx_], psi_delta_.begin(), [](auto v1, auto v2) { return v1 - v2;});
+  std::transform(newvals.begin(), newvals.end(), psi_mat_[active_idx_], psi_delta_.begin(),
+                 [](auto v1, auto v2) { return v1 - v2; });
 
   //can't use simd::dot since dotting into column of inverse matrix...not contiguous
   ValueType ratio = 0.0;
@@ -257,33 +301,34 @@ void PfaffianSTU::updateInverse()
 
   for (int i = 0; i < n; i++)
   {
-    U(i,0) = u[i];
-    U(i,1) = psi_delta_[i];
-    V(0,i) = psi_delta_[i];
-    V(1,i) = -u[i];
+    U(i, 0) = u[i];
+    U(i, 1) = psi_delta_[i];
+    V(0, i) = psi_delta_[i];
+    V(1, i) = -u[i];
   }
 
   ValueMatrix tmp(n, 2);
   MatrixOperators::product(psi_matinv_, U, tmp);
 
-  ValueMatrix M(2,2);
+  ValueMatrix M(2, 2);
   MatrixOperators::product(V, tmp, M);
 
   for (int i = 0; i < 2; i++)
-    M(i,i) += 1.0;
+    M(i, i) += 1.0;
 
   invert_matrix(M, false);
 
-  ValueMatrix tmp2(2,n);
+  ValueMatrix tmp2(2, n);
   MatrixOperators::product(V, psi_matinv_, tmp2);
   MatrixOperators::product(U, M, tmp);
 
-  ValueMatrix tmp3(n,n);
-  ValueMatrix tmp4(n,n);
+  ValueMatrix tmp3(n, n);
+  ValueMatrix tmp4(n, n);
   MatrixOperators::product(tmp, tmp2, tmp3);
   MatrixOperators::product(psi_matinv_, tmp3, tmp4);
 
-  std::transform(psi_matinv_.begin(), psi_matinv_.end(), tmp4.begin(), psi_matinv_.begin(), [](auto v1, auto v2) { return v1 - v2; });
+  std::transform(psi_matinv_.begin(), psi_matinv_.end(), tmp4.begin(), psi_matinv_.begin(),
+                 [](auto v1, auto v2) { return v1 - v2; });
 }
 
 } // namespace qmcplusplus

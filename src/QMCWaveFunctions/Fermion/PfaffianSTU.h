@@ -26,6 +26,7 @@ class PfaffianSTUTest;
 class PfaffianSTU : public WaveFunctionComponent
 {
   using ValueVector = SPOSet::ValueVector;
+  using GradVector  = SPOSet::GradVector;
   using ValueMatrix = SPOSet::ValueMatrix;
   using GradMatrix  = SPOSet::GradMatrix;
 
@@ -94,14 +95,18 @@ private:
   //called by acceptMove, updates the inverse with sherman-morrison-woodbury update
   void updateInverse();
 
-  //current matrix
+  //current matrix 
   ValueMatrix psi_mat_;
+  GradMatrix dpsi_mat_;
+  ValueMatrix d2psi_mat_;
 
   //current inverse
   ValueMatrix psi_matinv_;
 
   //change to row/column
   ValueVector psi_delta_;
+  GradVector dpsi_delta_;
+  ValueVector d2psi_delta_;
 
   //active row/column
   int active_idx_;
