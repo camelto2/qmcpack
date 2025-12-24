@@ -53,7 +53,9 @@ public:
   ///destructor
   ~BareKineticEnergy() override;
 
+  bool dependsOnWaveFunction() const override;
   std::string getClassName() const override;
+  void resetTargetParticleSet(ParticleSet& p) override;
 
 #if !defined(REMOVE_TRACEMANAGER)
   void contributeParticleQuantities() override;
@@ -61,16 +63,14 @@ public:
   void deleteParticleQuantities() override;
 #endif
 
-  Return_t evaluate(TrialWaveFunction& psi, ParticleSet& P) override;
+  Return_t evaluate(ParticleSet& P) override;
 
-  Return_t evaluateValueAndDerivatives(TrialWaveFunction& psi,
-                                       ParticleSet& P,
+  Return_t evaluateValueAndDerivatives(ParticleSet& P,
                                        const opt_variables_type& optvars,
                                        const Vector<ValueType>& dlogpsi,
                                        Vector<ValueType>& dhpsioverpsi) override;
 
   void mw_evaluateWithParameterDerivatives(const RefVectorWithLeader<OperatorBase>& o_list,
-                                           const RefVectorWithLeader<TrialWaveFunction>& wf_list,
                                            const RefVectorWithLeader<ParticleSet>& p_list,
                                            const opt_variables_type& optvars,
                                            const RecordArray<ValueType>& dlogpsi,
@@ -126,6 +126,10 @@ public:
                                          const int iat,
                                          std::vector<std::vector<ValueMatrix>>& Bforce) override;
 
+  void evaluateOneBodyOpMatrixStrainDeriv(ParticleSet& P,
+                                         const TWFFastDerivWrapper& psi,
+                                         const int mu, const int nu,
+                                         std::vector<ValueMatrix>& Bstrain) override;
 #if !defined(REMOVE_TRACEMANAGER)
   Return_t evaluate_sp(ParticleSet& P);
 #endif
@@ -176,6 +180,8 @@ private:
 
   struct MultiWalkerResource;
   ResourceHandle<MultiWalkerResource> mw_res_;
+
+  TrialWaveFunction& psi_;
 };
 
 } // namespace qmcplusplus

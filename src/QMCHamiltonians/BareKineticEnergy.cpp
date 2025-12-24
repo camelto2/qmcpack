@@ -44,7 +44,7 @@ struct BareKineticEnergy::MultiWalkerResource : public Resource
    * Store mass per species and use SameMass to choose the methods.
    * if SameMass, probably faster and easy to vectorize but no impact on the performance.
    */
-BareKineticEnergy::BareKineticEnergy(ParticleSet& p, TrialWaveFunction& psi) : ps_(p)
+BareKineticEnergy::BareKineticEnergy(ParticleSet& p, TrialWaveFunction& psi) : ps_(p), psi_(psi)
 {
   setEnergyDomain(KINETIC);
   oneBodyQuantumDomain(p);
@@ -65,7 +65,11 @@ BareKineticEnergy::BareKineticEnergy(ParticleSet& p, TrialWaveFunction& psi) : p
 ///destructor
 BareKineticEnergy::~BareKineticEnergy() = default;
 
+bool BareKineticEnergy::dependsOnWaveFunction() const { return true; }
+
 std::string BareKineticEnergy::getClassName() const { return "BareKineticEnergy"; }
+
+void BareKineticEnergy::resetTargetParticleSet(ParticleSet& p) {}
 
 #if !defined(REMOVE_TRACEMANAGER)
 void BareKineticEnergy::contributeParticleQuantities()
@@ -99,7 +103,7 @@ void BareKineticEnergy::deleteParticleQuantities()
 #endif
 
 
-Return_t BareKineticEnergy::evaluate(TrialWaveFunction& psi, ParticleSet& P)
+Return_t BareKineticEnergy::evaluate(ParticleSet& P)
 {
 #if !defined(REMOVE_TRACEMANAGER)
   if (streaming_particles_)
@@ -132,25 +136,26 @@ Return_t BareKineticEnergy::evaluate(TrialWaveFunction& psi, ParticleSet& P)
   return value_;
 }
 
-Return_t BareKineticEnergy::evaluateValueAndDerivatives(TrialWaveFunction& psi,
-                                                        ParticleSet& P,
+Return_t BareKineticEnergy::evaluateValueAndDerivatives(ParticleSet& P,
                                                         const opt_variables_type& optvars,
                                                         const Vector<ValueType>& dlogpsi,
                                                         Vector<ValueType>& dhpsioverpsi)
 {
   // const_cast is needed because TWF::evaluateDerivatives calculates dlogpsi.
   // KineticEnergy must be the first element in the hamiltonian array.
-  psi.evaluateDerivatives(P, optvars, const_cast<Vector<ValueType>&>(dlogpsi), dhpsioverpsi);
-  return evaluate(psi, P);
+  psi_.evaluateDerivatives(P, optvars, const_cast<Vector<ValueType>&>(dlogpsi), dhpsioverpsi);
+  return evaluate(P);
 }
 
 void BareKineticEnergy::mw_evaluateWithParameterDerivatives(const RefVectorWithLeader<OperatorBase>& o_list,
-                                                            const RefVectorWithLeader<TrialWaveFunction>& wf_list,
                                                             const RefVectorWithLeader<ParticleSet>& p_list,
                                                             const opt_variables_type& optvars,
                                                             const RecordArray<ValueType>& dlogpsi,
                                                             RecordArray<ValueType>& dhpsioverpsi) const
 {
+  RefVectorWithLeader<TrialWaveFunction> wf_list(o_list.getCastedLeader<BareKineticEnergy>().psi_);
+  for (int i = 0; i < o_list.size(); i++)
+    wf_list.push_back(o_list.getCastedElement<BareKineticEnergy>(i).psi_);
   mw_evaluate(o_list, wf_list, p_list);
   // const_cast is needed because TWF::evaluateDerivatives calculates dlogpsi.
   // KineticEnergy must be the first element in the hamiltonian array.
@@ -429,6 +434,112 @@ void BareKineticEnergy::evaluateOneBodyOpMatrixForceDeriv(ParticleSet& P,
     }
 }
 
+void BareKineticEnergy::evaluateOneBodyOpMatrixStrainDeriv(ParticleSet& P,
+                                                          const TWFFastDerivWrapper& psi,
+                                                          const int mu, const int nu,
+                                                          std::vector<ValueMatrix>& Bstrain)
+{
+  using HessMatrix = SPOSet::HessMatrix;
+  using GGGMatrix  = SPOSet::GGGMatrix;
+  const IndexType ngroups = P.groups();
+  const IndexType nelec   = P.getTotalNum();
+
+  ParticleSet::ParticleGradient Gtmp, G;
+  ParticleSet::ParticleLaplacian Ltmp, L;
+  Gtmp.resize(nelec);
+  G.resize(nelec);
+  Ltmp.resize(nelec);
+  L.resize(nelec);
+
+  std::vector<ValueMatrix> M;
+  std::vector<GradMatrix> grad_M;
+  std::vector<ValueMatrix> lapl_M;
+  std::vector<HessMatrix> hess_M;
+  std::vector<GGGMatrix>  ghess_M;
+
+  TinyVector<ParticleSet::ParticleGradient, OHMMS_DIM> dG;
+  TinyVector<ParticleSet::ParticleLaplacian, OHMMS_DIM> dL;
+
+  for (int dim = 0; dim < OHMMS_DIM; dim++)
+  {
+    dG[dim] = Gtmp;
+    dL[dim] = Ltmp;
+  }
+
+  assert(Bstrain.size() == ngroups);
+  std::vector<ValueMatrix> mtmp;
+  for (int ig = 0; ig < ngroups; ig++)
+  {
+    const IndexType sid    = psi.getTWFGroupIndex(ig);
+    const IndexType norbs  = psi.numOrbitals(sid);
+    const IndexType first  = P.first(ig);
+    const IndexType last   = P.last(ig);
+    const IndexType nptcls = last - first;
+
+    ValueMatrix zeromat;
+    GradMatrix zerogradmat;
+    HessMatrix zerohess;
+    GGGMatrix zeroghess;
+
+    zeromat.resize(nptcls, norbs);
+    zerogradmat.resize(nptcls, norbs);
+    zerohess.resize(nptcls,norbs);
+    zeroghess.resize(nptcls,norbs);
+    mtmp.push_back(zeromat);
+    M.push_back(zeromat);
+    grad_M.push_back(zerogradmat);
+    lapl_M.push_back(zeromat);
+    hess_M.push_back(zerohess);
+    ghess_M.push_back(zeroghess);
+  }
+
+
+  std::vector<std::vector<ValueMatrix>> dm, dlapl;
+  std::vector<std::vector<GradMatrix>> dgmat;
+  dm.push_back(mtmp);
+  dm.push_back(mtmp);
+  dm.push_back(mtmp);
+
+  dlapl.push_back(mtmp);
+  dlapl.push_back(mtmp);
+  dlapl.push_back(mtmp);
+
+  dgmat.push_back(grad_M);
+  dgmat.push_back(grad_M);
+  dgmat.push_back(grad_M);
+
+  psi.getEGradELaplM(P, M, grad_M, lapl_M);
+  psi.getEGradHessGHessM(P, M, grad_M, hess_M, ghess_M);
+// psi.getIonGradIonGradELaplM(P, source, iat, dm, dgmat, dlapl);
+//  psi.evaluateJastrowVGL(P, G, L);
+//  psi.evaluateJastrowGradSource(P, source, iat, dG, dL);
+  for (int ig = 0; ig < ngroups; ig++)
+  {
+    const IndexType sid    = psi.getTWFGroupIndex(ig);
+    const IndexType norbs  = psi.numOrbitals(sid);
+    const IndexType first  = P.first(ig);
+    const IndexType last   = P.last(ig);
+    const IndexType nptcls = last - first;
+
+    for (int iel = first; iel < last; iel++)
+    {
+      for (int iorb = 0; iorb < norbs; iorb++)
+      {
+	                             //x /xx
+        Bstrain[sid][iel-first][iorb]=RealType(minus_over_2m_[ig]) *
+	  (-0.5*hess_M[sid][iel-first][iorb][0]+hess_M[sid][iel-first][iorb][0]+hess_M[sid][iel-first][iorb][4]+
+	    hess_M[sid][iel-first][iorb][8] + P.R[iel][0]*(ghess_M[sid][iel-first][iorb][0][0]+ghess_M[sid][iel-first][iorb][0][4]+ ghess_M[sid][iel-first][iorb][0][8]));
+//              Bforce[idim][sid][iel - first][iorb] = RealType(minus_over_2m_[ig]) *
+//              (dlapl[idim][sid][iel - first][iorb] +
+//               RealType(2.0) *
+//                   (dot(GradType(G[iel]), dgmat[idim][sid][iel - first][iorb]) +
+//                    dot(GradType(dG[idim][iel]), grad_M[sid][iel - first][iorb])) +
+//               M[sid][iel - first][iorb] * ValueType(dL[idim][iel] + 2.0 * dot(dG[idim][iel], G[iel])) +
+//               ValueType(L[iel] + dot(G[iel], G[iel])) * dm[idim][sid][iel - first][iorb]);
+      }
+    }
+  }  
+}
 void BareKineticEnergy::createResource(ResourceCollection& collection) const
 {
   auto new_res        = std::make_unique<MultiWalkerResource>();
