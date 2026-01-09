@@ -1,4 +1,4 @@
-//////////////////////////////////////////////////////////////////////////////////////
+/////////////////////////////////////////////////////////////////////////////////////
 // This file is distributed under the University of Illinois/NCSA Open Source License.
 // See LICENSE file in top directory for details.
 //
@@ -34,7 +34,7 @@ bool PfaffianSTU::isOptimizable() const { return true; }
 
 void PfaffianSTU::extractOptimizableObjectRefs(UniqueOptObjRefs& opt_obj_refs) {}
 
-void PfaffianSTU::checkOutVariables(const opt_variables_type& active) {}
+void PfaffianSTU::checkOutVariables(const OptVariables& active) {}
 
 PfaffianSTU::LogValue PfaffianSTU::evaluateLog(const ParticleSet& P,
                                                ParticleSet::ParticleGradient& G,
@@ -45,14 +45,20 @@ PfaffianSTU::LogValue PfaffianSTU::evaluateLog(const ParticleSet& P,
   ValueType val = calculatePfaffian();
   log_value_    = {std::log(std::abs(val)), std::arg(val)};
   calculateInverse();
+
+  for (int ie = 0; ie < num_elec_; ie++)
+  {
+    mGradType rv   = simd::dot(psi_matinv_[ie], dpsi_mat_[ie], psi_mat_.rows());
+    mValueType lap = simd::dot(psi_matinv_[ie], d2psi_mat_[ie], psi_mat_.rows());
+    G[ie] += 0.5 * rv;
+    L[ie] += 0.5 * (lap - dot(rv, rv));
+  }
+
   return log_value_;
 }
 
 void PfaffianSTU::recompute(const ParticleSet& P)
 {
-  //TODO:
-  //need to update grad and lap matrix
-
   //update up
   sposets_[0]->evaluate_notranspose(P, 0, num_up_, up_psi_mat_, up_dpsi_mat_, up_d2psi_mat_);
   //update dn
@@ -106,8 +112,8 @@ void PfaffianSTU::recompute(const ParticleSet& P)
           }
         }
       }
-      psi_mat_(j, i) = -psi_mat_(i, j);
-      dpsi_mat_(j, i) = -dpsi_mat_(i, j);
+      psi_mat_(j, i)   = -psi_mat_(i, j);
+      dpsi_mat_(j, i)  = -dpsi_mat_(i, j);
       d2psi_mat_(j, i) = -d2psi_mat_(i, j);
     }
   }
@@ -158,8 +164,16 @@ void PfaffianSTU::acceptMove(ParticleSet& P, int iat, bool safe_to_delay)
   assert(iat == active_idx_);
   std::transform(psi_delta_.begin(), psi_delta_.end(), psi_mat_[active_idx_], psi_mat_[active_idx_],
                  [](auto v1, auto v2) { return v1 + v2; });
+  std::transform(dpsi_delta_.begin(), dpsi_delta_.end(), dpsi_mat_[active_idx_], dpsi_mat_[active_idx_],
+                 [](auto v1, auto v2) { return v1 + v2; });
+  std::transform(d2psi_delta_.begin(), d2psi_delta_.end(), d2psi_mat_[active_idx_], d2psi_mat_[active_idx_],
+                 [](auto v1, auto v2) { return v1 + v2; });
   for (int i = 0; i < psi_mat_.rows(); i++)
-    psi_mat_(i, active_idx_) = -psi_mat_(active_idx_, i);
+  {
+    psi_mat_(i, active_idx_)   = -psi_mat_(active_idx_, i);
+    dpsi_mat_(i, active_idx_)  = -dpsi_mat_(active_idx_, i);
+    d2psi_mat_(i, active_idx_) = -d2psi_mat_(active_idx_, i);
+  }
   updateInverse();
   active_idx_ = -1;
 }
@@ -169,12 +183,12 @@ PfaffianSTU::PsiValue PfaffianSTU::ratio(ParticleSet& P, int iat) {}
 std::unique_ptr<WaveFunctionComponent> PfaffianSTU::makeClone(ParticleSet& tqp) const {}
 
 void PfaffianSTU::evaluateDerivatives(ParticleSet& P,
-                                      const opt_variables_type& active,
+                                      const OptVariables& active,
                                       Vector<ValueType>& dlogpsi,
                                       Vector<ValueType>& dhpsioverpsi)
 {}
 
-void PfaffianSTU::evaluateDerivativesWF(ParticleSet& P, const opt_variables_type& active, Vector<ValueType>& dlogpsi) {}
+void PfaffianSTU::evaluateDerivativesWF(ParticleSet& P, const OptVariables& active, Vector<ValueType>& dlogpsi) {}
 
 void PfaffianSTU::resize()
 {
@@ -195,6 +209,7 @@ void PfaffianSTU::resize()
   uu_triplet_mat_.resize(norbs, norbs);
   dd_triplet_mat_.resize(norbs, norbs);
 
+  //storage for orbitals
   up_psi_mat_.resize(num_up_, norbs);
   dn_psi_mat_.resize(num_dn_, norbs);
   up_dpsi_mat_.resize(num_up_, norbs);

@@ -30,6 +30,9 @@ class PfaffianSTU : public WaveFunctionComponent
   using ValueMatrix = SPOSet::ValueMatrix;
   using GradMatrix  = SPOSet::GradMatrix;
 
+  using mValueType = QMCTraits::QTFull::ValueType;
+  using mGradType  = TinyVector<mValueType, DIM>;
+
 public:
   PfaffianSTU(ParticleSet& targetPtcl,
               std::vector<std::unique_ptr<SPOSet>>&& sposets,
@@ -45,7 +48,7 @@ public:
 
   void extractOptimizableObjectRefs(UniqueOptObjRefs& opt_obj_refs) override;
 
-  void checkOutVariables(const opt_variables_type& active) override;
+  void checkOutVariables(const OptVariables& active) override;
 
   LogValue evaluateLog(const ParticleSet& P,
                        ParticleSet::ParticleGradient& G,
@@ -74,10 +77,10 @@ public:
   std::unique_ptr<WaveFunctionComponent> makeClone(ParticleSet& tqp) const override;
 
   void evaluateDerivatives(ParticleSet& P,
-                           const opt_variables_type& active,
+                           const OptVariables& active,
                            Vector<ValueType>& dlogpsi,
                            Vector<ValueType>& dhpsioverpsi) override;
-  void evaluateDerivativesWF(ParticleSet& P, const opt_variables_type& active, Vector<ValueType>& dlogpsi) override;
+  void evaluateDerivativesWF(ParticleSet& P, const OptVariables& active, Vector<ValueType>& dlogpsi) override;
 
 private:
   void resize();
