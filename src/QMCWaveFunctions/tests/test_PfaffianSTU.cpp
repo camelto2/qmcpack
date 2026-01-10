@@ -25,9 +25,12 @@ namespace testing
 class PfaffianSTUTest
 {
   using ValueType   = PfaffianSTU::ValueType;
+  using GradType    = PfaffianSTU::GradType;
   using RealType    = PfaffianSTU::RealType;
   using ValueVector = PfaffianSTU::ValueVector;
+  using GradVector  = PfaffianSTU::GradVector;
   using ValueMatrix = PfaffianSTU::ValueMatrix;
+  using GradMatrix  = PfaffianSTU::GradMatrix;
 
 public:
   std::unique_ptr<ParticleSet> createDummyElec(int nup, int ndn)
@@ -165,14 +168,22 @@ public:
 
   void checkLog(PfaffianSTU& pf, ParticleSet& elec)
   {
-    //now going to test how the pfaffian is evaluated given random up/dn SPOSet values and random pairing matrices
+    //Check evaluateLog for Pfaffian, given a set of up and down orbitals.
+    //the orbitals used are sin/cos(k.r) with random k values and electron positions
+    //All reference data can be found in pfaffian_testing.ipynb
     up_ref_mat_.resize(pf.up_psi_mat_.rows(), pf.up_psi_mat_.cols());
     dn_ref_mat_.resize(pf.dn_psi_mat_.rows(), pf.dn_psi_mat_.cols());
+    up_dref_mat_.resize(pf.up_dpsi_mat_.rows(), pf.up_dpsi_mat_.cols());
+    dn_dref_mat_.resize(pf.dn_dpsi_mat_.rows(), pf.dn_dpsi_mat_.cols());
+    up_d2ref_mat_.resize(pf.up_d2psi_mat_.rows(), pf.up_d2psi_mat_.cols());
+    dn_d2ref_mat_.resize(pf.dn_d2psi_mat_.rows(), pf.dn_d2psi_mat_.cols());
+
     ref_mat_.resize(pf.psi_mat_.rows(), pf.psi_mat_.cols());
 
-    ValueVector row0 = {0.92979771, 0.04481706, 0.36345255, 0.55100725, 0.11389361, 0.83844704};
-    ValueVector row1 = {0.8024512, 0.47750522, 0.59375306, 0.12799644, 0.56722092, 0.13476818};
-    ValueVector row2 = {0.81711275, 0.82519555, 0.78641738, 0.12231961, 0.52508536, 0.2608769};
+    //up values
+    ValueVector row0 = {0.26880981, 0.38297036, 0.67970534, 0.57913668, 0.34154767, 0.68877715};
+    ValueVector row1 = {-0.00249844, 0.07922684, 0.51539003, 0.39623433, 0.10879198, 0.5439395};
+    ValueVector row2 = {0.38216715, 0.31236072, 0.70069793, 0.55406334, 0.36763894, 0.64983887};
     for (int i = 0; i < up_ref_mat_.cols(); i++)
     {
       up_ref_mat_[0][i] = row0[i];
@@ -182,8 +193,39 @@ public:
     auto upspo = dynamic_cast<ConstantSPOSet<ValueType>*>(pf.sposets_[0].get());
     upspo->setRefVals(up_ref_mat_);
 
-    row0 = {0.11087974, 0.91875922, 0.70049105, 0.1151218, 0.49077789, 0.36205635};
-    row1 = {0.92619697, 0.83850844, 0.38222666, 0.69600158, 0.10640622, 0.1246681};
+    //up grads
+    GradVector g0 = {{-0.64400252, -0.91610297, -0.48422924}, {-0.44093363, -0.45549765, -0.77629632},
+                     {-0.37069611, -0.38923311, -0.23519604}, {-0.13093672, -0.33648282, -0.6720715},
+                     {-0.19117277, -0.61472653, -0.90141821}, {-0.06633773, -0.21230168, -0.56491323}};
+    GradVector g1 = {{-0.66860985, -0.95110725, -0.50273163}, {-0.47582413, -0.49154059, -0.83772365},
+                     {-0.43309684, -0.45475425, -0.27478751}, {-0.14746686, -0.37896217, -0.75691732},
+                     {-0.20219732, -0.65017657, -0.95340118}, {-0.076783, -0.24572984, -0.65386216}};
+    GradVector g2 = {{-0.61785976, -0.8789145, -0.46457234},  {-0.45344093, -0.46841808, -0.79831636},
+                     {-0.36057456, -0.37860542, -0.22877421}, {-0.13370634, -0.34360023, -0.6862874},
+                     {-0.18915991, -0.60825407, -0.89192716}, {-0.0695494, -0.22258006, -0.59226296}};
+    for (int i = 0; i < up_dref_mat_.cols(); i++)
+    {
+      up_dref_mat_[0][i] = g0[i];
+      up_dref_mat_[1][i] = g1[i];
+      up_dref_mat_[2][i] = g2[i];
+    }
+    upspo->setRefEGrads(up_dref_mat_);
+
+    //up laps
+    row0 = {-0.43127665, -0.45082918, -0.43490375, -0.50719738, -0.47441901, -0.4830475};
+    row1 = {0.00400849, -0.09326511, -0.32976798, -0.34701482, -0.15111502, -0.38147116};
+    row2 = {-0.61314639, -0.36770815, -0.44833568, -0.4852386, -0.5106605, -0.45573962};
+    for (int i = 0; i < up_d2ref_mat_.cols(); i++)
+    {
+      up_d2ref_mat_[0][i] = row0[i];
+      up_d2ref_mat_[1][i] = row1[i];
+      up_d2ref_mat_[2][i] = row2[i];
+    }
+    upspo->setRefELapls(up_d2ref_mat_);
+
+    //down values
+    row0 = {0.6851893, 0.60400179, 0.89348619, 0.91161367, 0.86358127, 0.94059632};
+    row1 = {-0.46062194, -0.66440113, 0.57008769, 0.56464611, 0.02793061, 0.42318932};
     for (int i = 0; i < dn_ref_mat_.cols(); i++)
     {
       dn_ref_mat_[0][i] = row0[i];
@@ -191,6 +233,30 @@ public:
     }
     auto dnspo = dynamic_cast<ConstantSPOSet<ValueType>*>(pf.sposets_[1].get());
     dnspo->setRefVals(dn_ref_mat_);
+
+    //down grads
+    g0 = {{-0.62641093, -0.57186363, -0.54915937}, {-0.75098121, -0.71416503, -0.67599978},
+          {-0.06534126, -0.31283256, -0.10731589}, {-0.14939149, -0.02329714, -0.30623787},
+          {-0.40796331, -0.47395767, -0.01600182}, {-0.27075382, -0.02753156, -0.1706383}};
+    g1 = {{-0.76335365, -0.6968815, -0.66921376},  {-0.70423772, -0.6697131, -0.63392338},
+          {-0.11953783, -0.572308, -0.19632784},   {-0.29995943, -0.04677775, -0.61488735},
+          {-0.80879875, -0.93963444, -0.03172407}, {-0.72251736, -0.07346907, -0.45535511}};
+    for (int i = 0; i < dn_dref_mat_.cols(); i++)
+    {
+      dn_dref_mat_[0][i] = g0[i];
+      dn_dref_mat_[1][i] = g1[i];
+    }
+    dnspo->setRefEGrads(dn_dref_mat_);
+
+    //down laps
+    row0 = {-1.31866924, -1.45582683, -0.50348985, -0.62933418, -1.32928953 - 0.84190492};
+    row1 = {0.88648201, 1.60140749, -0.32125104, -0.38980449, -0.0429929, -0.37878648};
+    for (int i = 0; i < dn_d2ref_mat_.cols(); i++)
+    {
+      dn_d2ref_mat_[0][i] = row0[i];
+      dn_d2ref_mat_[1][i] = row1[i];
+    }
+    dnspo->setRefELapls(dn_d2ref_mat_);
 
     //singlet
     ValueVector row3, row4, row5;
@@ -215,14 +281,19 @@ public:
       pf.singlet_mat_(4, i) = row4[i];
       pf.singlet_mat_(5, i) = row5[i];
     }
-    
+
     //UU triplet
-    row0 = { 0.0 , 0.10179712049738304 , 0.04720517011113051 , 0.13767202491931702 , -0.04487759834743943 , 0.1305860299961965 };
-    row1 = { -0.10179712049738304 , 0.0 , -0.060719691450885904 , -0.1700387281327197 , 0.1505147613342654 , -0.1258821272345353 };
-    row2 = { -0.04720517011113051 , 0.060719691450885904 , 0.0 , -0.17528784342592918 , 0.18023264504075892 , -0.2124931747481953 };
-    row3 = { -0.13767202491931702 , 0.1700387281327197 , 0.17528784342592918 , 0.0 , 0.011885828639267404 , -0.2724282490725342 };
-    row4 = { 0.04487759834743943 , -0.1505147613342654 , -0.18023264504075892 , -0.011885828639267404 , 0.0 , -0.2527551842515271 };
-    row5 = { -0.1305860299961965 , 0.1258821272345353 , 0.2124931747481953 , 0.2724282490725342 , 0.2527551842515271 , 0.0 };
+    row0 =
+        {0.0, 0.10179712049738304, 0.04720517011113051, 0.13767202491931702, -0.04487759834743943, 0.1305860299961965};
+    row1 = {-0.10179712049738304, 0.0, -0.060719691450885904, -0.1700387281327197, 0.1505147613342654,
+            -0.1258821272345353};
+    row2 = {-0.04720517011113051, 0.060719691450885904, 0.0,
+            -0.17528784342592918, 0.18023264504075892,  -0.2124931747481953};
+    row3 = {-0.13767202491931702, 0.1700387281327197, 0.17528784342592918, 0.0,
+            0.011885828639267404, -0.2724282490725342};
+    row4 = {0.04487759834743943, -0.1505147613342654, -0.18023264504075892, -0.011885828639267404, 0.0,
+            -0.2527551842515271};
+    row5 = {-0.1305860299961965, 0.1258821272345353, 0.2124931747481953, 0.2724282490725342, 0.2527551842515271, 0.0};
 
     for (int i = 0; i < pf.uu_triplet_mat_.cols(); i++)
     {
@@ -235,12 +306,18 @@ public:
     }
 
     //DD triplet
-    row0 = { 0.0 , -0.2841971014610199 , -0.22729801265851418 , 0.02689802638369143 , -0.014699398554927245 , -0.2408488597164405 };
-    row1 = { 0.2841971014610199 , 0.0 , -0.11422553793697526 , -0.09290196456215388 , 0.0845644076456245 , -0.004046219453199551 };
-    row2 = { 0.22729801265851418 , 0.11422553793697526 , 0.0 , 0.18361494551113666 , 0.04352167620130676 , 0.19876007777434612 };
-    row3 = { -0.02689802638369143 , 0.09290196456215388 , -0.18361494551113666 , 0.0 , 0.4455646986311197 , 0.42441739601566725 };
-    row4 = { 0.014699398554927245 , -0.0845644076456245 , -0.04352167620130676 , -0.4455646986311197 , 0.0 , 0.18807375032492452 };
-    row5 = { 0.2408488597164405 , 0.004046219453199551 , -0.19876007777434612 , -0.42441739601566725 , -0.18807375032492452 , 0.0 };
+    row0 = {0.000000000000,      -0.2841971014610199,   -0.22729801265851418,
+            0.02689802638369143, -0.014699398554927245, -0.2408488597164405};
+    row1 = {0.2841971014610199,   0.0, -0.11422553793697526, -0.09290196456215388, 0.0845644076456245,
+            -0.004046219453199551};
+    row2 = {0.22729801265851418, 0.11422553793697526, 0.0,
+            0.18361494551113666, 0.04352167620130676, 0.19876007777434612};
+    row3 = {-0.02689802638369143, 0.09290196456215388, -0.18361494551113666, 0.0,
+            0.4455646986311197,   0.42441739601566725};
+    row4 = {0.014699398554927245, -0.0845644076456245, -0.04352167620130676, -0.4455646986311197, 0.0,
+            0.18807375032492452};
+    row5 = {0.2408488597164405,   0.004046219453199551, -0.19876007777434612,
+            -0.42441739601566725, -0.18807375032492452, 0.0};
     for (int i = 0; i < pf.dd_triplet_mat_.cols(); i++)
     {
       pf.dd_triplet_mat_(0, i) = row0[i];
@@ -251,18 +328,45 @@ public:
       pf.dd_triplet_mat_(5, i) = row5[i];
     }
 
-    ParticleSet::ParticleGradient G;
-    ParticleSet::ParticleLaplacian L;
+    ParticleSet::ParticleGradient G(pf.num_elec_);
+    ParticleSet::ParticleLaplacian L(pf.num_elec_);
     pf.evaluateLog(elec, G, L);
-    ValueType ref_pfaff = -0.5520438346362099;
+    ValueType ref_pfaff = 0.10238959550669759;
     CHECK(std::log(std::abs(ref_pfaff)) == Approx(std::real(pf.log_value_)));
     CHECK(std::arg(ref_pfaff) == Approx(std::imag(pf.log_value_)));
+
+    //These reference values are from finite differences
+    ParticleSet::ParticleGradient Gref(pf.num_elec_);
+    ParticleSet::ParticleLaplacian Lref(pf.num_elec_);
+    Gref[0] = {-0.7733315, -0.20828055, -2.64730643};
+    Lref[0] = -8.649288456321084;
+    Gref[1] = {1.91996022, 1.19226577, 2.58849779};
+    Lref[1] = -12.213196116172432;
+    Gref[2] = {-0.29110375, -0.5174623, 0.56568087};
+    Lref[2] = -1.5095258550502972;
+    Gref[3] = {-0.52240337, -0.50146571, -0.37098483};
+    Lref[3] = -2.0217793108861724;
+    Gref[4] = {0.62509842, 1.08321894, -0.43144685};
+    Lref[4] = -3.3375232329442506;
+    for (int i = 0; i < pf.num_elec_; i++)
+    {
+      std::cout << i << std::endl;
+      std::cout << G[i][0] << " " << Gref[i][0] << std::endl;
+      std::cout << G[i][1] << " " << Gref[i][1]<< std::endl;
+      std::cout << G[i][2] << " " << Gref[i][2]<< std::endl;
+      std::cout << L[i]    << " " << Lref[i]<< std::endl;
+      std::cout << std::endl;
+    }
   }
 
 private:
   ValueMatrix ref_mat_;
   ValueMatrix up_ref_mat_;
   ValueMatrix dn_ref_mat_;
+  GradMatrix up_dref_mat_;
+  GradMatrix dn_dref_mat_;
+  ValueMatrix up_d2ref_mat_;
+  ValueMatrix dn_d2ref_mat_;
   ValueMatrix tmp_pairing_;
 };
 
@@ -327,8 +431,8 @@ TEST_CASE("Pfaffian evaluateLog", "[wavefunction][fermion]")
   std::unique_ptr<SPOSet> upspo     = pftester.createDummySPO("up", nup, norb);
   std::unique_ptr<SPOSet> dnspo     = pftester.createDummySPO("dn", ndn, norb);
   std::vector<std::unique_ptr<SPOSet>> spos;
-  spos.emplace_back(std::move(upspo));
-  spos.emplace_back(std::move(dnspo));
+  spos.push_back(std::move(upspo));
+  spos.push_back(std::move(dnspo));
   PfaffianSTU pf((*elec), std::move(spos), "pfaffian");
   pftester.checkLog(pf, (*elec));
 }

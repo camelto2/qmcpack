@@ -46,103 +46,58 @@ PfaffianSTU::LogValue PfaffianSTU::evaluateLog(const ParticleSet& P,
   log_value_    = {std::log(std::abs(val)), std::arg(val)};
   calculateInverse();
 
-  for (int ie = 0; ie < num_elec_; ie++)
-  {
-    mGradType rv   = simd::dot(psi_matinv_[ie], dpsi_mat_[ie], psi_mat_.rows());
-    mValueType lap = simd::dot(psi_matinv_[ie], d2psi_mat_[ie], psi_mat_.rows());
-    G[ie] += 0.5 * rv;
-    L[ie] += 0.5 * (lap - dot(rv, rv));
-  }
-
   return log_value_;
 }
 
 void PfaffianSTU::recompute(const ParticleSet& P)
 {
   //update up
+  up_psi_mat_ = 0;
+  up_dpsi_mat_ = 0;
+  up_d2psi_mat_ = 0;
   sposets_[0]->evaluate_notranspose(P, 0, num_up_, up_psi_mat_, up_dpsi_mat_, up_d2psi_mat_);
   //update dn
-  sposets_[1]->evaluate_notranspose(P, 0, num_dn_, dn_psi_mat_, dn_dpsi_mat_, dn_d2psi_mat_);
+  dn_psi_mat_ = 0;
+  dn_dpsi_mat_ = 0;
+  dn_d2psi_mat_ = 0;
+  sposets_[1]->evaluate_notranspose(P, num_up_, num_elec_, dn_psi_mat_, dn_dpsi_mat_, dn_d2psi_mat_);
 
   const int norb = sposets_[0]->size();
-  ValueVector tmpvec(norb);
 
   psi_mat_ = 0;
   //update upper diagonal of matrix
   for (int i = 0; i < num_elec_; i++)
   {
+    bool iup = (i < num_up_);
+    int ii   = iup ? i : i - num_up_;
     for (int j = i + 1; j < num_elec_; j++)
     {
-      //triplet uu
-      if ((i < num_up_) && (j < num_up_))
+      bool jup = (j < num_up_);
+      int jj   = jup ? j : j - num_up_;
+      //now get references and pointers to orbitals and pairing matrix depending on type
+      auto& pair_mat = (iup && jup) ? uu_triplet_mat_ : (iup ? singlet_mat_ : dd_triplet_mat_);
+      auto* psi_i    = iup ? up_psi_mat_[ii] : dn_psi_mat_[ii];
+      auto* psi_j    = jup ? up_psi_mat_[jj] : dn_psi_mat_[jj];
+      for (int k = 0; k < norb; k++)
       {
-        for (int k = 0; k < norb; k++)
+        for (int l = 0; l < norb; l++)
         {
-          for (int l = 0; l < norb; l++)
-          {
-            psi_mat_(i, j) += up_psi_mat_(i, k) * uu_triplet_mat_(k, l) * up_psi_mat_(j, l);
-            dpsi_mat_(i, j) += up_dpsi_mat_(i, k) * uu_triplet_mat_(k, l) * up_psi_mat_(j, l);
-            d2psi_mat_(i, j) += up_d2psi_mat_(i, k) * uu_triplet_mat_(k, l) * up_psi_mat_(j, l);
-          }
+          psi_mat_(i, j) += psi_i[k] * pair_mat(k,l) * psi_j[l];
         }
       }
-      // up dn singlet
-      else if ((i < num_up_) && (j >= num_up_))
-      {
-        for (int k = 0; k < norb; k++)
-        {
-          for (int l = 0; l < norb; l++)
-          {
-            psi_mat_(i, j) += up_psi_mat_(i, k) * singlet_mat_(k, l) * dn_psi_mat_(j - num_up_, l);
-            dpsi_mat_(i, j) += up_dpsi_mat_(i, k) * singlet_mat_(k, l) * dn_psi_mat_(j - num_up_, l);
-            d2psi_mat_(i, j) += up_d2psi_mat_(i, k) * singlet_mat_(k, l) * dn_psi_mat_(j - num_up_, l);
-          }
-        }
-      }
-      //dn dn triplet
-      else if ((i >= num_up_) && (j >= num_up_))
-      {
-        for (int k = 0; k < norb; k++)
-        {
-          for (int l = 0; l < norb; l++)
-          {
-            psi_mat_(i, j) += dn_psi_mat_(i - num_up_, k) * dd_triplet_mat_(k, l) * dn_psi_mat_(j - num_up_, l);
-            dpsi_mat_(i, j) += dn_dpsi_mat_(i - num_up_, k) * dd_triplet_mat_(k, l) * dn_psi_mat_(j - num_up_, l);
-            d2psi_mat_(i, j) += dn_d2psi_mat_(i - num_up_, k) * dd_triplet_mat_(k, l) * dn_psi_mat_(j - num_up_, l);
-          }
-        }
-      }
-      psi_mat_(j, i)   = -psi_mat_(i, j);
-      dpsi_mat_(j, i)  = -dpsi_mat_(i, j);
-      d2psi_mat_(j, i) = -d2psi_mat_(i, j);
+      psi_mat_(j, i) = -psi_mat_(i, j);
     }
   }
   //Now need to update final col if odd num electrons
   if (psi_mat_.rows() == num_elec_ + 1)
   {
-    for (int i = 0; i < num_up_; i++)
+    for (int i = 0; i < num_elec_; i++)
     {
-      ValueType v              = up_psi_mat_(i, i);
-      GradType g               = up_dpsi_mat_(i, i);
-      ValueType l              = up_d2psi_mat_(i, i);
-      psi_mat_(i, num_elec_)   = v;
-      psi_mat_(num_elec_, i)   = -v;
-      dpsi_mat_(i, num_elec_)  = g;
-      dpsi_mat_(num_elec_, i)  = -g;
-      d2psi_mat_(i, num_elec_) = l;
-      d2psi_mat_(num_elec_, i) = -l;
-    }
-    for (int i = 0; i < num_dn_; i++)
-    {
-      ValueType v                        = dn_psi_mat_(i, i);
-      GradType g                         = dn_dpsi_mat_(i, i);
-      ValueType l                        = dn_d2psi_mat_(i, i);
-      psi_mat_(num_up_ + i, num_elec_)   = v;
-      psi_mat_(num_elec_, num_up_ + i)   = -v;
-      dpsi_mat_(num_up_ + i, num_elec_)  = g;
-      dpsi_mat_(num_elec_, num_up_ + i)  = -g;
-      d2psi_mat_(num_up_ + i, num_elec_) = l;
-      d2psi_mat_(num_elec_, num_up_ + i) = -l;
+      bool iup = (i < num_up_);
+      int ii = iup ? i : i - num_up_;
+      ValueType v = iup ? up_psi_mat_(ii,ii) : dn_psi_mat_(ii,ii);
+      psi_mat_(i, num_elec_) = v;
+      psi_mat_(num_elec_, i) = -v;
     }
   }
 }
@@ -164,15 +119,9 @@ void PfaffianSTU::acceptMove(ParticleSet& P, int iat, bool safe_to_delay)
   assert(iat == active_idx_);
   std::transform(psi_delta_.begin(), psi_delta_.end(), psi_mat_[active_idx_], psi_mat_[active_idx_],
                  [](auto v1, auto v2) { return v1 + v2; });
-  std::transform(dpsi_delta_.begin(), dpsi_delta_.end(), dpsi_mat_[active_idx_], dpsi_mat_[active_idx_],
-                 [](auto v1, auto v2) { return v1 + v2; });
-  std::transform(d2psi_delta_.begin(), d2psi_delta_.end(), d2psi_mat_[active_idx_], d2psi_mat_[active_idx_],
-                 [](auto v1, auto v2) { return v1 + v2; });
   for (int i = 0; i < psi_mat_.rows(); i++)
   {
     psi_mat_(i, active_idx_)   = -psi_mat_(active_idx_, i);
-    dpsi_mat_(i, active_idx_)  = -dpsi_mat_(active_idx_, i);
-    d2psi_mat_(i, active_idx_) = -d2psi_mat_(active_idx_, i);
   }
   updateInverse();
   active_idx_ = -1;
@@ -194,12 +143,8 @@ void PfaffianSTU::resize()
 {
   int rowsize = (num_elec_ % 2 == 0) ? num_elec_ : num_elec_ + 1;
   psi_mat_.resize(rowsize, rowsize);
-  dpsi_mat_.resize(rowsize, rowsize);
-  d2psi_mat_.resize(rowsize, rowsize);
   psi_matinv_.resize(rowsize, rowsize);
   psi_delta_.resize(rowsize);
-  dpsi_delta_.resize(rowsize);
-  d2psi_delta_.resize(rowsize);
 
   //now size the pairing function coefficient matrices matrices
   //up spos must be same size

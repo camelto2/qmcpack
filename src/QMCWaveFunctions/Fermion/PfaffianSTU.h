@@ -100,16 +100,12 @@ private:
 
   //current matrix 
   ValueMatrix psi_mat_;
-  GradMatrix dpsi_mat_;
-  ValueMatrix d2psi_mat_;
 
   //current inverse
   ValueMatrix psi_matinv_;
 
   //change to row/column
   ValueVector psi_delta_;
-  GradVector dpsi_delta_;
-  ValueVector d2psi_delta_;
 
   //active row/column
   int active_idx_;
