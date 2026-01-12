@@ -101,6 +101,12 @@ private:
   //current matrix 
   ValueMatrix psi_mat_;
 
+  //row updates only for derivatives. 
+  //We don't need the full matrix, only a collection of row updates for each particle
+  //We do this since we only ever do dot products of rows with columns of inverse matrix
+  GradMatrix dpsi_rows_;
+  ValueMatrix d2psi_rows_;
+
   //current inverse
   ValueMatrix psi_matinv_;
 

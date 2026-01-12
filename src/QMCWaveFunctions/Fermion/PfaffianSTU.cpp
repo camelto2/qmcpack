@@ -46,6 +46,17 @@ PfaffianSTU::LogValue PfaffianSTU::evaluateLog(const ParticleSet& P,
   log_value_    = {std::log(std::abs(val)), std::arg(val)};
   calculateInverse();
 
+  const int size = psi_mat_.rows();
+  for (int i = 0; i < num_elec_; i++)
+  {
+    //exploting symmetry of matrices here. psi_matint_[i] gives a row, but I need to dot with column. 
+    //Since antisymmetric, add a sign to G and L
+    mGradType rv   = simd::dot(psi_matinv_[i], dpsi_rows_[i], size);
+    mValueType lap = simd::dot(psi_matinv_[i], d2psi_rows_[i], size);
+    G[i] -= rv;
+    L[i] -= (lap + dot(rv, rv));
+  }
+
   return log_value_;
 }
 
@@ -65,6 +76,8 @@ void PfaffianSTU::recompute(const ParticleSet& P)
   const int norb = sposets_[0]->size();
 
   psi_mat_ = 0;
+  dpsi_rows_ = 0;
+  d2psi_rows_ = 0;
   //update upper diagonal of matrix
   for (int i = 0; i < num_elec_; i++)
   {
@@ -78,11 +91,19 @@ void PfaffianSTU::recompute(const ParticleSet& P)
       auto& pair_mat = (iup && jup) ? uu_triplet_mat_ : (iup ? singlet_mat_ : dd_triplet_mat_);
       auto* psi_i    = iup ? up_psi_mat_[ii] : dn_psi_mat_[ii];
       auto* psi_j    = jup ? up_psi_mat_[jj] : dn_psi_mat_[jj];
+      auto* dpsi_i    = iup ? up_dpsi_mat_[ii] : dn_dpsi_mat_[ii];
+      auto* dpsi_j    = jup ? up_dpsi_mat_[jj] : dn_dpsi_mat_[jj];
+      auto* d2psi_i    = iup ? up_d2psi_mat_[ii] : dn_d2psi_mat_[ii];
+      auto* d2psi_j    = jup ? up_d2psi_mat_[jj] : dn_d2psi_mat_[jj];
       for (int k = 0; k < norb; k++)
       {
         for (int l = 0; l < norb; l++)
         {
           psi_mat_(i, j) += psi_i[k] * pair_mat(k,l) * psi_j[l];
+          dpsi_rows_(i, j) += dpsi_i[k] * pair_mat(k,l) * psi_j[l];
+          dpsi_rows_(j, i) -= psi_i[k] * pair_mat(k,l) * dpsi_j[l];
+          d2psi_rows_(i, j) += d2psi_i[k] * pair_mat(k,l) * psi_j[l];
+          d2psi_rows_(j, i) -= psi_i[k] * pair_mat(k,l) * d2psi_j[l];
         }
       }
       psi_mat_(j, i) = -psi_mat_(i, j);
@@ -96,8 +117,14 @@ void PfaffianSTU::recompute(const ParticleSet& P)
       bool iup = (i < num_up_);
       int ii = iup ? i : i - num_up_;
       ValueType v = iup ? up_psi_mat_(ii,ii) : dn_psi_mat_(ii,ii);
+      GradType g = iup ? up_dpsi_mat_(ii,ii) : dn_dpsi_mat_(ii,ii);
+      ValueType l = iup ? up_d2psi_mat_(ii,ii) : dn_d2psi_mat_(ii,ii);
       psi_mat_(i, num_elec_) = v;
       psi_mat_(num_elec_, i) = -v;
+      dpsi_rows_(i, num_elec_) = g;
+      dpsi_rows_(num_elec_, i) = -g;
+      d2psi_rows_(i, num_elec_) = l;
+      d2psi_rows_(num_elec_, i) = -l;
     }
   }
 }
@@ -145,6 +172,8 @@ void PfaffianSTU::resize()
   psi_mat_.resize(rowsize, rowsize);
   psi_matinv_.resize(rowsize, rowsize);
   psi_delta_.resize(rowsize);
+  dpsi_rows_.resize(rowsize, rowsize);
+  d2psi_rows_.resize(rowsize, rowsize);
 
   //now size the pairing function coefficient matrices matrices
   //up spos must be same size
