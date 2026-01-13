@@ -19,7 +19,8 @@ namespace qmcplusplus
 PfaffianSTU::PfaffianSTU(ParticleSet& targetPtcl,
                          std::vector<std::unique_ptr<SPOSet>>&& sposets,
                          const std::string& class_name)
-    : active_idx_(-1),
+    : RatioTimer(createGlobalTimer(class_name + "::ratio", timer_level_fine)),
+      active_idx_(-1),
       num_elec_(targetPtcl.getTotalNum()),
       num_up_(targetPtcl.last(0)),
       num_dn_(num_elec_ - num_up_),
@@ -137,7 +138,17 @@ void PfaffianSTU::copyFromBuffer(ParticleSet& P, WFBufferType& buf) {}
 
 PfaffianSTU::PsiValue PfaffianSTU::ratioGrad(ParticleSet& P, int iat, GradType& grad_iat) {}
 
-PfaffianSTU::GradType PfaffianSTU::evalGrad(ParticleSet& P, int iat) {}
+PfaffianSTU::GradType PfaffianSTU::evalGrad(ParticleSet& P, int iat) 
+{
+  ScopedTimer local_timer(RatioTimer);
+
+  const int size = psi_mat_.rows();
+  assert((iat >= 0) && (iat < num_elec_));
+  //exploting symmetry of matrices here. psi_matint_[i] gives a row, but I need to dot with column. 
+  //Since antisymmetric, add a sign 
+  GradType grad = -simd::dot(psi_matinv_[iat], dpsi_rows_[iat], size);
+  return grad;
+}
 
 void PfaffianSTU::restore(int iat) {}
 

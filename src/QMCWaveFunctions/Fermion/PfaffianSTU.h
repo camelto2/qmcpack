@@ -13,8 +13,9 @@
 #define QMCPLUSPLUS_PFAFFIANSTU
 
 #include "QMCWaveFunctions/SPOSet.h"
-
+#include "Utilities/TimerManager.h"
 #include "QMCWaveFunctions/WaveFunctionComponent.h"
+
 namespace qmcplusplus
 {
 
@@ -81,6 +82,10 @@ public:
                            Vector<ValueType>& dlogpsi,
                            Vector<ValueType>& dhpsioverpsi) override;
   void evaluateDerivativesWF(ParticleSet& P, const OptVariables& active, Vector<ValueType>& dlogpsi) override;
+
+protected:
+  //Timers 
+  NewTimer &RatioTimer;
 
 private:
   void resize();

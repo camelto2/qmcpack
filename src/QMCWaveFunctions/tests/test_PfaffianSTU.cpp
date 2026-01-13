@@ -380,6 +380,15 @@ public:
       CHECK(G[i][2] == ValueApprox(Gref[i][2]));
       CHECK(L[i] == ValueApprox(Lref[i]));
     }
+
+    //check evalGrad
+    for (int i = 0; i < pf.num_elec_; i++)
+    {
+      GradType grad = pf.evalGrad(elec, i);
+      CHECK(grad[0] == ValueApprox(Gref[i][0]));
+      CHECK(grad[1] == ValueApprox(Gref[i][1]));
+      CHECK(grad[2] == ValueApprox(Gref[i][2]));
+    }
   }
 
 private:
