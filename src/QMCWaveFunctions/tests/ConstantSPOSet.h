@@ -78,6 +78,10 @@ public:
                             GradMatrix& dlogdet,
                             ValueMatrix& d2logdet) override;
 
+  //useful for using ConstantSPOSet to test WFCs that do particle moves
+  void updateV(const ParticleSet& P, const int iat, const ValueVector& psi);
+  void updateVGL(const ParticleSet& P, const int iat, const ValueVector& psi, const GradVector& dpsi, const ValueVector& d2psi);
+
 private:
   const int numparticles_; /// evaluate_notranspose arrays are nparticle x norb matrices.
                            /// To ensure consistent array sizing and enforcement,

@@ -40,15 +40,21 @@ std::unique_ptr<SPOSetT<T>> ConstantSPOSet<T>::makeClone() const
 
 template<typename T>
 std::string ConstantSPOSet<T>::getClassName() const
-{ return "ConstantSPOSet"; }
+{
+  return "ConstantSPOSet";
+}
 
 template<typename T>
 void ConstantSPOSet<T>::checkOutVariables(const OptVariables& active)
-{ APP_ABORT("ConstantSPOSet should not call checkOutVariables"); }
+{
+  APP_ABORT("ConstantSPOSet should not call checkOutVariables");
+}
 
 template<typename T>
 void ConstantSPOSet<T>::setOrbitalSetSize(int norbs)
-{ APP_ABORT("ConstantSPOSet should not call setOrbitalSetSize()"); }
+{
+  APP_ABORT("ConstantSPOSet should not call setOrbitalSetSize()");
+}
 
 template<typename T>
 void ConstantSPOSet<T>::setRefVals(const ValueMatrix& vals)
@@ -119,6 +125,32 @@ void ConstantSPOSet<T>::evaluate_notranspose(const ParticleSet& P,
     GradVector g(dlogdet[i], dlogdet.cols());
     ValueVector l(d2logdet[i], d2logdet.cols());
     evaluateVGL(P, iat, v, g, l);
+  }
+}
+
+template<typename T>
+void ConstantSPOSet<T>::updateV(const ParticleSet& P, const int iat, const ValueVector& psi)
+{
+  const int group = P.getGroupID(iat);
+  const int first = P.first(group);
+  for (int iorb = 0; iorb < SPOSet::OrbitalSetSize; iorb++)
+    ref_psi_(iat - first, iorb) = psi[iorb];
+}
+
+template<typename T>
+void ConstantSPOSet<T>::updateVGL(const ParticleSet& P,
+                                  const int iat,
+                                  const ValueVector& psi,
+                                  const GradVector& dpsi,
+                                  const ValueVector& d2psi)
+{
+  const int group = P.getGroupID(iat);
+  const int first = P.first(group);
+  for (int iorb = 0; iorb < SPOSet::OrbitalSetSize; iorb++)
+  {
+    ref_psi_(iat - first, iorb)   = psi[iorb];
+    ref_egrad_(iat - first, iorb) = dpsi[iorb];
+    ref_elapl_(iat - first, iorb) = d2psi[iorb];
   }
 }
 

@@ -166,7 +166,7 @@ public:
     CHECKED_ELSE(check.result) { FAIL(check.result_message); }
   }
 
-  void checkLog(PfaffianSTU& pf, ParticleSet& elec)
+  void checkVGLEvaluations(PfaffianSTU& pf, ParticleSet& elec)
   {
     //Check evaluateLog for Pfaffian, given a set of up and down orbitals.
     //the orbitals used are sin/cos(k.r) with random k values and electron positions
@@ -389,6 +389,18 @@ public:
       CHECK(grad[1] == ValueApprox(Gref[i][1]));
       CHECK(grad[2] == ValueApprox(Gref[i][2]));
     }
+
+    //now we will move particle 1 to test ratio()
+    //note that since I'm working with ConstantSPOSet, I don't actually have to move the electron in
+    //the particle set. 
+    //first need to update the SPOSet under the hood so evaluateValue returns the correct data. 
+    int iat = 1;
+    ValueVector newv = {0.07497445, 0.21713796, 0.57738733, 0.47357094, 0.18976185, 0.61038528};
+    upspo->updateV(elec, iat, newv);
+
+    ValueType ref_ratio = 0.4441373950806863;
+    ValueType ratio = pf.ratio(elec, iat);
+    CHECK(ratio == ValueApprox(ref_ratio));
   }
 
 private:
@@ -436,7 +448,7 @@ TEST_CASE("Pfaffian check sizes", "[wavefunction][fermion]")
   pftester.checkSizes(elec2->getTotalNum(), uporbs, dnorbs, pf2);
 }
 
-TEST_CASE("Pfaffian checkEvaluations", "[wavefunction][fermion]")
+TEST_CASE("Pfaffian check pfaffian evaluation", "[wavefunction][fermion]")
 {
   Communicate* comm = OHMMS::Controller;
   testing::PfaffianSTUTest pftester;
@@ -451,7 +463,7 @@ TEST_CASE("Pfaffian checkEvaluations", "[wavefunction][fermion]")
   pftester.checkEvaluation(pf, (*elec));
 }
 
-TEST_CASE("Pfaffian evaluateLog", "[wavefunction][fermion]")
+TEST_CASE("Pfaffian check VGL evaluations", "[wavefunction][fermion]")
 {
   Communicate* comm = OHMMS::Controller;
   testing::PfaffianSTUTest pftester;
@@ -466,7 +478,7 @@ TEST_CASE("Pfaffian evaluateLog", "[wavefunction][fermion]")
   spos.push_back(std::move(upspo));
   spos.push_back(std::move(dnspo));
   PfaffianSTU pf((*elec), std::move(spos), "pfaffian");
-  pftester.checkLog(pf, (*elec));
+  pftester.checkVGLEvaluations(pf, (*elec));
 }
 
 } // namespace qmcplusplus

@@ -85,7 +85,7 @@ public:
 
 protected:
   //Timers 
-  NewTimer &RatioTimer;
+  NewTimer &RatioTimer, &SPOVTimer;
 
 private:
   void resize();
@@ -137,6 +137,11 @@ private:
   GradMatrix  dn_dpsi_mat_;
   ValueMatrix up_d2psi_mat_;
   ValueMatrix dn_d2psi_mat_;
+
+  //VGL for particle update
+  ValueVector tmp_psi_;
+  GradVector  tmp_dpsi_;
+  ValueVector tmp_d2psi_;
 
   const std::vector<std::unique_ptr<SPOSet>> sposets_;
 

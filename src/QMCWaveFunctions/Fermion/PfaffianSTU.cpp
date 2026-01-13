@@ -20,6 +20,7 @@ PfaffianSTU::PfaffianSTU(ParticleSet& targetPtcl,
                          std::vector<std::unique_ptr<SPOSet>>&& sposets,
                          const std::string& class_name)
     : RatioTimer(createGlobalTimer(class_name + "::ratio", timer_level_fine)),
+      SPOVTimer(createGlobalTimer(class_name + "::spoval", timer_level_fine)),
       active_idx_(-1),
       num_elec_(targetPtcl.getTotalNum()),
       num_up_(targetPtcl.last(0)),
@@ -50,7 +51,7 @@ PfaffianSTU::LogValue PfaffianSTU::evaluateLog(const ParticleSet& P,
   const int size = psi_mat_.rows();
   for (int i = 0; i < num_elec_; i++)
   {
-    //exploting symmetry of matrices here. psi_matint_[i] gives a row, but I need to dot with column. 
+    //exploting symmetry of matrices here. psi_matint_[i] gives a row, but I need to dot with column.
     //Since antisymmetric, add a sign to G and L
     mGradType rv   = simd::dot(psi_matinv_[i], dpsi_rows_[i], size);
     mValueType lap = simd::dot(psi_matinv_[i], d2psi_rows_[i], size);
@@ -64,20 +65,20 @@ PfaffianSTU::LogValue PfaffianSTU::evaluateLog(const ParticleSet& P,
 void PfaffianSTU::recompute(const ParticleSet& P)
 {
   //update up
-  up_psi_mat_ = 0;
-  up_dpsi_mat_ = 0;
+  up_psi_mat_   = 0;
+  up_dpsi_mat_  = 0;
   up_d2psi_mat_ = 0;
   sposets_[0]->evaluate_notranspose(P, 0, num_up_, up_psi_mat_, up_dpsi_mat_, up_d2psi_mat_);
   //update dn
-  dn_psi_mat_ = 0;
-  dn_dpsi_mat_ = 0;
+  dn_psi_mat_   = 0;
+  dn_dpsi_mat_  = 0;
   dn_d2psi_mat_ = 0;
   sposets_[1]->evaluate_notranspose(P, num_up_, num_elec_, dn_psi_mat_, dn_dpsi_mat_, dn_d2psi_mat_);
 
   const int norb = sposets_[0]->size();
 
-  psi_mat_ = 0;
-  dpsi_rows_ = 0;
+  psi_mat_    = 0;
+  dpsi_rows_  = 0;
   d2psi_rows_ = 0;
   //update upper diagonal of matrix
   for (int i = 0; i < num_elec_; i++)
@@ -89,22 +90,22 @@ void PfaffianSTU::recompute(const ParticleSet& P)
       bool jup = (j < num_up_);
       int jj   = jup ? j : j - num_up_;
       //now get references and pointers to orbitals and pairing matrix depending on type
-      auto& pair_mat = (iup && jup) ? uu_triplet_mat_ : (iup ? singlet_mat_ : dd_triplet_mat_);
+      auto& pair_mat = (iup == jup) ? (iup ? uu_triplet_mat_ : dd_triplet_mat_) : singlet_mat_;
       auto* psi_i    = iup ? up_psi_mat_[ii] : dn_psi_mat_[ii];
       auto* psi_j    = jup ? up_psi_mat_[jj] : dn_psi_mat_[jj];
-      auto* dpsi_i    = iup ? up_dpsi_mat_[ii] : dn_dpsi_mat_[ii];
-      auto* dpsi_j    = jup ? up_dpsi_mat_[jj] : dn_dpsi_mat_[jj];
-      auto* d2psi_i    = iup ? up_d2psi_mat_[ii] : dn_d2psi_mat_[ii];
-      auto* d2psi_j    = jup ? up_d2psi_mat_[jj] : dn_d2psi_mat_[jj];
+      auto* dpsi_i   = iup ? up_dpsi_mat_[ii] : dn_dpsi_mat_[ii];
+      auto* dpsi_j   = jup ? up_dpsi_mat_[jj] : dn_dpsi_mat_[jj];
+      auto* d2psi_i  = iup ? up_d2psi_mat_[ii] : dn_d2psi_mat_[ii];
+      auto* d2psi_j  = jup ? up_d2psi_mat_[jj] : dn_d2psi_mat_[jj];
       for (int k = 0; k < norb; k++)
       {
         for (int l = 0; l < norb; l++)
         {
-          psi_mat_(i, j) += psi_i[k] * pair_mat(k,l) * psi_j[l];
-          dpsi_rows_(i, j) += dpsi_i[k] * pair_mat(k,l) * psi_j[l];
-          dpsi_rows_(j, i) -= psi_i[k] * pair_mat(k,l) * dpsi_j[l];
-          d2psi_rows_(i, j) += d2psi_i[k] * pair_mat(k,l) * psi_j[l];
-          d2psi_rows_(j, i) -= psi_i[k] * pair_mat(k,l) * d2psi_j[l];
+          psi_mat_(i, j) += psi_i[k] * pair_mat(k, l) * psi_j[l];
+          dpsi_rows_(i, j) += dpsi_i[k] * pair_mat(k, l) * psi_j[l];
+          dpsi_rows_(j, i) -= psi_i[k] * pair_mat(k, l) * dpsi_j[l];
+          d2psi_rows_(i, j) += d2psi_i[k] * pair_mat(k, l) * psi_j[l];
+          d2psi_rows_(j, i) -= psi_i[k] * pair_mat(k, l) * d2psi_j[l];
         }
       }
       psi_mat_(j, i) = -psi_mat_(i, j);
@@ -115,15 +116,15 @@ void PfaffianSTU::recompute(const ParticleSet& P)
   {
     for (int i = 0; i < num_elec_; i++)
     {
-      bool iup = (i < num_up_);
-      int ii = iup ? i : i - num_up_;
-      ValueType v = iup ? up_psi_mat_(ii,ii) : dn_psi_mat_(ii,ii);
-      GradType g = iup ? up_dpsi_mat_(ii,ii) : dn_dpsi_mat_(ii,ii);
-      ValueType l = iup ? up_d2psi_mat_(ii,ii) : dn_d2psi_mat_(ii,ii);
-      psi_mat_(i, num_elec_) = v;
-      psi_mat_(num_elec_, i) = -v;
-      dpsi_rows_(i, num_elec_) = g;
-      dpsi_rows_(num_elec_, i) = -g;
+      bool iup                  = (i < num_up_);
+      int ii                    = iup ? i : i - num_up_;
+      ValueType v               = iup ? up_psi_mat_(ii, ii) : dn_psi_mat_(ii, ii);
+      GradType g                = iup ? up_dpsi_mat_(ii, ii) : dn_dpsi_mat_(ii, ii);
+      ValueType l               = iup ? up_d2psi_mat_(ii, ii) : dn_d2psi_mat_(ii, ii);
+      psi_mat_(i, num_elec_)    = v;
+      psi_mat_(num_elec_, i)    = -v;
+      dpsi_rows_(i, num_elec_)  = g;
+      dpsi_rows_(num_elec_, i)  = -g;
       d2psi_rows_(i, num_elec_) = l;
       d2psi_rows_(num_elec_, i) = -l;
     }
@@ -138,14 +139,14 @@ void PfaffianSTU::copyFromBuffer(ParticleSet& P, WFBufferType& buf) {}
 
 PfaffianSTU::PsiValue PfaffianSTU::ratioGrad(ParticleSet& P, int iat, GradType& grad_iat) {}
 
-PfaffianSTU::GradType PfaffianSTU::evalGrad(ParticleSet& P, int iat) 
+PfaffianSTU::GradType PfaffianSTU::evalGrad(ParticleSet& P, int iat)
 {
   ScopedTimer local_timer(RatioTimer);
 
   const int size = psi_mat_.rows();
   assert((iat >= 0) && (iat < num_elec_));
-  //exploting symmetry of matrices here. psi_matint_[i] gives a row, but I need to dot with column. 
-  //Since antisymmetric, add a sign 
+  //exploting symmetry of matrices here. psi_matint_[i] gives a row, but I need to dot with column.
+  //Since antisymmetric, add a sign
   GradType grad = -simd::dot(psi_matinv_[iat], dpsi_rows_[iat], size);
   return grad;
 }
@@ -159,13 +160,62 @@ void PfaffianSTU::acceptMove(ParticleSet& P, int iat, bool safe_to_delay)
                  [](auto v1, auto v2) { return v1 + v2; });
   for (int i = 0; i < psi_mat_.rows(); i++)
   {
-    psi_mat_(i, active_idx_)   = -psi_mat_(active_idx_, i);
+    psi_mat_(i, active_idx_) = -psi_mat_(active_idx_, i);
   }
   updateInverse();
   active_idx_ = -1;
 }
 
-PfaffianSTU::PsiValue PfaffianSTU::ratio(ParticleSet& P, int iat) {}
+PfaffianSTU::PsiValue PfaffianSTU::ratio(ParticleSet& P, int iat)
+{
+  active_idx_ = iat;
+  {
+    ScopedTimer local_timer(SPOVTimer);
+    const int group = P.getGroupID(iat);
+    sposets_[group]->evaluateValue(P, iat, tmp_psi_);
+  }
+
+  const int norb = sposets_[0]->size();
+  ValueVector row_update(psi_mat_.rows());
+  bool iup = (iat < num_up_);
+  for (int j = 0; j < num_elec_; j++)
+  {
+    if (j == iat)
+      continue;
+    bool jup       = (j < num_up_);
+    int jj         = jup ? j : j - num_up_;
+
+    //for a row update, i need the full pfaffian matrix to be antisymmetric
+    //for singlets, the pairing matrix is symmetric
+    //for triplets, the pairing matrix is antisymmetric
+    //if the pairing matrix is symmetric, I need to add an explicit sign for the lower diagonal
+    //but if pairing is antisymmetric, there is no need since pairing(i,j) = -pairing(j,i)
+    //look at https://arxiv.org/pdf/1008.2369 and equation 151 for an example
+    //therefore, add sign only for singlet and if below diagonal
+    ValueType sign = ((j < iat) && (iup != jup)) ? -1.0 : 1.0;
+
+    auto& pair_mat = (iup == jup) ? (iup ? uu_triplet_mat_ : dd_triplet_mat_) : singlet_mat_;
+    auto* psi_j    = jup ? up_psi_mat_[jj] : dn_psi_mat_[jj];
+
+
+    for (int k = 0; k < norb; k++)
+    {
+      for (int l = 0; l < norb; l++)
+      {
+        row_update[j] += sign * tmp_psi_[k] * pair_mat(k, l) * psi_j[l];
+      }
+    }
+  }
+
+  if (psi_mat_.rows() == num_elec_ + 1)
+  {
+    bool iup              = (iat < num_up_);
+    int ii                = iup ? iat : iat - num_up_;
+    row_update[num_elec_] = tmp_psi_[ii];
+  }
+
+  return calculateRatio(row_update);
+}
 
 std::unique_ptr<WaveFunctionComponent> PfaffianSTU::makeClone(ParticleSet& tqp) const {}
 
@@ -201,6 +251,10 @@ void PfaffianSTU::resize()
   dn_dpsi_mat_.resize(num_dn_, norbs);
   up_d2psi_mat_.resize(num_up_, norbs);
   dn_d2psi_mat_.resize(num_dn_, norbs);
+
+  tmp_psi_.resize(norbs);
+  tmp_dpsi_.resize(norbs);
+  tmp_d2psi_.resize(norbs);
 }
 
 int PfaffianSTU::rowPivot(ValueMatrix& mat, const int i)
