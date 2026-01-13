@@ -392,15 +392,40 @@ public:
 
     //now we will move particle 1 to test ratio()
     //note that since I'm working with ConstantSPOSet, I don't actually have to move the electron in
-    //the particle set. 
-    //first need to update the SPOSet under the hood so evaluateValue returns the correct data. 
-    int iat = 1;
+    //the particle set.
+    //first need to update the SPOSet under the hood so evaluateValue returns the correct data.
+    int iat          = 1;
     ValueVector newv = {0.07497445, 0.21713796, 0.57738733, 0.47357094, 0.18976185, 0.61038528};
     upspo->updateV(elec, iat, newv);
 
     ValueType ref_ratio = 0.4441373950806863;
-    ValueType ratio = pf.ratio(elec, iat);
+    ValueType ratio     = pf.ratio(elec, iat);
     CHECK(ratio == ValueApprox(ref_ratio));
+    //set values back to original since not accepting move
+    newv = {-0.00249844, 0.07922684, 0.51539003, 0.39623433, 0.10879198, 0.5439395};
+    upspo->updateV(elec, iat, newv);
+
+
+    //try new particle and check ratioGrad
+    iat = 4;
+    // clang-format off
+    newv             = {-0.03079311, -0.22518306,  0.67066673,  0.80665308,  0.20567156,  0.6938236};
+    GradVector newg  = {{-0.8596155 ,-0.78476096,-0.7536042 },
+                        {-0.91807906,-0.87307106,-0.82641381}, 
+                        {-0.10792355,-0.51670259,-0.17725264},
+                        {-0.21480247,-0.03349778,-0.44032393},
+                        {-0.79181642,-0.91990496,-0.03105796},
+                        {-0.57427544,-0.05839511,-0.361928  }};
+    ValueVector newl = {0.05926236,  0.54275921, -0.3779285,  -0.55687445, -0.3165852,  -0.62102466};
+    // clang-format on
+    dnspo->updateVGL(elec, iat, newv, newg, newl);
+    ref_ratio = 0.9268201253907773;
+    GradType ref_grad   = {0.95645443, 1.34949417, -0.0840785};
+    GradType grad;
+    ratio = pf.ratioGrad(elec, iat, grad);
+    CHECK(ratio == ValueApprox(ref_ratio));
+    for (int d = 0; d < 3; d++)
+      CHECK(grad[d] == ValueApprox(ref_grad[d]));
   }
 
 private:

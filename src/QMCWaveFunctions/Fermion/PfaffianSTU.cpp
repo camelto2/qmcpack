@@ -134,7 +134,7 @@ void PfaffianSTU::recompute(const ParticleSet& P)
 void PfaffianSTU::registerData(ParticleSet& P, WFBufferType& buf) {}
 
 //for now just call evaluateLog
-PfaffianSTU::LogValue PfaffianSTU::updateBuffer(ParticleSet& P, WFBufferType& buf, bool fromscratch) 
+PfaffianSTU::LogValue PfaffianSTU::updateBuffer(ParticleSet& P, WFBufferType& buf, bool fromscratch)
 {
   ParticleSet::ParticleGradient G(num_elec_);
   ParticleSet::ParticleLaplacian L(num_elec_);
@@ -143,7 +143,63 @@ PfaffianSTU::LogValue PfaffianSTU::updateBuffer(ParticleSet& P, WFBufferType& bu
 
 void PfaffianSTU::copyFromBuffer(ParticleSet& P, WFBufferType& buf) {}
 
-PfaffianSTU::PsiValue PfaffianSTU::ratioGrad(ParticleSet& P, int iat, GradType& grad_iat) {}
+PfaffianSTU::PsiValue PfaffianSTU::ratioGrad(ParticleSet& P, int iat, GradType& grad_iat)
+{
+  active_idx_ = iat;
+  {
+    ScopedTimer local_timer(SPOVTimer);
+    const int group = P.getGroupID(iat);
+    sposets_[group]->evaluateVGL(P, iat, tmp_psi_, tmp_dpsi_, tmp_d2psi_);
+  }
+
+  const int norb = sposets_[0]->size();
+  ValueVector row_update(psi_mat_.rows());
+  GradVector grad_update(psi_mat_.rows());
+  bool iup = (iat < num_up_);
+  for (int j = 0; j < num_elec_; j++)
+  {
+    if (j == iat)
+      continue;
+    bool jup = (j < num_up_);
+    int jj   = jup ? j : j - num_up_;
+
+    //for a row update, i need the full pfaffian matrix to be antisymmetric
+    //for singlets, the pairing matrix is symmetric
+    //for triplets, the pairing matrix is antisymmetric
+    //if the pairing matrix is symmetric, I need to add an explicit sign for the lower diagonal
+    //but if pairing is antisymmetric, there is no need since pairing(i,j) = -pairing(j,i)
+    //look at https://arxiv.org/pdf/1008.2369 and equation 151 for an example
+    //therefore, add sign only for singlet and if below diagonal
+    ValueType sign = ((j < iat) && (iup != jup)) ? -1.0 : 1.0;
+
+    auto& pair_mat = (iup == jup) ? (iup ? uu_triplet_mat_ : dd_triplet_mat_) : singlet_mat_;
+    auto* psi_j    = jup ? up_psi_mat_[jj] : dn_psi_mat_[jj];
+
+    for (int k = 0; k < norb; k++)
+    {
+      for (int l = 0; l < norb; l++)
+      {
+        row_update[j] += sign * tmp_psi_[k] * pair_mat(k, l) * psi_j[l];
+        grad_update[j] += sign * tmp_dpsi_[k] * pair_mat(k, l) * psi_j[l];
+      }
+    }
+  }
+
+  if (psi_mat_.rows() == num_elec_ + 1)
+  {
+    bool iup               = (iat < num_up_);
+    int ii                 = iup ? iat : iat - num_up_;
+    row_update[num_elec_]  = tmp_psi_[ii];
+    grad_update[num_elec_] = tmp_dpsi_[ii];
+  }
+
+  ValueType ratio = calculateRatio(row_update);
+  //exploting symmetry of matrices here. psi_matint_[i] gives a row, but I need to dot with column.
+  //Since antisymmetric, add a sign
+  grad_iat = -simd::dot(psi_matinv_[iat], grad_update.data(), psi_mat_.rows()) / ratio;
+
+  return ratio;
+}
 
 PfaffianSTU::GradType PfaffianSTU::evalGrad(ParticleSet& P, int iat)
 {
