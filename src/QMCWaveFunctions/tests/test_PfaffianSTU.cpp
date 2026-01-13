@@ -426,6 +426,12 @@ public:
     CHECK(ratio == ValueApprox(ref_ratio));
     for (int d = 0; d < 3; d++)
       CHECK(grad[d] == ValueApprox(ref_grad[d]));
+
+    //accept Move and lets run evaluateLog to make sure gradient gets updated properly with evalGrad
+    pf.acceptMove(elec, iat);
+    grad = pf.evalGrad(elec, iat);
+    for (int d = 0; d < 3; d++)
+      CHECK(grad[d] == ValueApprox(ref_grad[d]));
   }
 
 private:

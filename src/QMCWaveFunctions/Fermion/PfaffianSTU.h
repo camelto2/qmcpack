@@ -117,6 +117,9 @@ private:
 
   //change to row/column
   ValueVector psi_delta_;
+  //new gradient, lap
+  GradVector dpsi_new_;
+  ValueVector d2psi_new_;
 
   //active row/column
   int active_idx_;

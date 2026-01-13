@@ -154,8 +154,9 @@ PfaffianSTU::PsiValue PfaffianSTU::ratioGrad(ParticleSet& P, int iat, GradType& 
 
   const int norb = sposets_[0]->size();
   ValueVector row_update(psi_mat_.rows());
-  GradVector grad_update(psi_mat_.rows());
-  bool iup = (iat < num_up_);
+  dpsi_new_  = 0;
+  d2psi_new_ = 0;
+  bool iup   = (iat < num_up_);
   for (int j = 0; j < num_elec_; j++)
   {
     if (j == iat)
@@ -180,7 +181,8 @@ PfaffianSTU::PsiValue PfaffianSTU::ratioGrad(ParticleSet& P, int iat, GradType& 
       for (int l = 0; l < norb; l++)
       {
         row_update[j] += sign * tmp_psi_[k] * pair_mat(k, l) * psi_j[l];
-        grad_update[j] += sign * tmp_dpsi_[k] * pair_mat(k, l) * psi_j[l];
+        dpsi_new_[j] += sign * tmp_dpsi_[k] * pair_mat(k, l) * psi_j[l];
+        d2psi_new_[j] += sign * tmp_d2psi_[k] * pair_mat(k, l) * psi_j[l];
       }
     }
   }
@@ -190,13 +192,14 @@ PfaffianSTU::PsiValue PfaffianSTU::ratioGrad(ParticleSet& P, int iat, GradType& 
     bool iup               = (iat < num_up_);
     int ii                 = iup ? iat : iat - num_up_;
     row_update[num_elec_]  = tmp_psi_[ii];
-    grad_update[num_elec_] = tmp_dpsi_[ii];
+    dpsi_new_[num_elec_]   = tmp_dpsi_[ii];
+    d2psi_new_[num_elec_]  = tmp_d2psi_[ii];
   }
 
   ValueType ratio = calculateRatio(row_update);
   //exploting symmetry of matrices here. psi_matint_[i] gives a row, but I need to dot with column.
   //Since antisymmetric, add a sign
-  grad_iat = -simd::dot(psi_matinv_[iat], grad_update.data(), psi_mat_.rows()) / ratio;
+  grad_iat = -simd::dot(psi_matinv_[iat], dpsi_new_.data(), psi_mat_.rows()) / ratio;
 
   return ratio;
 }
@@ -220,6 +223,8 @@ void PfaffianSTU::acceptMove(ParticleSet& P, int iat, bool safe_to_delay)
   assert(iat == active_idx_);
   std::transform(psi_delta_.begin(), psi_delta_.end(), psi_mat_[active_idx_], psi_mat_[active_idx_],
                  [](auto v1, auto v2) { return v1 + v2; });
+  simd::copy(dpsi_rows_[active_idx_], dpsi_new_.data(), psi_mat_.rows());
+  simd::copy(d2psi_rows_[active_idx_], d2psi_new_.data(), psi_mat_.rows());
   for (int i = 0; i < psi_mat_.rows(); i++)
   {
     psi_mat_(i, active_idx_) = -psi_mat_(active_idx_, i);
@@ -260,12 +265,8 @@ PfaffianSTU::PsiValue PfaffianSTU::ratio(ParticleSet& P, int iat)
     auto* psi_j    = jup ? up_psi_mat_[jj] : dn_psi_mat_[jj];
 
     for (int k = 0; k < norb; k++)
-    {
       for (int l = 0; l < norb; l++)
-      {
         row_update[j] += sign * tmp_psi_[k] * pair_mat(k, l) * psi_j[l];
-      }
-    }
   }
 
   if (psi_mat_.rows() == num_elec_ + 1)
@@ -293,9 +294,11 @@ void PfaffianSTU::resize()
   int rowsize = (num_elec_ % 2 == 0) ? num_elec_ : num_elec_ + 1;
   psi_mat_.resize(rowsize, rowsize);
   psi_matinv_.resize(rowsize, rowsize);
-  psi_delta_.resize(rowsize);
   dpsi_rows_.resize(rowsize, rowsize);
   d2psi_rows_.resize(rowsize, rowsize);
+  psi_delta_.resize(rowsize);
+  dpsi_new_.resize(rowsize);
+  d2psi_new_.resize(rowsize);
 
   //now size the pairing function coefficient matrices matrices
   //up spos must be same size
@@ -398,10 +401,9 @@ PfaffianSTU::ValueType PfaffianSTU::calculateRatio(const ValueVector& newvals)
   std::transform(newvals.begin(), newvals.end(), psi_mat_[active_idx_], psi_delta_.begin(),
                  [](auto v1, auto v2) { return v1 - v2; });
 
-  //can't use simd::dot since dotting into column of inverse matrix...not contiguous
-  ValueType ratio = 0.0;
-  for (int i = 0; i < psi_mat_.rows(); i++)
-    ratio += psi_delta_[i] * psi_matinv_(i, active_idx_);
+  //exploting symmetry of matrices here. psi_matint_[i] gives a row, but I need to dot with column.
+  //Since antisymmetric, add a sign to G and L
+  ValueType ratio = -simd::dot(psi_matinv_[active_idx_], psi_delta_.data(), psi_mat_.rows());
   return 1.0 + ratio;
 }
 
