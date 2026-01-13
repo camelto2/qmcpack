@@ -133,7 +133,13 @@ void PfaffianSTU::recompute(const ParticleSet& P)
 
 void PfaffianSTU::registerData(ParticleSet& P, WFBufferType& buf) {}
 
-PfaffianSTU::LogValue PfaffianSTU::updateBuffer(ParticleSet& P, WFBufferType& buf, bool fromscratch) {}
+//for now just call evaluateLog
+PfaffianSTU::LogValue PfaffianSTU::updateBuffer(ParticleSet& P, WFBufferType& buf, bool fromscratch) 
+{
+  ParticleSet::ParticleGradient G(num_elec_);
+  ParticleSet::ParticleLaplacian L(num_elec_);
+  return evaluateLog(P, G, L);
+}
 
 void PfaffianSTU::copyFromBuffer(ParticleSet& P, WFBufferType& buf) {}
 
@@ -182,8 +188,8 @@ PfaffianSTU::PsiValue PfaffianSTU::ratio(ParticleSet& P, int iat)
   {
     if (j == iat)
       continue;
-    bool jup       = (j < num_up_);
-    int jj         = jup ? j : j - num_up_;
+    bool jup = (j < num_up_);
+    int jj   = jup ? j : j - num_up_;
 
     //for a row update, i need the full pfaffian matrix to be antisymmetric
     //for singlets, the pairing matrix is symmetric
@@ -196,7 +202,6 @@ PfaffianSTU::PsiValue PfaffianSTU::ratio(ParticleSet& P, int iat)
 
     auto& pair_mat = (iup == jup) ? (iup ? uu_triplet_mat_ : dd_triplet_mat_) : singlet_mat_;
     auto* psi_j    = jup ? up_psi_mat_[jj] : dn_psi_mat_[jj];
-
 
     for (int k = 0; k < norb; k++)
     {
