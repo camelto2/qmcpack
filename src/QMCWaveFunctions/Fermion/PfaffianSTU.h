@@ -69,9 +69,7 @@ public:
 
   PsiValue ratioGrad(ParticleSet& P, int iat, GradType& grad_iat) override;
 
-
   GradType evalGrad(ParticleSet& P, int iat) override;
-
 
   void restore(int iat) override;
 
@@ -85,6 +83,7 @@ public:
                            const OptVariables& active,
                            Vector<ValueType>& dlogpsi,
                            Vector<ValueType>& dhpsioverpsi) override;
+
   void evaluateDerivativesWF(ParticleSet& P, const OptVariables& active, Vector<ValueType>& dlogpsi) override;
 
 protected:
@@ -131,6 +130,7 @@ private:
   int num_elec_;
   int num_up_;
   int num_dn_;
+  int size_;
 
   //Pairing function coeffs
   ValueMatrix singlet_mat_;
