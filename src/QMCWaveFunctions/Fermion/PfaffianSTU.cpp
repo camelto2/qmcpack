@@ -19,8 +19,12 @@ namespace qmcplusplus
 PfaffianSTU::PfaffianSTU(ParticleSet& targetPtcl,
                          std::vector<std::unique_ptr<SPOSet>>&& sposets,
                          const std::string& class_name)
-    : RatioTimer(createGlobalTimer(class_name + "::ratio", timer_level_fine)),
+    : UpdateTimer(createGlobalTimer(class_name + "::update", timer_level_fine)),
+      RatioTimer(createGlobalTimer(class_name + "::ratio", timer_level_fine)),
+      InverseTimer(createGlobalTimer(class_name + "::inverse", timer_level_fine)),
+      BufferTimer(createGlobalTimer(class_name + "::buffer", timer_level_fine)),
       SPOVTimer(createGlobalTimer(class_name + "::spoval", timer_level_fine)),
+      SPOVGLTimer(createGlobalTimer(class_name + "::spovgl", timer_level_fine)),
       active_idx_(-1),
       num_elec_(targetPtcl.getTotalNum()),
       num_up_(targetPtcl.last(0)),
@@ -51,7 +55,7 @@ PfaffianSTU::LogValue PfaffianSTU::evaluateLog(const ParticleSet& P,
   const int size = psi_mat_.rows();
   for (int i = 0; i < num_elec_; i++)
   {
-    //exploting symmetry of matrices here. psi_matint_[i] gives a row, but I need to dot with column.
+    //exploting symmetry of matrices here. psi_matinv_[i] gives a row, but I need to dot with column.
     //Since antisymmetric, add a sign to G and L
     mGradType rv   = simd::dot(psi_matinv_[i], dpsi_rows_[i], size);
     mValueType lap = simd::dot(psi_matinv_[i], d2psi_rows_[i], size);
@@ -60,6 +64,27 @@ PfaffianSTU::LogValue PfaffianSTU::evaluateLog(const ParticleSet& P,
   }
 
   return log_value_;
+}
+
+void PfaffianSTU::updateAfterSweep(const ParticleSet& P,
+                                   ParticleSet::ParticleGradient& G,
+                                   ParticleSet::ParticleLaplacian& L)
+{
+  if (UpdateMode == ORB_PBYP_RATIO)
+    recompute(P);
+
+  //no update to the inverse matrix
+
+  const int size = psi_mat_.rows();
+  for (int i = 0; i < num_elec_; i++)
+  {
+    //exploting symmetry of matrices here. psi_matinv_[i] gives a row, but I need to dot with column.
+    //Since antisymmetric, add a sign to G and L
+    mGradType rv   = simd::dot(psi_matinv_[i], dpsi_rows_[i], size);
+    mValueType lap = simd::dot(psi_matinv_[i], d2psi_rows_[i], size);
+    G[i] -= rv;
+    L[i] -= (lap + dot(rv, rv));
+  }
 }
 
 void PfaffianSTU::recompute(const ParticleSet& P)
@@ -129,29 +154,67 @@ void PfaffianSTU::recompute(const ParticleSet& P)
       d2psi_rows_(num_elec_, i) = -l;
     }
   }
+
+  UpdateMode = ORB_WALKER;
 }
 
-void PfaffianSTU::registerData(ParticleSet& P, WFBufferType& buf) {}
+
+void PfaffianSTU::registerData(ParticleSet& P, WFBufferType& buf)
+{
+  if (Bytes_in_WFBuffer == 0)
+  {
+    buf.add(psi_matinv_.first_address(), psi_matinv_.last_address());
+    buf.add(first_address_dpsi_, last_address_dpsi_);
+    buf.add(d2psi_rows_.first_address(), d2psi_rows_.last_address());
+    Bytes_in_WFBuffer = buf.current() - Bytes_in_WFBuffer;
+    psi_matinv_.free();
+    dpsi_rows_.free();
+    d2psi_rows_.free();
+  }
+  else
+  {
+    buf.forward(Bytes_in_WFBuffer);
+  }
+  buf.add(log_value_);
+}
 
 //for now just call evaluateLog
 PfaffianSTU::LogValue PfaffianSTU::updateBuffer(ParticleSet& P, WFBufferType& buf, bool fromscratch)
 {
-  ParticleSet::ParticleGradient G(num_elec_);
-  ParticleSet::ParticleLaplacian L(num_elec_);
-  return evaluateLog(P, G, L);
+  if (fromscratch)
+    evaluateLog(P, P.G, P.L);
+  else
+    updateAfterSweep(P, P.G, P.L);
+  {
+    ScopedTimer local_timer(BufferTimer);
+    buf.forward(Bytes_in_WFBuffer);
+    buf.put(log_value_);
+  }
+  return log_value_;
 }
 
-void PfaffianSTU::copyFromBuffer(ParticleSet& P, WFBufferType& buf) {}
+void PfaffianSTU::copyFromBuffer(ParticleSet& P, WFBufferType& buf)
+{
+  ScopedTimer local_timer(BufferTimer);
+  const int size = (num_elec_ % 2 == 0) ? num_elec_ : num_elec_ + 1;
+  psi_matinv_.attachReference(buf.lendReference<ValueType>(size * size), size, size);
+  dpsi_rows_.attachReference(buf.lendReference<GradType>(size * size), size, size);
+  d2psi_rows_.attachReference(buf.lendReference<ValueType>(size * size), size, size);
+  buf.get(log_value_);
+  active_idx_ = -1;
+}
 
 PfaffianSTU::PsiValue PfaffianSTU::ratioGrad(ParticleSet& P, int iat, GradType& grad_iat)
 {
   active_idx_ = iat;
   {
-    ScopedTimer local_timer(SPOVTimer);
+    ScopedTimer local_timer(SPOVGLTimer);
     const int group = P.getGroupID(iat);
     sposets_[group]->evaluateVGL(P, iat, tmp_psi_, tmp_dpsi_, tmp_d2psi_);
   }
 
+  ScopedTimer local_timer(RatioTimer);
+  UpdateMode     = ORB_PBYP_PARTIAL;
   const int norb = sposets_[0]->size();
   ValueVector row_update(psi_mat_.rows());
   dpsi_new_  = 0;
@@ -189,11 +252,11 @@ PfaffianSTU::PsiValue PfaffianSTU::ratioGrad(ParticleSet& P, int iat, GradType& 
 
   if (psi_mat_.rows() == num_elec_ + 1)
   {
-    bool iup               = (iat < num_up_);
-    int ii                 = iup ? iat : iat - num_up_;
-    row_update[num_elec_]  = tmp_psi_[ii];
-    dpsi_new_[num_elec_]   = tmp_dpsi_[ii];
-    d2psi_new_[num_elec_]  = tmp_d2psi_[ii];
+    bool iup              = (iat < num_up_);
+    int ii                = iup ? iat : iat - num_up_;
+    row_update[num_elec_] = tmp_psi_[ii];
+    dpsi_new_[num_elec_]  = tmp_dpsi_[ii];
+    d2psi_new_[num_elec_] = tmp_d2psi_[ii];
   }
 
   ValueType ratio = calculateRatio(row_update);
@@ -220,27 +283,33 @@ void PfaffianSTU::restore(int iat) {}
 
 void PfaffianSTU::acceptMove(ParticleSet& P, int iat, bool safe_to_delay)
 {
+  ScopedTimer local_timer(UpdateTimer);
   assert(iat == active_idx_);
   std::transform(psi_delta_.begin(), psi_delta_.end(), psi_mat_[active_idx_], psi_mat_[active_idx_],
                  [](auto v1, auto v2) { return v1 + v2; });
-  simd::copy(dpsi_rows_[active_idx_], dpsi_new_.data(), psi_mat_.rows());
-  simd::copy(d2psi_rows_[active_idx_], d2psi_new_.data(), psi_mat_.rows());
   for (int i = 0; i < psi_mat_.rows(); i++)
   {
     psi_mat_(i, active_idx_) = -psi_mat_(active_idx_, i);
   }
   updateInverse();
+  if (UpdateMode == ORB_PBYP_PARTIAL)
+  {
+    simd::copy(dpsi_rows_[active_idx_], dpsi_new_.data(), psi_mat_.rows());
+    simd::copy(d2psi_rows_[active_idx_], d2psi_new_.data(), psi_mat_.rows());
+  }
   active_idx_ = -1;
 }
 
 PfaffianSTU::PsiValue PfaffianSTU::ratio(ParticleSet& P, int iat)
 {
+  UpdateMode  = ORB_PBYP_RATIO;
   active_idx_ = iat;
   {
     ScopedTimer local_timer(SPOVTimer);
     const int group = P.getGroupID(iat);
     sposets_[group]->evaluateValue(P, iat, tmp_psi_);
   }
+  ScopedTimer local_timer(RatioTimer);
 
   const int norb = sposets_[0]->size();
   ValueVector row_update(psi_mat_.rows());
@@ -291,6 +360,8 @@ void PfaffianSTU::evaluateDerivativesWF(ParticleSet& P, const OptVariables& acti
 
 void PfaffianSTU::resize()
 {
+  if (Bytes_in_WFBuffer > 0)
+    throw std::runtime_error("PfaffianSTU just went out of sync with buffer");
   int rowsize = (num_elec_ % 2 == 0) ? num_elec_ : num_elec_ + 1;
   psi_mat_.resize(rowsize, rowsize);
   psi_matinv_.resize(rowsize, rowsize);
@@ -319,6 +390,9 @@ void PfaffianSTU::resize()
   tmp_psi_.resize(norbs);
   tmp_dpsi_.resize(norbs);
   tmp_d2psi_.resize(norbs);
+
+  first_address_dpsi_ = &(dpsi_rows_(0, 0)[0]);
+  last_address_dpsi_  = first_address_dpsi_ + num_elec_ * norbs * DIM;
 }
 
 int PfaffianSTU::rowPivot(ValueMatrix& mat, const int i)
@@ -390,8 +464,11 @@ PfaffianSTU::ValueType PfaffianSTU::calculatePfaffian()
 
 void PfaffianSTU::calculateInverse()
 {
+  ScopedTimer local_timer(InverseTimer);
   std::copy(psi_mat_.begin(), psi_mat_.end(), psi_matinv_.begin());
   invert_matrix(psi_matinv_, false);
+  //active particle becomes invalid after inverse calculation
+  active_idx_ = -1;
 }
 
 PfaffianSTU::ValueType PfaffianSTU::calculateRatio(const ValueVector& newvals)

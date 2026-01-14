@@ -55,6 +55,10 @@ public:
                        ParticleSet::ParticleGradient& G,
                        ParticleSet::ParticleLaplacian& L) override;
 
+  void updateAfterSweep(const ParticleSet& P,
+                        ParticleSet::ParticleGradient& G,
+                        ParticleSet::ParticleLaplacian& L);
+
   void recompute(const ParticleSet& P) override;
 
   void registerData(ParticleSet& P, WFBufferType& buf) override;
@@ -85,7 +89,7 @@ public:
 
 protected:
   //Timers 
-  NewTimer &RatioTimer, &SPOVTimer;
+  NewTimer &UpdateTimer, &RatioTimer, &InverseTimer, &BufferTimer, &SPOVTimer, &SPOVGLTimer; 
 
 private:
   void resize();
@@ -147,6 +151,9 @@ private:
   ValueVector tmp_d2psi_;
 
   const std::vector<std::unique_ptr<SPOSet>> sposets_;
+
+  ValueType* first_address_dpsi_;
+  ValueType* last_address_dpsi_;
 
   friend class testing::PfaffianSTUTest;
 };
