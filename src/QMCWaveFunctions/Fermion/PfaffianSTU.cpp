@@ -343,7 +343,14 @@ PfaffianSTU::PsiValue PfaffianSTU::ratio(ParticleSet& P, int iat)
   return calculateRatio(row_update);
 }
 
-std::unique_ptr<WaveFunctionComponent> PfaffianSTU::makeClone(ParticleSet& tqp) const {}
+std::unique_ptr<WaveFunctionComponent> PfaffianSTU::makeClone(ParticleSet& tqp) const 
+{
+  std::vector<std::unique_ptr<SPOSet>> sposet_clones;
+  for (const auto& phi : sposets_)
+    sposet_clones.emplace_back(phi->makeClone());
+  auto myclone = std::make_unique<SlaterDet>(tqp, std::move(sposet_clones));
+  return myclone;
+}
 
 void PfaffianSTU::evaluateDerivatives(ParticleSet& P,
                                       const OptVariables& active,
