@@ -343,12 +343,20 @@ PfaffianSTU::PsiValue PfaffianSTU::ratio(ParticleSet& P, int iat)
   return calculateRatio(row_update);
 }
 
-std::unique_ptr<WaveFunctionComponent> PfaffianSTU::makeClone(ParticleSet& tqp) const 
+std::unique_ptr<WaveFunctionComponent> PfaffianSTU::makeClone(ParticleSet& tqp) const
 {
   std::vector<std::unique_ptr<SPOSet>> sposet_clones;
   for (const auto& phi : sposets_)
     sposet_clones.emplace_back(phi->makeClone());
   auto myclone = std::make_unique<SlaterDet>(tqp, std::move(sposet_clones));
+
+  //need to also copy data needed to actually calculate things. Should only be the
+  //pairing matrices
+
+  myclone->singlet_mat_    = this->singlet_mat_;
+  myclone->uu_triplet_mat_ = this->uu_triplet_mat_;
+  myclone->dd_triplet_mat_ = this->dd_triplet_mat_;
+
   return myclone;
 }
 
