@@ -252,14 +252,25 @@ std::unique_ptr<WaveFunctionComponent> SlaterDetBuilder::buildComponent(xmlNodeP
       app_summary() << "   -------------------------" << std::endl;
       app_summary() << std::endl;
 
+      std::string singlet;
+      std::string uu_triplet;
+      std::string dd_triplet;
+      OhmmsAttributeSet pf_attrib;
+      pf_attrib.add(singlet, "singlet", {"yes", "no"});
+      pf_attrib.add(uu_triplet, "uu_triplet", {"yes", "no"});
+      pf_attrib.add(dd_triplet, "dd_triplet", {"yes", "no"});
+      pf_attrib.put(cur);
+
       if (built_singledet_or_multidets)
         myComm->barrier_and_abort("Only one fermionic component allowed in XML");
 
       if (BFTrans)
         throw std::runtime_error("Backflow currently not implemented for Pfaffians");
 
-        built_singledet_or_multidets =
-            std::make_unique<PfaffianSTU>(targetPtcl, std::move(unique_sposets));
+      auto pfaffian =
+          std::make_unique<PfaffianSTU>(targetPtcl, std::move(unique_sposets), singlet, uu_triplet, dd_triplet);
+      pfaffian->buildOptVariables();
+      built_singledet_or_multidets = std::move(pfaffian);
     }
   });
 

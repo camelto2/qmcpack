@@ -24,7 +24,7 @@ namespace testing
 class PfaffianSTUTest;
 }
 
-class PfaffianSTU : public WaveFunctionComponent
+class PfaffianSTU : public WaveFunctionComponent, public OptimizableObject
 {
   using ValueVector = SPOSet::ValueVector;
   using GradVector  = SPOSet::GradVector;
@@ -37,6 +37,9 @@ class PfaffianSTU : public WaveFunctionComponent
 public:
   PfaffianSTU(ParticleSet& targetPtcl,
               std::vector<std::unique_ptr<SPOSet>>&& sposets,
+              const std::string& opt_singlet, 
+              const std::string& opt_uu_triplet, 
+              const std::string& opt_dd_triplet,
               const std::string& class_name = "PfaffianSTU");
 
   ///destructor
@@ -50,6 +53,10 @@ public:
   void extractOptimizableObjectRefs(UniqueOptObjRefs& opt_obj_refs) override;
 
   void checkOutVariables(const OptVariables& active) override;
+
+  void checkInVariablesExclusive(OptVariables& active) override;
+
+  void resetParametersExclusive(const OptVariables& active) override {};
 
   LogValue evaluateLog(const ParticleSet& P,
                        ParticleSet::ParticleGradient& G,
@@ -86,6 +93,11 @@ public:
 
   void evaluateDerivativesWF(ParticleSet& P, const OptVariables& active, Vector<ValueType>& dlogpsi) override;
 
+  void buildOptVariables();
+
+  void readVariationalParameters(hdf_archive& hin) override {};
+  void writeVariationalParameters(hdf_archive& hout) override {};
+
 protected:
   //Timers 
   NewTimer &UpdateTimer, &RatioTimer, &InverseTimer, &BufferTimer, &SPOVTimer, &SPOVGLTimer; 
@@ -105,6 +117,14 @@ private:
 
   //called by acceptMove, updates the inverse with sherman-morrison-woodbury update
   void updateInverse();
+
+  void initializePairingMats();
+
+
+  //whether to optimize the pairing matrices, allows to enable AGPs with only singlet on
+  bool opt_singlet_;
+  bool opt_uu_triplet_;
+  bool opt_dd_triplet_;
 
   //current matrix 
   ValueMatrix psi_mat_;

@@ -2,7 +2,7 @@
 // This file is distributed under the University of Illinois/NCSA Open Source License.
 // See LICENSE file in top directory for details.
 //
-// Copyright (c) 2025 Jeongnim Kim and QMCPACK developers.
+// Copyright (c) 2025 QMCPACK developers.
 //
 // File developed by: Cody A. Melton, cmelton@sandia.gov, Sandia National Laboratories
 //
@@ -18,13 +18,21 @@ namespace qmcplusplus
 
 PfaffianSTU::PfaffianSTU(ParticleSet& targetPtcl,
                          std::vector<std::unique_ptr<SPOSet>>&& sposets,
+                         const std::string& opt_singlet,
+                         const std::string& opt_uu_triplet,
+                         const std::string& opt_dd_triplet,
                          const std::string& class_name)
-    : UpdateTimer(createGlobalTimer(class_name + "::update", timer_level_fine)),
+    : WaveFunctionComponent(class_name),
+      OptimizableObject(class_name),
+      UpdateTimer(createGlobalTimer(class_name + "::update", timer_level_fine)),
       RatioTimer(createGlobalTimer(class_name + "::ratio", timer_level_fine)),
       InverseTimer(createGlobalTimer(class_name + "::inverse", timer_level_fine)),
       BufferTimer(createGlobalTimer(class_name + "::buffer", timer_level_fine)),
       SPOVTimer(createGlobalTimer(class_name + "::spoval", timer_level_fine)),
       SPOVGLTimer(createGlobalTimer(class_name + "::spovgl", timer_level_fine)),
+      opt_singlet_(opt_singlet == "yes"),
+      opt_uu_triplet_(opt_uu_triplet == "yes"),
+      opt_dd_triplet_(opt_dd_triplet == "yes"),
       active_idx_(-1),
       num_elec_(targetPtcl.getTotalNum()),
       num_up_(targetPtcl.last(0)),
@@ -33,15 +41,21 @@ PfaffianSTU::PfaffianSTU(ParticleSet& targetPtcl,
       sposets_(std::move(sposets))
 {
   resize();
+  initializePairingMats();
 }
 
 PfaffianSTU::~PfaffianSTU() {}
 
 bool PfaffianSTU::isOptimizable() const { return true; }
 
-void PfaffianSTU::extractOptimizableObjectRefs(UniqueOptObjRefs& opt_obj_refs) {}
-
-void PfaffianSTU::checkOutVariables(const OptVariables& active) {}
+void PfaffianSTU::initializePairingMats()
+{
+  singlet_mat_ = 0.0;
+  uu_triplet_mat_ = 0.0;
+  dd_triplet_mat_ = 0.0;
+  for (int i = 0; i < num_elec_; i++)
+    singlet_mat_(i, i) = 1.0;
+}
 
 PfaffianSTU::LogValue PfaffianSTU::evaluateLog(const ParticleSet& P,
                                                ParticleSet::ParticleGradient& G,
@@ -348,7 +362,11 @@ std::unique_ptr<WaveFunctionComponent> PfaffianSTU::makeClone(ParticleSet& tqp) 
   std::vector<std::unique_ptr<SPOSet>> sposet_clones;
   for (const auto& phi : sposets_)
     sposet_clones.emplace_back(phi->makeClone());
-  auto myclone = std::make_unique<SlaterDet>(tqp, std::move(sposet_clones));
+  const std::string opt_singlet    = (opt_singlet_) ? "yes" : "no";
+  const std::string opt_uu_triplet = (opt_uu_triplet_) ? "yes" : "no";
+  const std::string opt_dd_triplet = (opt_dd_triplet_) ? "yes" : "no";
+  auto myclone =
+      std::make_unique<PfaffianSTU>(tqp, std::move(sposet_clones), opt_singlet, opt_uu_triplet, opt_dd_triplet);
 
   //need to also copy data needed to actually calculate things. Should only be the
   //pairing matrices
@@ -532,5 +550,53 @@ void PfaffianSTU::updateInverse()
   std::transform(psi_matinv_.begin(), psi_matinv_.end(), tmp4.begin(), psi_matinv_.begin(),
                  [](auto v1, auto v2) { return v1 - v2; });
 }
+
+void PfaffianSTU::buildOptVariables()
+{
+  myVars.clear();
+
+  const int num_orbs = singlet_mat_.size();
+
+  auto registerParam = [this](const int i, const int j, const std::string& label, const ValueMatrix& pair_mat) {
+    std::stringstream sstr;
+    sstr << my_name_ << "_" << label << "_" << (i < 10 ? "0" : "") << (i < 100 ? "0" : "") << (i < 1000 ? "0" : "") << i
+         << "_" << (j < 10 ? "0" : "") << (j < 100 ? "0" : "") << (j < 1000 ? "0" : "") << j << std::endl;
+    myVars.insert(sstr.str(), std::real(pair_mat(i, j)));
+  };
+
+  if (opt_singlet_)
+  {
+    const std::string label = "singlet";
+    for (int i = 0; i < num_orbs; i++)
+      for (int j = i; j < num_orbs; j++)
+        registerParam(i, j, label, singlet_mat_);
+  }
+
+  if (opt_uu_triplet_)
+  {
+    const std::string label = "uu";
+    for (int i = 0; i < num_orbs; i++)
+      for (int j = i + 1; j < num_orbs; j++)
+        registerParam(i, j, label, uu_triplet_mat_);
+  }
+
+  if (opt_dd_triplet_)
+  {
+    const std::string label = "dd";
+    for (int i = 0; i < num_orbs; i++)
+      for (int j = i + 1; j < num_orbs; j++)
+        registerParam(i, j, label, dd_triplet_mat_);
+  }
+}
+
+void PfaffianSTU::checkInVariablesExclusive(OptVariables& active)
+{
+  if (myVars.size())
+    active.insertFrom(myVars);
+}
+
+void PfaffianSTU::checkOutVariables(const OptVariables& active) { myVars.getIndex(active); }
+
+void PfaffianSTU::extractOptimizableObjectRefs(UniqueOptObjRefs& opt_obj_refs) { opt_obj_refs.push_back(*this); }
 
 } // namespace qmcplusplus

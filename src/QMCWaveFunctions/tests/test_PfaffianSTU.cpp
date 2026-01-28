@@ -456,13 +456,14 @@ TEST_CASE("Pfaffian check sizes", "[wavefunction][fermion]")
   int ndn                            = 2;
   int uporbs                         = 4;
   int dnorbs                         = 4;
+  const std::string opt = "no";
   std::unique_ptr<ParticleSet> elec1 = pftester.createDummyElec(nup, ndn);
   std::unique_ptr<SPOSet> upspo      = pftester.createDummySPO("up", nup, uporbs);
   std::unique_ptr<SPOSet> dnspo      = pftester.createDummySPO("dn", ndn, dnorbs);
   std::vector<std::unique_ptr<SPOSet>> spos;
   spos.emplace_back(std::move(upspo));
   spos.emplace_back(std::move(dnspo));
-  PfaffianSTU pf1((*elec1), std::move(spos), "pfaffian1");
+  PfaffianSTU pf1((*elec1), std::move(spos), "pfaffian1", opt, opt, opt);
   pftester.checkSizes(elec1->getTotalNum(), uporbs, dnorbs, pf1);
 
   nup                                = 5;
@@ -475,7 +476,7 @@ TEST_CASE("Pfaffian check sizes", "[wavefunction][fermion]")
   std::vector<std::unique_ptr<SPOSet>> spos2;
   spos2.emplace_back(std::move(upspo2));
   spos2.emplace_back(std::move(dnspo2));
-  PfaffianSTU pf2((*elec2), std::move(spos2), "pfaffian2");
+  PfaffianSTU pf2((*elec2), std::move(spos2), "pfaffian2", opt, opt, opt);
   pftester.checkSizes(elec2->getTotalNum(), uporbs, dnorbs, pf2);
 }
 
@@ -490,7 +491,9 @@ TEST_CASE("Pfaffian check pfaffian evaluation", "[wavefunction][fermion]")
   std::vector<std::unique_ptr<SPOSet>> spos;
   spos.emplace_back(std::move(upspo));
   spos.emplace_back(std::move(dnspo));
-  PfaffianSTU pf((*elec), std::move(spos), "pfaffian");
+
+  const std::string opt = "no";
+  PfaffianSTU pf((*elec), std::move(spos), "pfaffian", opt, opt, opt);
   pftester.checkEvaluation(pf, (*elec));
 }
 
@@ -508,7 +511,9 @@ TEST_CASE("Pfaffian check VGL evaluations", "[wavefunction][fermion]")
   std::vector<std::unique_ptr<SPOSet>> spos;
   spos.push_back(std::move(upspo));
   spos.push_back(std::move(dnspo));
-  PfaffianSTU pf((*elec), std::move(spos), "pfaffian");
+
+  const std::string opt = "no";
+  PfaffianSTU pf((*elec), std::move(spos), "pfaffian", opt, opt, opt);
   pftester.checkVGLEvaluations(pf, (*elec));
 }
 
