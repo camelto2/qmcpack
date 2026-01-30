@@ -56,7 +56,7 @@ public:
 
   void checkInVariablesExclusive(OptVariables& active) override;
 
-  void resetParametersExclusive(const OptVariables& active) override {};
+  void resetParametersExclusive(const OptVariables& active) override; 
 
   LogValue evaluateLog(const ParticleSet& P,
                        ParticleSet::ParticleGradient& G,
@@ -95,8 +95,8 @@ public:
 
   void buildOptVariables();
 
-  void readVariationalParameters(hdf_archive& hin) override {};
-  void writeVariationalParameters(hdf_archive& hout) override {};
+  void readVariationalParameters(hdf_archive& hin) override;
+  void writeVariationalParameters(hdf_archive& hout) override;
 
 protected:
   //Timers 

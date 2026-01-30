@@ -12,6 +12,7 @@
 #include "PfaffianSTU.h"
 #include "Numerics/DeterminantOperators.h"
 #include "Numerics/MatrixOperators.h"
+#include "io/hdf/hdf_archive.h"
 
 namespace qmcplusplus
 {
@@ -50,7 +51,7 @@ bool PfaffianSTU::isOptimizable() const { return true; }
 
 void PfaffianSTU::initializePairingMats()
 {
-  singlet_mat_ = 0.0;
+  singlet_mat_    = 0.0;
   uu_triplet_mat_ = 0.0;
   dd_triplet_mat_ = 0.0;
   for (int i = 0; i < num_elec_; i++)
@@ -555,7 +556,7 @@ void PfaffianSTU::buildOptVariables()
 {
   myVars.clear();
 
-  const int num_orbs = singlet_mat_.size();
+  const int num_orbs = singlet_mat_.rows();
 
   auto registerParam = [this](const int i, const int j, const std::string& label, const ValueMatrix& pair_mat) {
     std::stringstream sstr;
@@ -566,7 +567,7 @@ void PfaffianSTU::buildOptVariables()
 
   if (opt_singlet_)
   {
-    const std::string label = "singlet";
+    const std::string label = "ud";
     for (int i = 0; i < num_orbs; i++)
       for (int j = i; j < num_orbs; j++)
         registerParam(i, j, label, singlet_mat_);
@@ -597,6 +598,78 @@ void PfaffianSTU::checkInVariablesExclusive(OptVariables& active)
 
 void PfaffianSTU::checkOutVariables(const OptVariables& active) { myVars.getIndex(active); }
 
+
+void PfaffianSTU::resetParametersExclusive(const OptVariables& active)
+{
+  for (int i = 0; i < myVars.size(); i++)
+  {
+    int loc   = myVars.where(i);
+    myVars[i] = active[loc];
+  }
+
+  const int num_orbs = singlet_mat_.rows();
+  int idx            = 0;
+  if (opt_singlet_)
+  {
+    for (int i = 0; i < num_orbs; i++)
+    {
+      for (int j = i; j < num_orbs; j++, idx++)
+      {
+        singlet_mat_(i, j) = myVars[idx];
+        if (j > i)
+          singlet_mat_(j, i) = myVars[idx];
+      }
+    }
+  }
+  if (opt_uu_triplet_)
+  {
+    for (int i = 0; i < num_orbs; i++)
+    {
+      for (int j = i + 1; j < num_orbs; j++, idx++)
+      {
+        uu_triplet_mat_(i, j) = myVars[idx];
+        uu_triplet_mat_(j, i) = -myVars[idx];
+      }
+    }
+  }
+  if (opt_dd_triplet_)
+  {
+    for (int i = 0; i < num_orbs; i++)
+    {
+      for (int j = i + 1; j < num_orbs; j++, idx++)
+      {
+        dd_triplet_mat_(i, j) = myVars[idx];
+        dd_triplet_mat_(j, i) = -myVars[idx];
+      }
+    }
+  }
+  assert(idx == myVars.size());
+}
+
 void PfaffianSTU::extractOptimizableObjectRefs(UniqueOptObjRefs& opt_obj_refs) { opt_obj_refs.push_back(*this); }
+
+void PfaffianSTU::readVariationalParameters(hdf_archive& hin)
+{
+  /*
+  hin.push("PfaffianSTU", false);
+  bool grp_exists = hin.is_group("pairing_mats");
+  if (grp_exists) {}
+  else
+    throw std::runtime_error("Error.  No pairing_mats group in h5.  Abort.");
+  hin.pop();
+  */
+}
+
+void PfaffianSTU::writeVariationalParameters(hdf_archive& hout)
+{
+  hout.push("PfaffianSTU");
+  const std::string pairing_mats = std::string("pairing_mats");
+  const int size                 = myVars.size();
+  std::vector<RealType> data(size);
+  for (int i = 0; i < size; i++)
+    data[i] = std::real(myVars[i]);
+  hout.write(data, pairing_mats);
+  hout.pop();
+}
 
 } // namespace qmcplusplus

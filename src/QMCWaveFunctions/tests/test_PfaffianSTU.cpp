@@ -419,8 +419,8 @@ public:
     ValueVector newl = {0.05926236,  0.54275921, -0.3779285,  -0.55687445, -0.3165852,  -0.62102466};
     // clang-format on
     dnspo->updateVGL(elec, iat, newv, newg, newl);
-    ref_ratio = 0.9268201253907773;
-    GradType ref_grad   = {0.95645443, 1.34949417, -0.0840785};
+    ref_ratio         = 0.9268201253907773;
+    GradType ref_grad = {0.95645443, 1.34949417, -0.0840785};
     GradType grad;
     ratio = pf.ratioGrad(elec, iat, grad);
     CHECK(ratio == ValueApprox(ref_ratio));
@@ -432,6 +432,46 @@ public:
     grad = pf.evalGrad(elec, iat);
     for (int d = 0; d < 3; d++)
       CHECK(grad[d] == ValueApprox(ref_grad[d]));
+  }
+
+  void checkReadWrite(PfaffianSTU& pf, ParticleSet& elec)
+  {
+    //things should be initialized to zero at construction
+    const int num_orbs = pf.singlet_mat_.rows();
+    for (int i = 0; i < num_orbs; i++)
+    {
+      ValueType val = i < pf.num_elec_ ? 1.0 : 0.0;
+      CHECK(pf.singlet_mat_(i, i) == ValueApprox(val));
+      CHECK(pf.uu_triplet_mat_(i, i) == ValueApprox(0.0));
+      CHECK(pf.dd_triplet_mat_(i, i) == ValueApprox(0.0));
+      for (int j = i + 1; j < num_orbs; j++)
+      {
+        CHECK(pf.singlet_mat_(i, j) == ValueApprox(0.0));
+        CHECK(pf.uu_triplet_mat_(i, j) == ValueApprox(0.0));
+        CHECK(pf.dd_triplet_mat_(i, j) == ValueApprox(0.0));
+      }
+    }
+
+    pf.buildOptVariables();
+
+    const int num_params = num_orbs * (num_orbs + 1) / 2 + num_orbs * (num_orbs - 1);
+    CHECK(num_params == pf.myVars.size());
+
+    std::vector<RealType> parms(num_params);
+    for (int i = 0; i < num_params; i++)
+      parms[i] = 0.1 * i;
+
+    optimize::VariableSet vs;
+    pf.checkInVariablesExclusive(vs);
+    for (size_t i = 0; i < vs.size(); i++)
+      vs[i] = parms[i];
+    pf.resetParametersExclusive(vs);
+
+    for (int i = 0; i < num_params; i++)
+      std::cout << parms[i] << " " << pf.myVars[i] << std::endl;
+
+    pf.myVars.print(std::cout);
+
   }
 
 private:
@@ -456,7 +496,7 @@ TEST_CASE("Pfaffian check sizes", "[wavefunction][fermion]")
   int ndn                            = 2;
   int uporbs                         = 4;
   int dnorbs                         = 4;
-  const std::string opt = "no";
+  const std::string opt              = "no";
   std::unique_ptr<ParticleSet> elec1 = pftester.createDummyElec(nup, ndn);
   std::unique_ptr<SPOSet> upspo      = pftester.createDummySPO("up", nup, uporbs);
   std::unique_ptr<SPOSet> dnspo      = pftester.createDummySPO("dn", ndn, dnorbs);
@@ -513,8 +553,28 @@ TEST_CASE("Pfaffian check VGL evaluations", "[wavefunction][fermion]")
   spos.push_back(std::move(dnspo));
 
   const std::string opt = "no";
-  PfaffianSTU pf((*elec), std::move(spos), "pfaffian", opt, opt, opt);
+  PfaffianSTU pf((*elec), std::move(spos), opt, opt, opt);
   pftester.checkVGLEvaluations(pf, (*elec));
+}
+
+TEST_CASE("Pfaffian read/write vp", "[wavefunction][fermion]")
+{
+  Communicate* comm = OHMMS::Controller;
+  testing::PfaffianSTUTest pftester;
+
+  int nup                           = 3;
+  int ndn                           = 2;
+  int norb                          = 6;
+  std::unique_ptr<ParticleSet> elec = pftester.createDummyElec(nup, ndn);
+  std::unique_ptr<SPOSet> upspo     = pftester.createDummySPO("up", nup, norb);
+  std::unique_ptr<SPOSet> dnspo     = pftester.createDummySPO("dn", ndn, norb);
+  std::vector<std::unique_ptr<SPOSet>> spos;
+  spos.push_back(std::move(upspo));
+  spos.push_back(std::move(dnspo));
+
+  const std::string opt = "yes";
+  PfaffianSTU pf((*elec), std::move(spos), opt, opt, opt);
+  pftester.checkReadWrite(pf, (*elec));
 }
 
 } // namespace qmcplusplus
