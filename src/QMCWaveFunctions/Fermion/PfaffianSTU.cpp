@@ -375,6 +375,7 @@ std::unique_ptr<WaveFunctionComponent> PfaffianSTU::makeClone(ParticleSet& tqp) 
   myclone->singlet_mat_    = this->singlet_mat_;
   myclone->uu_triplet_mat_ = this->uu_triplet_mat_;
   myclone->dd_triplet_mat_ = this->dd_triplet_mat_;
+  myclone->myVars          = this->myVars;
 
   return myclone;
 }
