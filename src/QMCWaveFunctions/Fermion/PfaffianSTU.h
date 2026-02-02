@@ -95,9 +95,6 @@ public:
 
   void buildOptVariables();
 
-  void readVariationalParameters(hdf_archive& hin) override;
-  void writeVariationalParameters(hdf_archive& hout) override;
-
 protected:
   //Timers 
   NewTimer &UpdateTimer, &RatioTimer, &InverseTimer, &BufferTimer, &SPOVTimer, &SPOVGLTimer; 

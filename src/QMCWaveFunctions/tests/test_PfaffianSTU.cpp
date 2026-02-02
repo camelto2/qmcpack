@@ -15,6 +15,7 @@
 #include "QMCWaveFunctions/Fermion/PfaffianSTU.h"
 #include "checkMatrix.hpp"
 #include "ConstantSPOSet.h"
+#include "io/hdf/hdf_archive.h"
 
 namespace qmcplusplus
 {
@@ -467,11 +468,53 @@ public:
       vs[i] = parms[i];
     pf.resetParametersExclusive(vs);
 
-    for (int i = 0; i < num_params; i++)
-      std::cout << parms[i] << " " << pf.myVars[i] << std::endl;
+    hdf_archive hout;
+    vs.writeToHDF("pf_vp.h5", hout);
 
-    pf.myVars.print(std::cout);
+    pf.initializePairingMats(); //reset
+    //recheck they are set to initial values
+    for (int i = 0; i < num_orbs; i++)
+    {
+      ValueType val = i < pf.num_elec_ ? 1.0 : 0.0;
+      CHECK(pf.singlet_mat_(i, i) == ValueApprox(val));
+      CHECK(pf.uu_triplet_mat_(i, i) == ValueApprox(0.0));
+      CHECK(pf.dd_triplet_mat_(i, i) == ValueApprox(0.0));
+      for (int j = i + 1; j < num_orbs; j++)
+      {
+        CHECK(pf.singlet_mat_(i, j) == ValueApprox(0.0));
+        CHECK(pf.uu_triplet_mat_(i, j) == ValueApprox(0.0));
+        CHECK(pf.dd_triplet_mat_(i, j) == ValueApprox(0.0));
+      }
+    }
+    vs.readFromHDF("pf_vp.h5", hout);
+    pf.resetParametersExclusive(vs);
 
+    int count = 0;
+    for (int i = 0; i < pf.singlet_mat_.rows(); i++)
+    {
+      CHECK(pf.singlet_mat_(i, i) == ValueApprox(vs[count++]));
+      for (int j = i + 1; j < pf.singlet_mat_.rows(); j++, count++)
+      {
+        CHECK(pf.singlet_mat_(i, j) == ValueApprox(vs[count]));
+        CHECK(pf.singlet_mat_(j, i) == ValueApprox(vs[count]));
+      }
+    }
+    for (int i = 0; i < pf.uu_triplet_mat_.rows(); i++)
+    {
+      for (int j = i + 1; j < pf.uu_triplet_mat_.rows(); j++, count++)
+      {
+        CHECK(pf.uu_triplet_mat_(i, j) == ValueApprox(vs[count]));
+        CHECK(pf.uu_triplet_mat_(j, i) == ValueApprox(-vs[count]));
+      }
+    }
+    for (int i = 0; i < pf.dd_triplet_mat_.rows(); i++)
+    {
+      for (int j = i + 1; j < pf.dd_triplet_mat_.rows(); j++, count++)
+      {
+        CHECK(pf.dd_triplet_mat_(i, j) == ValueApprox(vs[count]));
+        CHECK(pf.dd_triplet_mat_(j, i) == ValueApprox(-vs[count]));
+      }
+    }
   }
 
 private:

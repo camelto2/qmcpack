@@ -648,28 +648,4 @@ void PfaffianSTU::resetParametersExclusive(const OptVariables& active)
 
 void PfaffianSTU::extractOptimizableObjectRefs(UniqueOptObjRefs& opt_obj_refs) { opt_obj_refs.push_back(*this); }
 
-void PfaffianSTU::readVariationalParameters(hdf_archive& hin)
-{
-  /*
-  hin.push("PfaffianSTU", false);
-  bool grp_exists = hin.is_group("pairing_mats");
-  if (grp_exists) {}
-  else
-    throw std::runtime_error("Error.  No pairing_mats group in h5.  Abort.");
-  hin.pop();
-  */
-}
-
-void PfaffianSTU::writeVariationalParameters(hdf_archive& hout)
-{
-  hout.push("PfaffianSTU");
-  const std::string pairing_mats = std::string("pairing_mats");
-  const int size                 = myVars.size();
-  std::vector<RealType> data(size);
-  for (int i = 0; i < size; i++)
-    data[i] = std::real(myVars[i]);
-  hout.write(data, pairing_mats);
-  hout.pop();
-}
-
 } // namespace qmcplusplus
