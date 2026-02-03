@@ -517,6 +517,67 @@ public:
     }
   }
 
+  void checkParmDerivs(PfaffianSTU& pf, ParticleSet& elec)
+  {
+    pf.buildOptVariables();
+
+    //set ref vals, for orbitals
+    up_ref_mat_.resize(pf.up_psi_mat_.rows(), pf.up_psi_mat_.cols());
+    dn_ref_mat_.resize(pf.dn_psi_mat_.rows(), pf.dn_psi_mat_.cols());
+
+    ValueVector row0, row1;
+    // clang-format off
+    row0 = {0.46170647,  0.64069846,  0.70417798};
+    row1 = {0.82174694,  0.88964088,  0.82151254};
+    // clang-format on
+    for (int i = 0; i < up_ref_mat_.cols(); i++)
+    {
+      up_ref_mat_[0][i] = row0[i];
+      up_ref_mat_[1][i] = row1[i];
+    }
+    auto upspo = dynamic_cast<ConstantSPOSet<ValueType>*>(pf.sposets_[0].get());
+    upspo->setRefVals(up_ref_mat_);
+
+    // clang-format off
+    row0 = {0.80904975,  0.86552841,  0.89814096};
+    row1 = {0.79386346,  0.91672375,  0.75376951};
+    // clang-format on
+    for (int i = 0; i < dn_ref_mat_.cols(); i++)
+    {
+      dn_ref_mat_[0][i] = row0[i];
+      dn_ref_mat_[1][i] = row1[i];
+    }
+    auto dnspo = dynamic_cast<ConstantSPOSet<ValueType>*>(pf.sposets_[1].get());
+    dnspo->setRefVals(dn_ref_mat_);
+
+    //parameters to use for S, UU, DD mats
+    //set them via resetParametersExclustive
+
+
+    //from finite differences
+    std::vector<ValueType> ref_derivs{0.37862070262564507, 1.3878555120704037,  -0.9788846351402541,
+                                      0.2321381974693597,  -0.3693788075711237, 1.3065045946394087,
+                                      -0.0798947364688594, -0.1376172644400222, -0.0691154586809057,
+                                      -0.0146054110987084, 0.0276146069981358,  0.04575607962540306};
+
+    //independent values of S, UU, DD matrix. use checkInVariablesExclusive to set matrices
+    std::vector<RealType> parms{0.5981391841682085,   0.6942599356718862, 0.04132254367265181,    0.34934851353450946,
+                                0.6610527560659689,   0.765125528380152,  0.020775902403176283,   -0.024598622514295176,
+                                -0.07553123838606379, 0.2754793798265398, -0.0004650646646693901, 0.2400122192700468};
+
+    optimize::VariableSet vs;
+    pf.checkInVariablesExclusive(vs);
+    for (size_t i = 0; i < vs.size(); i++)
+      vs[i] = parms[i];
+    pf.resetParametersExclusive(vs);
+
+    Vector<ValueType> dlogpsi(vs.size());
+
+    pf.evaluateDerivativesWF(elec, vs, dlogpsi);
+    for (int i = 0; i < dlogpsi.size(); i++)
+      CHECK(dlogpsi[i] == ValueApprox(ref_derivs[i]));
+  }
+
 private:
   ValueMatrix ref_mat_;
   ValueMatrix up_ref_mat_;
@@ -618,6 +679,26 @@ TEST_CASE("Pfaffian read/write vp", "[wavefunction][fermion]")
   const std::string opt = "yes";
   PfaffianSTU pf((*elec), std::move(spos), opt, opt, opt);
   pftester.checkReadWrite(pf, (*elec));
+}
+
+TEST_CASE("Pfaffian evaluateDerivatives", "[wavefunction][fermion]")
+{
+  Communicate* comm = OHMMS::Controller;
+  testing::PfaffianSTUTest pftester;
+
+  int nup                           = 2;
+  int ndn                           = 2;
+  int norb                          = 3;
+  std::unique_ptr<ParticleSet> elec = pftester.createDummyElec(nup, ndn);
+  std::unique_ptr<SPOSet> upspo     = pftester.createDummySPO("up", nup, norb);
+  std::unique_ptr<SPOSet> dnspo     = pftester.createDummySPO("dn", ndn, norb);
+  std::vector<std::unique_ptr<SPOSet>> spos;
+  spos.push_back(std::move(upspo));
+  spos.push_back(std::move(dnspo));
+
+  const std::string opt = "yes";
+  PfaffianSTU pf((*elec), std::move(spos), opt, opt, opt);
+  pftester.checkParmDerivs(pf, (*elec));
 }
 
 } // namespace qmcplusplus

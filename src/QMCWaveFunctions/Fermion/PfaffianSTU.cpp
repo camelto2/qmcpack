@@ -386,7 +386,68 @@ void PfaffianSTU::evaluateDerivatives(ParticleSet& P,
                                       Vector<ValueType>& dhpsioverpsi)
 {}
 
-void PfaffianSTU::evaluateDerivativesWF(ParticleSet& P, const OptVariables& active, Vector<ValueType>& dlogpsi) {}
+void PfaffianSTU::evaluateDerivativesWF(ParticleSet& P, const OptVariables& active, Vector<ValueType>& dlogpsi)
+{
+  evaluateLog(P, P.G, P.L); //bring everything up to date
+
+  const int norbs = singlet_mat_.rows();
+  int iv          = 0;
+  if (opt_singlet_)
+  {
+    for (int ip = 0; ip < norbs; ip++)
+      for (int jp = ip; jp < norbs; jp++, iv++)
+      {
+        const int loc   = myVars.where(iv);
+        ValueType deriv = 0;
+        //singlet terms only effected by up, down pairs
+        for (int ie = 0; ie < num_up_; ie++)
+          for (int je = num_up_; je < num_elec_; je++)
+          {
+            ValueType val = up_psi_mat_(ie, ip) * dn_psi_mat_(je - num_up_, jp);
+            if (ip != jp)
+              val += up_psi_mat_(ie, jp) * dn_psi_mat_(je - num_up_, ip);
+            deriv += psi_matinv_(je, ie) * val;
+          }
+        dlogpsi[loc] += deriv;
+      }
+  }
+
+  if (opt_uu_triplet_)
+  {
+    for (int ip = 0; ip < norbs; ip++)
+      for (int jp = ip + 1; jp < norbs; jp++, iv++)
+      {
+        const int loc   = myVars.where(iv);
+        ValueType deriv = 0;
+        for (int ie = 0; ie < num_up_; ie++)
+          for (int je = ie + 1; je < num_up_; je++)
+          {
+            ValueType val = up_psi_mat_(ie, ip) * up_psi_mat_(je, jp) - up_psi_mat_(ie, jp) * up_psi_mat_(je, ip);
+            deriv += psi_matinv_(je, ie) * val;
+          }
+        dlogpsi[loc] += deriv;
+      }
+  }
+
+  if (opt_dd_triplet_)
+  {
+    for (int ip = 0; ip < norbs; ip++)
+      for (int jp = ip + 1; jp < norbs; jp++, iv++)
+      {
+        const int loc   = myVars.where(iv);
+        ValueType deriv = 0;
+        for (int ie = num_up_; ie < num_elec_; ie++)
+          for (int je = ie + 1; je < num_elec_; je++)
+          {
+            int ii        = ie - num_up_;
+            int jj        = je - num_up_;
+            ValueType val = dn_psi_mat_(ii, ip) * dn_psi_mat_(jj, jp) - dn_psi_mat_(ii, jp) * dn_psi_mat_(jj, ip);
+            deriv += psi_matinv_(je, ie) * val;
+          }
+        dlogpsi[loc] += deriv;
+      }
+  }
+}
 
 void PfaffianSTU::resize()
 {
@@ -403,7 +464,7 @@ void PfaffianSTU::resize()
   //now size the pairing function coefficient matrices matrices
   //up spos must be same size
   assert(sposets_[0]->size() == sposets_[1]->size());
-  int norbs = sposets_[0]->size();
+  const int norbs = sposets_[0]->size();
   singlet_mat_.resize(norbs, norbs);
   uu_triplet_mat_.resize(norbs, norbs);
   dd_triplet_mat_.resize(norbs, norbs);
