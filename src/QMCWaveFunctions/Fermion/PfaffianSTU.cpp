@@ -175,22 +175,31 @@ void PfaffianSTU::recompute(const ParticleSet& P)
 
 void PfaffianSTU::registerData(ParticleSet& P, WFBufferType& buf)
 {
+  const int norbs = sposets_[0]->size();
   if (Bytes_in_WFBuffer == 0)
   {
     Bytes_in_WFBuffer = buf.current(); 
     buf.add(psi_mat_.first_address(), psi_mat_.last_address());
     buf.add(psi_matinv_.first_address(), psi_matinv_.last_address());
-    buf.add(first_address_dpsi_, last_address_dpsi_);
+    buf.add(&(dpsi_rows_(0, 0)[0]), &(dpsi_rows_(0, 0)[0]) + size_ * size_ * DIM);
     buf.add(d2psi_rows_.first_address(), d2psi_rows_.last_address());
     buf.add(up_psi_mat_.first_address(), up_psi_mat_.last_address());
+    buf.add(&(up_dpsi_mat_(0, 0)[0]), &(up_dpsi_mat_(0, 0)[0]) + num_up_ * norbs * DIM);
+    buf.add(up_d2psi_mat_.first_address(), up_d2psi_mat_.last_address());
     buf.add(dn_psi_mat_.first_address(), dn_psi_mat_.last_address());
+    buf.add(&(dn_dpsi_mat_(0, 0)[0]), &(dn_dpsi_mat_(0, 0)[0]) + num_dn_ * norbs * DIM);
+    buf.add(dn_d2psi_mat_.first_address(), dn_d2psi_mat_.last_address());
     Bytes_in_WFBuffer = buf.current() - Bytes_in_WFBuffer;
     psi_mat_.free();
     psi_matinv_.free();
     dpsi_rows_.free();
     d2psi_rows_.free();
     up_psi_mat_.free();
+    up_dpsi_mat_.free();
+    up_d2psi_mat_.free();
     dn_psi_mat_.free();
+    dn_dpsi_mat_.free();
+    dn_d2psi_mat_.free();
   }
   else
   {
@@ -223,7 +232,11 @@ void PfaffianSTU::copyFromBuffer(ParticleSet& P, WFBufferType& buf)
   dpsi_rows_.attachReference(buf.lendReference<GradType>(size_ * size_), size_, size_);
   d2psi_rows_.attachReference(buf.lendReference<ValueType>(size_ * size_), size_, size_);
   up_psi_mat_.attachReference(buf.lendReference<ValueType>(num_up_ * norbs), num_up_, norbs);
+  up_dpsi_mat_.attachReference(buf.lendReference<GradType>(num_up_ * norbs), num_up_, norbs);
+  up_d2psi_mat_.attachReference(buf.lendReference<ValueType>(num_up_ * norbs), num_up_, norbs);
   dn_psi_mat_.attachReference(buf.lendReference<ValueType>(num_dn_ * norbs), num_dn_, norbs);
+  dn_dpsi_mat_.attachReference(buf.lendReference<GradType>(num_dn_ * norbs), num_dn_, norbs);
+  dn_d2psi_mat_.attachReference(buf.lendReference<ValueType>(num_dn_ * norbs), num_dn_, norbs);
   buf.get(log_value_);
   active_idx_ = -1;
 }
@@ -491,9 +504,6 @@ void PfaffianSTU::resize()
   tmp_psi_.resize(norbs);
   tmp_dpsi_.resize(norbs);
   tmp_d2psi_.resize(norbs);
-
-  first_address_dpsi_ = &(dpsi_rows_(0, 0)[0]);
-  last_address_dpsi_  = first_address_dpsi_ + size_ * size_ * DIM;
 }
 
 int PfaffianSTU::rowPivot(ValueMatrix& mat, const int i)

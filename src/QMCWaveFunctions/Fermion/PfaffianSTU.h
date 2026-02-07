@@ -167,10 +167,7 @@ private:
   GradVector  tmp_dpsi_;
   ValueVector tmp_d2psi_;
 
-  const std::vector<std::unique_ptr<SPOSet>> sposets_;
-
-  ValueType* first_address_dpsi_;
-  ValueType* last_address_dpsi_;
+  std::vector<std::unique_ptr<SPOSet>> sposets_;
 
   friend class testing::PfaffianSTUTest;
 };
