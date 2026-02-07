@@ -230,7 +230,7 @@ PfaffianSTU::PsiValue PfaffianSTU::ratioGrad(ParticleSet& P, int iat, GradType& 
   ScopedTimer local_timer(RatioTimer);
   UpdateMode     = ORB_PBYP_PARTIAL;
   const int norb = sposets_[0]->size();
-  ValueVector row_update(size_);
+  ValueVector row_update(size_, 0.0);
   dpsi_new_  = 0;
   d2psi_new_ = 0;
   bool iup   = (iat < num_up_);
@@ -323,7 +323,7 @@ PfaffianSTU::PsiValue PfaffianSTU::ratio(ParticleSet& P, int iat)
   ScopedTimer local_timer(RatioTimer);
 
   const int norb = sposets_[0]->size();
-  ValueVector row_update(size_);
+  ValueVector row_update(size_, 0.0);
   bool iup = (iat < num_up_);
   for (int j = 0; j < num_elec_; j++)
   {
