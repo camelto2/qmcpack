@@ -483,7 +483,7 @@ void PfaffianSTU::resize()
   tmp_d2psi_.resize(norbs);
 
   first_address_dpsi_ = &(dpsi_rows_(0, 0)[0]);
-  last_address_dpsi_  = first_address_dpsi_ + num_elec_ * norbs * DIM;
+  last_address_dpsi_  = first_address_dpsi_ + size * size * DIM;
 }
 
 int PfaffianSTU::rowPivot(ValueMatrix& mat, const int i)
