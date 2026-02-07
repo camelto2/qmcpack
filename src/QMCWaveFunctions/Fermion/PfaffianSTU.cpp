@@ -177,6 +177,7 @@ void PfaffianSTU::registerData(ParticleSet& P, WFBufferType& buf)
 {
   if (Bytes_in_WFBuffer == 0)
   {
+    Bytes_in_WFBuffer = buf.current(); 
     buf.add(psi_matinv_.first_address(), psi_matinv_.last_address());
     buf.add(first_address_dpsi_, last_address_dpsi_);
     buf.add(d2psi_rows_.first_address(), d2psi_rows_.last_address());

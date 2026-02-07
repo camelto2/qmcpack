@@ -252,20 +252,35 @@ std::unique_ptr<WaveFunctionComponent> SlaterDetBuilder::buildComponent(xmlNodeP
       app_summary() << "   -------------------------" << std::endl;
       app_summary() << std::endl;
 
+      std::string up_spo;
+      std::string dn_spo;
       std::string singlet;
       std::string uu_triplet;
       std::string dd_triplet;
       OhmmsAttributeSet pf_attrib;
+      pf_attrib.add(up_spo, "up_sposet");
+      pf_attrib.add(dn_spo, "dn_sposet");
       pf_attrib.add(singlet, "singlet", {"yes", "no"});
       pf_attrib.add(uu_triplet, "uu_triplet", {"yes", "no"});
       pf_attrib.add(dd_triplet, "dd_triplet", {"yes", "no"});
-      pf_attrib.put(cur);
+      pf_attrib.put(element);
 
       if (built_singledet_or_multidets)
         myComm->barrier_and_abort("Only one fermionic component allowed in XML");
 
+      if (up_spo.empty() || dn_spo.empty())
+        myComm->barrier_and_abort("Pfaffian needs both up_sposet and dn_sposet");
+
       if (BFTrans)
         throw std::runtime_error("Backflow currently not implemented for Pfaffians");
+
+      const SPOSet* up_sposet = sposet_builder_factory_.getSPOSet(up_spo);
+      const SPOSet* dn_sposet = sposet_builder_factory_.getSPOSet(dn_spo);
+
+      unique_sposets.emplace_back(up_sposet->makeClone());
+      unique_sposets.back()->checkObject();
+      unique_sposets.emplace_back(dn_sposet->makeClone());
+      unique_sposets.back()->checkObject();
 
       auto pfaffian =
           std::make_unique<PfaffianSTU>(targetPtcl, std::move(unique_sposets), singlet, uu_triplet, dd_triplet);
