@@ -178,12 +178,14 @@ void PfaffianSTU::registerData(ParticleSet& P, WFBufferType& buf)
   if (Bytes_in_WFBuffer == 0)
   {
     Bytes_in_WFBuffer = buf.current(); 
+    buf.add(psi_mat_.first_address(), psi_mat_.last_address());
     buf.add(psi_matinv_.first_address(), psi_matinv_.last_address());
     buf.add(first_address_dpsi_, last_address_dpsi_);
     buf.add(d2psi_rows_.first_address(), d2psi_rows_.last_address());
     buf.add(up_psi_mat_.first_address(), up_psi_mat_.last_address());
     buf.add(dn_psi_mat_.first_address(), dn_psi_mat_.last_address());
     Bytes_in_WFBuffer = buf.current() - Bytes_in_WFBuffer;
+    psi_mat_.free();
     psi_matinv_.free();
     dpsi_rows_.free();
     d2psi_rows_.free();
@@ -216,6 +218,7 @@ void PfaffianSTU::copyFromBuffer(ParticleSet& P, WFBufferType& buf)
 {
   const int norbs = sposets_[0]->size();
   ScopedTimer local_timer(BufferTimer);
+  psi_mat_.attachReference(buf.lendReference<ValueType>(size_ * size_), size_, size_);
   psi_matinv_.attachReference(buf.lendReference<ValueType>(size_ * size_), size_, size_);
   dpsi_rows_.attachReference(buf.lendReference<GradType>(size_ * size_), size_, size_);
   d2psi_rows_.attachReference(buf.lendReference<ValueType>(size_ * size_), size_, size_);
