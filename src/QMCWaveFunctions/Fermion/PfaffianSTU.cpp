@@ -54,7 +54,8 @@ void PfaffianSTU::initializePairingMats()
   singlet_mat_    = 0.0;
   uu_triplet_mat_ = 0.0;
   dd_triplet_mat_ = 0.0;
-  for (int i = 0; i < num_elec_; i++)
+  const int max = num_up_ > num_dn_ ? num_up_ : num_dn_;
+  for (int i = 0; i < max; i++)
     singlet_mat_(i, i) = 1.0;
 }
 
