@@ -117,7 +117,9 @@ private:
 
   void initializePairingMats();
 
-
+  //current wavefunction ratio
+  PsiValue cur_ratio_;
+  
   //whether to optimize the pairing matrices, allows to enable AGPs with only singlet on
   bool opt_singlet_;
   bool opt_uu_triplet_;

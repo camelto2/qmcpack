@@ -297,12 +297,12 @@ PfaffianSTU::PsiValue PfaffianSTU::ratioGrad(ParticleSet& P, int iat, GradType& 
     d2psi_new_[num_elec_] = tmp_d2psi_[ii];
   }
 
-  ValueType ratio = calculateRatio(row_update);
+  cur_ratio_ = calculateRatio(row_update);
   //exploting symmetry of matrices here. psi_matint_[i] gives a row, but I need to dot with column.
   //Since antisymmetric, add a sign
-  grad_iat = -simd::dot(psi_matinv_[iat], dpsi_new_.data(), size_) / ratio;
+  grad_iat = -simd::dot(psi_matinv_[iat], dpsi_new_.data(), size_) / cur_ratio_;
 
-  return ratio;
+  return cur_ratio_;
 }
 
 PfaffianSTU::GradType PfaffianSTU::evalGrad(ParticleSet& P, int iat)
@@ -320,8 +320,17 @@ void PfaffianSTU::restore(int iat) {}
 
 void PfaffianSTU::acceptMove(ParticleSet& P, int iat, bool safe_to_delay)
 {
+  if (cur_ratio_ == PsiValue(0))
+  {
+    std::ostringstream msg;
+    msg << "PfaffianSTU::acceptMove cur_ratio_ is " << cur_ratio_ << "! Report a bug." << std::endl;
+    throw std::runtime_error(msg.str());
+  }
   ScopedTimer local_timer(UpdateTimer);
   assert(iat == active_idx_);
+
+  log_value_ += convertValueToLog(cur_ratio_);
+
   std::transform(psi_delta_.begin(), psi_delta_.end(), psi_mat_[active_idx_], psi_mat_[active_idx_],
                  [](auto v1, auto v2) { return v1 + v2; });
   for (int i = 0; i < psi_mat_.rows(); i++)
@@ -380,7 +389,8 @@ PfaffianSTU::PsiValue PfaffianSTU::ratio(ParticleSet& P, int iat)
     row_update[num_elec_] = tmp_psi_[ii];
   }
 
-  return calculateRatio(row_update);
+  cur_ratio_ = calculateRatio(row_update);
+  return cur_ratio_;
 }
 
 std::unique_ptr<WaveFunctionComponent> PfaffianSTU::makeClone(ParticleSet& tqp) const
