@@ -54,7 +54,7 @@ void PfaffianSTU::initializePairingMats()
   singlet_mat_    = 0.0;
   uu_triplet_mat_ = 0.0;
   dd_triplet_mat_ = 0.0;
-  const int max = num_up_ > num_dn_ ? num_up_ : num_dn_;
+  const int max   = num_up_ > num_dn_ ? num_up_ : num_dn_;
   for (int i = 0; i < max; i++)
     singlet_mat_(i, i) = 1.0;
 }
@@ -179,7 +179,7 @@ void PfaffianSTU::registerData(ParticleSet& P, WFBufferType& buf)
   const int norbs = sposets_[0]->size();
   if (Bytes_in_WFBuffer == 0)
   {
-    Bytes_in_WFBuffer = buf.current(); 
+    Bytes_in_WFBuffer = buf.current();
     buf.add(psi_mat_.first_address(), psi_mat_.last_address());
     buf.add(psi_matinv_.first_address(), psi_matinv_.last_address());
     buf.add(&(dpsi_rows_(0, 0)[0]), &(dpsi_rows_(0, 0)[0]) + size_ * size_ * DIM);
@@ -316,7 +316,15 @@ PfaffianSTU::GradType PfaffianSTU::evalGrad(ParticleSet& P, int iat)
   return grad;
 }
 
-void PfaffianSTU::restore(int iat) {}
+void PfaffianSTU::restore(int iat) { cur_ratio_ = 1.0; }
+
+void PfaffianSTU::completeUpdates() 
+{
+  ScopedTimer local_timer(UpdateTimer);
+  // invRow becomes invalid after updating the inverse matrix
+  active_idx_ = -1;
+  updateInverse();
+}
 
 void PfaffianSTU::acceptMove(ParticleSet& P, int iat, bool safe_to_delay)
 {
@@ -342,6 +350,7 @@ void PfaffianSTU::acceptMove(ParticleSet& P, int iat, bool safe_to_delay)
     simd::copy(d2psi_rows_[active_idx_], d2psi_new_.data(), size_);
   }
   active_idx_ = -1;
+  cur_ratio_  = 1.0;
 }
 
 PfaffianSTU::PsiValue PfaffianSTU::ratio(ParticleSet& P, int iat)

@@ -80,6 +80,8 @@ public:
 
   void restore(int iat) override;
 
+  void completeUpdates() override;
+
   void acceptMove(ParticleSet& P, int iat, bool safe_to_delay = false) override;
 
   PsiValue ratio(ParticleSet& P, int iat) override;
