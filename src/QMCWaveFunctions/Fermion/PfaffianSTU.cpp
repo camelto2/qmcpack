@@ -320,10 +320,7 @@ void PfaffianSTU::restore(int iat) { cur_ratio_ = 1.0; }
 
 void PfaffianSTU::completeUpdates() 
 {
-  ScopedTimer local_timer(UpdateTimer);
-  // invRow becomes invalid after updating the inverse matrix
   active_idx_ = -1;
-  updateInverse();
 }
 
 void PfaffianSTU::acceptMove(ParticleSet& P, int iat, bool safe_to_delay)
