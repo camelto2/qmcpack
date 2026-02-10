@@ -300,7 +300,7 @@ PfaffianSTU::PsiValue PfaffianSTU::ratioGrad(ParticleSet& P, int iat, GradType& 
   cur_ratio_ = calculateRatio(row_update);
   //exploting symmetry of matrices here. psi_matint_[i] gives a row, but I need to dot with column.
   //Since antisymmetric, add a sign
-  grad_iat = -simd::dot(psi_matinv_[iat], dpsi_new_.data(), size_) / cur_ratio_;
+  grad_iat -= simd::dot(psi_matinv_[iat], dpsi_new_.data(), size_) / cur_ratio_;
 
   return cur_ratio_;
 }
