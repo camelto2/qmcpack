@@ -111,8 +111,8 @@ public:
     }
 
     pf.psi_mat_  = ref_mat_;
-    RealType val = std::real(pf.calculatePfaffian());
-    CHECK(val == Approx(-0.024797647365574358));
+    ValueType val = pf.calculatePfaffian();
+    CHECK(std::real(val) == Approx(-0.024797647365574358));
 
     //inverse of previous matrix
     row0 = {-2.71503989e-16, 1.81595609e+00, 4.32396207e+00, 9.92372604e-01, -2.35068908e-01, -2.92715884e+00};
@@ -142,6 +142,7 @@ public:
     ValueVector newrow = {0.56637198, 0.69536227, 0.3739933, 0.69729468, 0., 0.24455721};
 
     ValueType ratio = pf.calculateRatio(newrow);
+    pf.cur_ratio_ = val; //this normally happens in ratio/ratioGrad, but I'm directly calling  calculateRatio so need this so accceptMove passes since it checks this
     CHECK(std::real(ratio * val) == Approx(-0.020779936550488032));
 
     //this should update the inverse matrix after accepting proposed move
@@ -438,10 +439,11 @@ public:
   void checkReadWrite(PfaffianSTU& pf, ParticleSet& elec)
   {
     //things should be initialized to zero at construction
-    const int num_orbs = pf.singlet_mat_.rows();
+    const int num_orbs = pf.sposets_[0]->size();
+    const int max = pf.num_up_ > pf.num_dn_ ? pf.num_up_ : pf.num_dn_;
     for (int i = 0; i < num_orbs; i++)
     {
-      ValueType val = i < pf.num_elec_ ? 1.0 : 0.0;
+      ValueType val = i < max ? 1.0 : 0.0;
       CHECK(pf.singlet_mat_(i, i) == ValueApprox(val));
       CHECK(pf.uu_triplet_mat_(i, i) == ValueApprox(0.0));
       CHECK(pf.dd_triplet_mat_(i, i) == ValueApprox(0.0));
@@ -475,7 +477,7 @@ public:
     //recheck they are set to initial values
     for (int i = 0; i < num_orbs; i++)
     {
-      ValueType val = i < pf.num_elec_ ? 1.0 : 0.0;
+      ValueType val = i < max ? 1.0 : 0.0;
       CHECK(pf.singlet_mat_(i, i) == ValueApprox(val));
       CHECK(pf.uu_triplet_mat_(i, i) == ValueApprox(0.0));
       CHECK(pf.dd_triplet_mat_(i, i) == ValueApprox(0.0));
