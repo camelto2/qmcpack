@@ -142,7 +142,7 @@ public:
     ValueVector newrow = {0.56637198, 0.69536227, 0.3739933, 0.69729468, 0., 0.24455721};
 
     ValueType ratio = pf.calculateRatio(newrow);
-    pf.cur_ratio_ = val; //this normally happens in ratio/ratioGrad, but I'm directly calling  calculateRatio so need this so accceptMove passes since it checks this
+    pf.cur_ratio_ = ratio; //this normally happens in ratio/ratioGrad, but I'm directly calling  calculateRatio so need this so accceptMove passes since it checks this
     CHECK(std::real(ratio * val) == Approx(-0.020779936550488032));
 
     //this should update the inverse matrix after accepting proposed move
