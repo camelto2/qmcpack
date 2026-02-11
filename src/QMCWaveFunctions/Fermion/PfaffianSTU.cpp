@@ -73,10 +73,10 @@ PfaffianSTU::LogValue PfaffianSTU::evaluateLog(const ParticleSet& P,
   {
     //exploting symmetry of matrices here. psi_matinv_[i] gives a row, but I need to dot with column.
     //Since antisymmetric, add a sign to G and L
-    mGradType rv   = simd::dot(psi_matinv_[i], dpsi_rows_[i], size_);
-    mValueType lap = simd::dot(psi_matinv_[i], d2psi_rows_[i], size_);
-    G[i] -= rv;
-    L[i] -= (lap + dot(rv, rv));
+    mGradType rv   = -simd::dot(psi_matinv_[i], dpsi_rows_[i], size_);
+    mValueType lap = -simd::dot(psi_matinv_[i], d2psi_rows_[i], size_);
+    G[i] += rv;
+    L[i] += (lap - dot(rv, rv));
   }
 
   return log_value_;
@@ -95,10 +95,10 @@ void PfaffianSTU::updateAfterSweep(const ParticleSet& P,
   {
     //exploting symmetry of matrices here. psi_matinv_[i] gives a row, but I need to dot with column.
     //Since antisymmetric, add a sign to G and L
-    mGradType rv   = simd::dot(psi_matinv_[i], dpsi_rows_[i], size_);
-    mValueType lap = simd::dot(psi_matinv_[i], d2psi_rows_[i], size_);
-    G[i] -= rv;
-    L[i] -= (lap + dot(rv, rv));
+    mGradType rv   = -simd::dot(psi_matinv_[i], dpsi_rows_[i], size_);
+    mValueType lap = -simd::dot(psi_matinv_[i], d2psi_rows_[i], size_);
+    G[i] += rv;
+    L[i] += (lap - dot(rv, rv));
   }
 }
 
@@ -185,22 +185,14 @@ void PfaffianSTU::registerData(ParticleSet& P, WFBufferType& buf)
     buf.add(&(dpsi_rows_(0, 0)[0]), &(dpsi_rows_(0, 0)[0]) + size_ * size_ * DIM);
     buf.add(d2psi_rows_.first_address(), d2psi_rows_.last_address());
     buf.add(up_psi_mat_.first_address(), up_psi_mat_.last_address());
-    buf.add(&(up_dpsi_mat_(0, 0)[0]), &(up_dpsi_mat_(0, 0)[0]) + num_up_ * norbs * DIM);
-    buf.add(up_d2psi_mat_.first_address(), up_d2psi_mat_.last_address());
     buf.add(dn_psi_mat_.first_address(), dn_psi_mat_.last_address());
-    buf.add(&(dn_dpsi_mat_(0, 0)[0]), &(dn_dpsi_mat_(0, 0)[0]) + num_dn_ * norbs * DIM);
-    buf.add(dn_d2psi_mat_.first_address(), dn_d2psi_mat_.last_address());
     Bytes_in_WFBuffer = buf.current() - Bytes_in_WFBuffer;
     psi_mat_.free();
     psi_matinv_.free();
     dpsi_rows_.free();
     d2psi_rows_.free();
     up_psi_mat_.free();
-    up_dpsi_mat_.free();
-    up_d2psi_mat_.free();
     dn_psi_mat_.free();
-    dn_dpsi_mat_.free();
-    dn_d2psi_mat_.free();
   }
   else
   {
@@ -233,11 +225,7 @@ void PfaffianSTU::copyFromBuffer(ParticleSet& P, WFBufferType& buf)
   dpsi_rows_.attachReference(buf.lendReference<GradType>(size_ * size_), size_, size_);
   d2psi_rows_.attachReference(buf.lendReference<ValueType>(size_ * size_), size_, size_);
   up_psi_mat_.attachReference(buf.lendReference<ValueType>(num_up_ * norbs), num_up_, norbs);
-  up_dpsi_mat_.attachReference(buf.lendReference<GradType>(num_up_ * norbs), num_up_, norbs);
-  up_d2psi_mat_.attachReference(buf.lendReference<ValueType>(num_up_ * norbs), num_up_, norbs);
   dn_psi_mat_.attachReference(buf.lendReference<ValueType>(num_dn_ * norbs), num_dn_, norbs);
-  dn_dpsi_mat_.attachReference(buf.lendReference<GradType>(num_dn_ * norbs), num_dn_, norbs);
-  dn_d2psi_mat_.attachReference(buf.lendReference<ValueType>(num_dn_ * norbs), num_dn_, norbs);
   buf.get(log_value_);
   active_idx_ = -1;
 }
@@ -318,10 +306,7 @@ PfaffianSTU::GradType PfaffianSTU::evalGrad(ParticleSet& P, int iat)
 
 void PfaffianSTU::restore(int iat) { cur_ratio_ = 1.0; }
 
-void PfaffianSTU::completeUpdates() 
-{
-  active_idx_ = -1;
-}
+void PfaffianSTU::completeUpdates() { active_idx_ = -1; }
 
 void PfaffianSTU::acceptMove(ParticleSet& P, int iat, bool safe_to_delay)
 {
@@ -340,12 +325,40 @@ void PfaffianSTU::acceptMove(ParticleSet& P, int iat, bool safe_to_delay)
                  [](auto v1, auto v2) { return v1 + v2; });
   for (int i = 0; i < psi_mat_.rows(); i++)
     psi_mat_(i, active_idx_) = -psi_mat_(active_idx_, i);
-  simd::copy(active_idx_ < num_up_ ? up_psi_mat_[active_idx_] : dn_psi_mat_[active_idx_], tmp_psi_.data(), tmp_psi_.size());
+  const int ii = active_idx_ < num_up_ ? active_idx_ : active_idx_ - num_up_;
+  simd::copy(active_idx_ < num_up_ ? up_psi_mat_[ii] : dn_psi_mat_[ii], tmp_psi_.data(), tmp_psi_.size());
   updateInverse();
   if (UpdateMode == ORB_PBYP_PARTIAL)
   {
     simd::copy(dpsi_rows_[active_idx_], dpsi_new_.data(), size_);
     simd::copy(d2psi_rows_[active_idx_], d2psi_new_.data(), size_);
+
+    //active_idx_ column of dpsi_rows_ and d2psi_rows is also needs update
+    const int norb = sposets_[0]->size();
+    const bool iup = (iat < num_up_);
+
+    for (int j = 0; j < num_elec_; j++)
+    {
+      if (j == iat)
+        continue;
+
+      const bool jup = (j < num_up_);
+      const int jj   = jup ? j : j - num_up_;
+
+      auto& pair_mat = (jup == iup) ? (jup ? uu_triplet_mat_ : dd_triplet_mat_) : singlet_mat_;
+
+      auto* dpsi_j  = jup ? up_dpsi_mat_[jj] : dn_dpsi_mat_[jj];
+      auto* d2psi_j = jup ? up_d2psi_mat_[jj] : dn_d2psi_mat_[jj];
+
+      dpsi_rows_(j, iat) = 0.0;
+      d2psi_rows_(j, iat) = 0.0;
+      for (int k = 0; k < norb; k++)
+        for (int l = 0; l < norb; l++)
+        {
+          dpsi_rows_(j, iat)  += dpsi_j[k] * pair_mat(k, l) * tmp_psi_[l];
+          d2psi_rows_(j, iat) += d2psi_j[k] * pair_mat(k, l) * tmp_psi_[l];
+        }
+    }
   }
   active_idx_ = -1;
   cur_ratio_  = 1.0;
