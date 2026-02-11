@@ -185,14 +185,22 @@ void PfaffianSTU::registerData(ParticleSet& P, WFBufferType& buf)
     buf.add(&(dpsi_rows_(0, 0)[0]), &(dpsi_rows_(0, 0)[0]) + size_ * size_ * DIM);
     buf.add(d2psi_rows_.first_address(), d2psi_rows_.last_address());
     buf.add(up_psi_mat_.first_address(), up_psi_mat_.last_address());
+    buf.add(&(up_dpsi_mat_(0, 0)[0]), &(up_dpsi_mat_(0, 0)[0]) + num_up_ * norbs * DIM);
+    buf.add(up_d2psi_mat_.first_address(), up_d2psi_mat_.last_address());
     buf.add(dn_psi_mat_.first_address(), dn_psi_mat_.last_address());
+    buf.add(&(dn_dpsi_mat_(0, 0)[0]), &(dn_dpsi_mat_(0, 0)[0]) + num_dn_ * norbs * DIM);
+    buf.add(dn_d2psi_mat_.first_address(), dn_d2psi_mat_.last_address());
     Bytes_in_WFBuffer = buf.current() - Bytes_in_WFBuffer;
     psi_mat_.free();
     psi_matinv_.free();
     dpsi_rows_.free();
     d2psi_rows_.free();
     up_psi_mat_.free();
+    up_dpsi_mat_.free();
+    up_d2psi_mat_.free();
     dn_psi_mat_.free();
+    dn_dpsi_mat_.free();
+    dn_d2psi_mat_.free();
   }
   else
   {
@@ -225,7 +233,11 @@ void PfaffianSTU::copyFromBuffer(ParticleSet& P, WFBufferType& buf)
   dpsi_rows_.attachReference(buf.lendReference<GradType>(size_ * size_), size_, size_);
   d2psi_rows_.attachReference(buf.lendReference<ValueType>(size_ * size_), size_, size_);
   up_psi_mat_.attachReference(buf.lendReference<ValueType>(num_up_ * norbs), num_up_, norbs);
+  up_dpsi_mat_.attachReference(buf.lendReference<GradType>(num_up_ * norbs), num_up_, norbs);
+  up_d2psi_mat_.attachReference(buf.lendReference<ValueType>(num_up_ * norbs), num_up_, norbs);
   dn_psi_mat_.attachReference(buf.lendReference<ValueType>(num_dn_ * norbs), num_dn_, norbs);
+  dn_dpsi_mat_.attachReference(buf.lendReference<GradType>(num_dn_ * norbs), num_dn_, norbs);
+  dn_d2psi_mat_.attachReference(buf.lendReference<ValueType>(num_dn_ * norbs), num_dn_, norbs);
   buf.get(log_value_);
   active_idx_ = -1;
 }
@@ -326,7 +338,8 @@ void PfaffianSTU::acceptMove(ParticleSet& P, int iat, bool safe_to_delay)
   for (int i = 0; i < psi_mat_.rows(); i++)
     psi_mat_(i, active_idx_) = -psi_mat_(active_idx_, i);
   const int ii = active_idx_ < num_up_ ? active_idx_ : active_idx_ - num_up_;
-  simd::copy(active_idx_ < num_up_ ? up_psi_mat_[ii] : dn_psi_mat_[ii], tmp_psi_.data(), tmp_psi_.size());
+  const bool iup = (iat < num_up_);
+  simd::copy(iup ? up_psi_mat_[ii] : dn_psi_mat_[ii], tmp_psi_.data(), tmp_psi_.size());
   updateInverse();
   if (UpdateMode == ORB_PBYP_PARTIAL)
   {
@@ -335,7 +348,8 @@ void PfaffianSTU::acceptMove(ParticleSet& P, int iat, bool safe_to_delay)
 
     //active_idx_ column of dpsi_rows_ and d2psi_rows is also needs update
     const int norb = sposets_[0]->size();
-    const bool iup = (iat < num_up_);
+    simd::copy(iup ? up_dpsi_mat_[ii] : dn_dpsi_mat_[ii], tmp_dpsi_.data(), norb);
+    simd::copy(iup ? up_d2psi_mat_[ii] : dn_d2psi_mat_[ii], tmp_d2psi_.data(), norb);
 
     for (int j = 0; j < num_elec_; j++)
     {
@@ -355,9 +369,16 @@ void PfaffianSTU::acceptMove(ParticleSet& P, int iat, bool safe_to_delay)
       for (int k = 0; k < norb; k++)
         for (int l = 0; l < norb; l++)
         {
-          dpsi_rows_(j, iat)  += dpsi_j[k] * pair_mat(k, l) * tmp_psi_[l];
-          d2psi_rows_(j, iat) += d2psi_j[k] * pair_mat(k, l) * tmp_psi_[l];
+          dpsi_rows_(j, iat)  -= dpsi_j[k] * pair_mat(k, l) * tmp_psi_[l];
+          d2psi_rows_(j, iat) -= d2psi_j[k] * pair_mat(k, l) * tmp_psi_[l];
         }
+
+      if (size_ == num_elec_ + 1)
+      {
+        const int idx = size_ - 1;
+        dpsi_rows_(idx, iat)  = -dpsi_rows_(iat, idx);
+        d2psi_rows_(idx, iat) = -d2psi_rows_(iat, idx);
+      }
     }
   }
   active_idx_ = -1;
