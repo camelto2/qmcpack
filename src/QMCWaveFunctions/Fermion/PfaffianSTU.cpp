@@ -340,6 +340,7 @@ void PfaffianSTU::acceptMove(ParticleSet& P, int iat, bool safe_to_delay)
                  [](auto v1, auto v2) { return v1 + v2; });
   for (int i = 0; i < psi_mat_.rows(); i++)
     psi_mat_(i, active_idx_) = -psi_mat_(active_idx_, i);
+  simd::copy(active_idx_ < num_up_ ? up_psi_mat_[active_idx_] : dn_psi_mat_[active_idx_], tmp_psi_.data(), tmp_psi_.size());
   updateInverse();
   if (UpdateMode == ORB_PBYP_PARTIAL)
   {
