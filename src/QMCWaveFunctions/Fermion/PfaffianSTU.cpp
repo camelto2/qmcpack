@@ -54,26 +54,20 @@ void PfaffianSTU::initializePairingMats()
   singlet_mat_    = 0.0;
   uu_triplet_mat_ = 0.0;
   dd_triplet_mat_ = 0.0;
-  if (opt_singlet_)
+  const int min   = num_up_ >= num_dn_ ? num_dn_ : num_up_;
+  for (int i = 0; i < min; i++)
+    singlet_mat_(i, i) = 1.0;
+  if (num_up_ > num_dn_)
   {
-    app_log() << "  PfaffianSTU: Initializing singlet" << std::endl;
-    const int min = num_up_ >= num_dn_ ? num_dn_ : num_up_;
-    for (int i = 0; i < min; i++)
-      singlet_mat_(i, i) = 1.0;
-  }
-  if (opt_uu_triplet_)
-  {
-    app_log() << "  PfaffianSTU: Initializing uu triplet" << std::endl;
-    for (int i = 0; i < num_up_ - 1; i += 2)
+    for (int i = min; i < num_up_ - 1; i += 2)
     {
       uu_triplet_mat_(i, i + 1) = 1.0;
       uu_triplet_mat_(i + 1, i) = -1.0;
     }
   }
-  if (opt_dd_triplet_)
+  else
   {
-    app_log() << "  PfaffianSTU: Initializing dd triplet" << std::endl;
-    for (int i = 0; i < num_dn_ - 1; i += 2)
+    for (int i = min; i < num_dn_ - 1; i += 2)
     {
       dd_triplet_mat_(i, i + 1) = 1.0;
       dd_triplet_mat_(i + 1, i) = -1.0;
