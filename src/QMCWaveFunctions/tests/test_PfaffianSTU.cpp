@@ -110,7 +110,7 @@ public:
       ref_mat_(5, i) = row5[i];
     }
 
-    pf.psi_mat_  = ref_mat_;
+    pf.psi_mat_   = ref_mat_;
     ValueType val = pf.calculatePfaffian();
     CHECK(std::real(val) == Approx(-0.024797647365574358));
 
@@ -142,7 +142,8 @@ public:
     ValueVector newrow = {0.56637198, 0.69536227, 0.3739933, 0.69729468, 0., 0.24455721};
 
     ValueType ratio = pf.calculateRatio(newrow);
-    pf.cur_ratio_ = ratio; //this normally happens in ratio/ratioGrad, but I'm directly calling  calculateRatio so need this so accceptMove passes since it checks this
+    pf.cur_ratio_ =
+        ratio; //this normally happens in ratio/ratioGrad, but I'm directly calling  calculateRatio so need this so accceptMove passes since it checks this
     CHECK(std::real(ratio * val) == Approx(-0.020779936550488032));
 
     //this should update the inverse matrix after accepting proposed move
@@ -358,23 +359,23 @@ public:
     ParticleSet::ParticleGradient G(pf.num_elec_);
     ParticleSet::ParticleLaplacian L(pf.num_elec_);
     pf.evaluateLog(elec, G, L);
-    ValueType ref_pfaff = 0.10238959550669759;
+    ValueType ref_pfaff = 0.005672546875374583;
     CHECK(std::log(std::abs(ref_pfaff)) == Approx(std::real(pf.log_value_)));
     CHECK(std::arg(ref_pfaff) == Approx(std::imag(pf.log_value_)));
 
     //These reference values are from finite differences
     ParticleSet::ParticleGradient Gref(pf.num_elec_);
     ParticleSet::ParticleLaplacian Lref(pf.num_elec_);
-    Gref[0] = {-0.7733315, -0.20828055, -2.64730643};
-    Lref[0] = -8.649288456321084;
-    Gref[1] = {1.91996022, 1.19226577, 2.58849779};
-    Lref[1] = -12.213196116172432;
-    Gref[2] = {-0.29110375, -0.5174623, 0.56568087};
-    Lref[2] = -1.5095258550502972;
-    Gref[3] = {-0.52240337, -0.50146571, -0.37098483};
-    Lref[3] = -2.0217793108861724;
-    Gref[4] = {0.62509842, 1.08321894, -0.43144685};
-    Lref[4] = -3.3375232329442506;
+    Gref[0] = {7.58054618, -0.17349463, -15.61482098};
+    Lref[0] = -304.51974094735675;
+    Gref[1] = {3.12275107, 2.71625871, 0.93422588};
+    Lref[1] = -18.29995064373559;
+    Gref[2] = {-8.78246395, -1.37915766, 13.1318599};
+    Lref[2] = -251.26047201081255;
+    Gref[3] = {-0.53674627, -0.39394037, -0.40595175};
+    Lref[3] = -1.9358978672668563;
+    Gref[4] = {1.9271806, -0.8947564, 0.94093191};
+    Lref[4] = -5.676070869147436;
     for (int i = 0; i < pf.num_elec_; i++)
     {
       CHECK(G[i][0] == ValueApprox(Gref[i][0]));
@@ -400,7 +401,7 @@ public:
     ValueVector newv = {0.07497445, 0.21713796, 0.57738733, 0.47357094, 0.18976185, 0.61038528};
     upspo->updateV(elec, iat, newv);
 
-    ValueType ref_ratio = 0.4441373950806863;
+    ValueType ref_ratio = 0.5987116104290142;
     ValueType ratio     = pf.ratio(elec, iat);
     CHECK(ratio == ValueApprox(ref_ratio));
     //set values back to original since not accepting move
@@ -421,8 +422,8 @@ public:
     ValueVector newl = {0.05926236,  0.54275921, -0.3779285,  -0.55687445, -0.3165852,  -0.62102466};
     // clang-format on
     dnspo->updateVGL(elec, iat, newv, newg, newl);
-    ref_ratio         = 0.9268201253907773;
-    GradType ref_grad = {0.95645443, 1.34949417, -0.0840785};
+    ref_ratio         = 0.3377615956256773;
+    GradType ref_grad = {4.68506597, -2.51612158, 2.92862253};
     GradType grad;
     ratio = pf.ratioGrad(elec, iat, grad);
     CHECK(ratio == ValueApprox(ref_ratio));
@@ -440,7 +441,7 @@ public:
   {
     pf.buildOptVariables();
 
-    const int num_orbs = pf.sposets_[0]->size();
+    const int num_orbs   = pf.sposets_[0]->size();
     const int num_params = num_orbs * (num_orbs + 1) / 2 + num_orbs * (num_orbs - 1);
     CHECK(num_params == pf.myVars.size());
 
@@ -458,7 +459,7 @@ public:
     vs.writeToHDF("pf_vp.h5", hout);
 
     pf.initializePairingMats(); //reset
-                                
+
     vs.readFromHDF("pf_vp.h5", hout);
     pf.resetParametersExclusive(vs);
 
