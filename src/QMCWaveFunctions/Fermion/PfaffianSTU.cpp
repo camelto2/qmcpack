@@ -54,20 +54,27 @@ void PfaffianSTU::initializePairingMats()
   singlet_mat_    = 0.0;
   uu_triplet_mat_ = 0.0;
   dd_triplet_mat_ = 0.0;
-  //targeting AGP type optimization only, initialize to slater det
+
+  app_log() << "  Initializing pairing to match slater determinant solution" << std::endl;
   const int min = num_up_ >= num_dn_ ? num_dn_ : num_up_;
   for (int i = 0; i < min; i++)
     singlet_mat_(i, i) = 1.0;
 
-  for (int i = min; i < num_up_ - 1; i += 2)
+  if (num_up_ > num_dn_)
   {
-    uu_triplet_mat_(i, i + 1) = 1.0;
-    uu_triplet_mat_(i + 1, i) = -1.0;
+    for (int i = min; i < num_up_ - 1; i += 2)
+    {
+      uu_triplet_mat_(i, i + 1) = 1.0;
+      uu_triplet_mat_(i + 1, i) = -1.0;
+    }
   }
-  for (int i = min; i < num_dn_ - 1; i += 2)
+  else if (num_dn_ > num_up_)
   {
-    dd_triplet_mat_(i, i + 1) = 1.0;
-    dd_triplet_mat_(i + 1, i) = -1.0;
+    for (int i = min; i < num_dn_ - 1; i += 2)
+    {
+      dd_triplet_mat_(i, i + 1) = 1.0;
+      dd_triplet_mat_(i + 1, i) = -1.0;
+    }
   }
 }
 
@@ -170,9 +177,10 @@ void PfaffianSTU::recompute(const ParticleSet& P)
     {
       bool iup                  = (i < num_up_);
       int ii                    = iup ? i : i - num_up_;
-      ValueType v               = iup ? up_psi_mat_(ii, ii) : dn_psi_mat_(ii, ii);
-      GradType g                = iup ? up_dpsi_mat_(ii, ii) : dn_dpsi_mat_(ii, ii);
-      ValueType l               = iup ? up_d2psi_mat_(ii, ii) : dn_d2psi_mat_(ii, ii);
+      int unocc                 = iup ? num_up_ - 1 : num_dn_ - 1;
+      ValueType v               = iup ? up_psi_mat_(ii, unocc) : dn_psi_mat_(ii, unocc);
+      GradType g                = iup ? up_dpsi_mat_(ii, unocc) : dn_dpsi_mat_(ii, unocc);
+      ValueType l               = iup ? up_d2psi_mat_(ii, unocc) : dn_d2psi_mat_(ii, unocc);
       psi_mat_(i, num_elec_)    = v;
       psi_mat_(num_elec_, i)    = -v;
       dpsi_rows_(i, num_elec_)  = g;
@@ -303,10 +311,10 @@ PfaffianSTU::PsiValue PfaffianSTU::ratioGrad(ParticleSet& P, int iat, GradType& 
   if (size_ == num_elec_ + 1)
   {
     bool iup              = (iat < num_up_);
-    int ii                = iup ? iat : iat - num_up_;
-    row_update[num_elec_] = tmp_psi_[ii];
-    dpsi_new_[num_elec_]  = tmp_dpsi_[ii];
-    d2psi_new_[num_elec_] = tmp_d2psi_[ii];
+    int unocc             = iup ? num_up_ - 1 : num_dn_ - 1;
+    row_update[num_elec_] = tmp_psi_[unocc];
+    dpsi_new_[num_elec_]  = tmp_dpsi_[unocc];
+    d2psi_new_[num_elec_] = tmp_d2psi_[unocc];
   }
 
   cur_ratio_ = calculateRatio(row_update);
@@ -438,8 +446,8 @@ PfaffianSTU::PsiValue PfaffianSTU::ratio(ParticleSet& P, int iat)
   if (size_ == num_elec_ + 1)
   {
     bool iup              = (iat < num_up_);
-    int ii                = iup ? iat : iat - num_up_;
-    row_update[num_elec_] = tmp_psi_[ii];
+    int unocc             = iup ? num_up_ - 1 : num_dn_ - 1;
+    row_update[num_elec_] = tmp_psi_[unocc];
   }
 
   cur_ratio_ = calculateRatio(row_update);
