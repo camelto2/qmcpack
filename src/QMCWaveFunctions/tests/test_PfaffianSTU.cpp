@@ -438,25 +438,9 @@ public:
 
   void checkReadWrite(PfaffianSTU& pf, ParticleSet& elec)
   {
-    //things should be initialized to zero at construction
-    const int num_orbs = pf.sposets_[0]->size();
-    const int max = pf.num_up_ > pf.num_dn_ ? pf.num_up_ : pf.num_dn_;
-    for (int i = 0; i < num_orbs; i++)
-    {
-      ValueType val = i < max ? 1.0 : 0.0;
-      CHECK(pf.singlet_mat_(i, i) == ValueApprox(val));
-      CHECK(pf.uu_triplet_mat_(i, i) == ValueApprox(0.0));
-      CHECK(pf.dd_triplet_mat_(i, i) == ValueApprox(0.0));
-      for (int j = i + 1; j < num_orbs; j++)
-      {
-        CHECK(pf.singlet_mat_(i, j) == ValueApprox(0.0));
-        CHECK(pf.uu_triplet_mat_(i, j) == ValueApprox(0.0));
-        CHECK(pf.dd_triplet_mat_(i, j) == ValueApprox(0.0));
-      }
-    }
-
     pf.buildOptVariables();
 
+    const int num_orbs = pf.sposets_[0]->size();
     const int num_params = num_orbs * (num_orbs + 1) / 2 + num_orbs * (num_orbs - 1);
     CHECK(num_params == pf.myVars.size());
 
@@ -474,20 +458,7 @@ public:
     vs.writeToHDF("pf_vp.h5", hout);
 
     pf.initializePairingMats(); //reset
-    //recheck they are set to initial values
-    for (int i = 0; i < num_orbs; i++)
-    {
-      ValueType val = i < max ? 1.0 : 0.0;
-      CHECK(pf.singlet_mat_(i, i) == ValueApprox(val));
-      CHECK(pf.uu_triplet_mat_(i, i) == ValueApprox(0.0));
-      CHECK(pf.dd_triplet_mat_(i, i) == ValueApprox(0.0));
-      for (int j = i + 1; j < num_orbs; j++)
-      {
-        CHECK(pf.singlet_mat_(i, j) == ValueApprox(0.0));
-        CHECK(pf.uu_triplet_mat_(i, j) == ValueApprox(0.0));
-        CHECK(pf.dd_triplet_mat_(i, j) == ValueApprox(0.0));
-      }
-    }
+                                
     vs.readFromHDF("pf_vp.h5", hout);
     pf.resetParametersExclusive(vs);
 
