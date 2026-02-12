@@ -54,9 +54,31 @@ void PfaffianSTU::initializePairingMats()
   singlet_mat_    = 0.0;
   uu_triplet_mat_ = 0.0;
   dd_triplet_mat_ = 0.0;
-  const int max   = num_up_ > num_dn_ ? num_up_ : num_dn_;
-  for (int i = 0; i < max; i++)
-    singlet_mat_(i, i) = 1.0;
+  if (opt_singlet_)
+  {
+    app_log() << "  PfaffianSTU: Initializing singlet" << std::endl;
+    const int min = num_up_ >= num_dn_ ? num_dn_ : num_up_;
+    for (int i = 0; i < min; i++)
+      singlet_mat_(i, i) = 1.0;
+  }
+  if (opt_uu_triplet_)
+  {
+    app_log() << "  PfaffianSTU: Initializing uu triplet" << std::endl;
+    for (int i = 0; i < num_up_ - 1; i += 2)
+    {
+      uu_triplet_mat_(i, i + 1) = 1.0;
+      uu_triplet_mat_(i + 1, i) = -1.0;
+    }
+  }
+  if (opt_dd_triplet_)
+  {
+    app_log() << "  PfaffianSTU: Initializing dd triplet" << std::endl;
+    for (int i = 0; i < num_dn_ - 1; i += 2)
+    {
+      dd_triplet_mat_(i, i + 1) = 1.0;
+      dd_triplet_mat_(i + 1, i) = -1.0;
+    }
+  }
 }
 
 PfaffianSTU::LogValue PfaffianSTU::evaluateLog(const ParticleSet& P,
@@ -337,7 +359,7 @@ void PfaffianSTU::acceptMove(ParticleSet& P, int iat, bool safe_to_delay)
                  [](auto v1, auto v2) { return v1 + v2; });
   for (int i = 0; i < psi_mat_.rows(); i++)
     psi_mat_(i, active_idx_) = -psi_mat_(active_idx_, i);
-  const int ii = active_idx_ < num_up_ ? active_idx_ : active_idx_ - num_up_;
+  const int ii   = active_idx_ < num_up_ ? active_idx_ : active_idx_ - num_up_;
   const bool iup = (iat < num_up_);
   simd::copy(iup ? up_psi_mat_[ii] : dn_psi_mat_[ii], tmp_psi_.data(), tmp_psi_.size());
   updateInverse();
@@ -364,18 +386,18 @@ void PfaffianSTU::acceptMove(ParticleSet& P, int iat, bool safe_to_delay)
       auto* dpsi_j  = jup ? up_dpsi_mat_[jj] : dn_dpsi_mat_[jj];
       auto* d2psi_j = jup ? up_d2psi_mat_[jj] : dn_d2psi_mat_[jj];
 
-      dpsi_rows_(j, iat) = 0.0;
+      dpsi_rows_(j, iat)  = 0.0;
       d2psi_rows_(j, iat) = 0.0;
       for (int k = 0; k < norb; k++)
         for (int l = 0; l < norb; l++)
         {
-          dpsi_rows_(j, iat)  -= dpsi_j[k] * pair_mat(k, l) * tmp_psi_[l];
-          d2psi_rows_(j, iat) -= d2psi_j[k] * pair_mat(k, l) * tmp_psi_[l];
+          dpsi_rows_(j, iat) -= tmp_psi_[k] * pair_mat(k, l) * dpsi_j[l];
+          d2psi_rows_(j, iat) -= tmp_psi_[k] * pair_mat(k, l) * d2psi_j[l];
         }
 
       if (size_ == num_elec_ + 1)
       {
-        const int idx = size_ - 1;
+        const int idx         = size_ - 1;
         dpsi_rows_(idx, iat)  = -dpsi_rows_(iat, idx);
         d2psi_rows_(idx, iat) = -d2psi_rows_(iat, idx);
       }
