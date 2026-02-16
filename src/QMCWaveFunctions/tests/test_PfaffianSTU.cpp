@@ -355,27 +355,28 @@ public:
       pf.dd_triplet_mat_(4, i) = row4[i];
       pf.dd_triplet_mat_(5, i) = row5[i];
     }
+    pf.updatePairingNorms();
 
     ParticleSet::ParticleGradient G(pf.num_elec_);
     ParticleSet::ParticleLaplacian L(pf.num_elec_);
     pf.evaluateLog(elec, G, L);
-    ValueType ref_pfaff = 0.005672546875374583;
+    ValueType ref_pfaff = 0.010128569344188544;
     CHECK(std::log(std::abs(ref_pfaff)) == Approx(std::real(pf.log_value_)));
     CHECK(std::arg(ref_pfaff) == Approx(std::imag(pf.log_value_)));
 
     //These reference values are from finite differences
     ParticleSet::ParticleGradient Gref(pf.num_elec_);
     ParticleSet::ParticleLaplacian Lref(pf.num_elec_);
-    Gref[0] = {7.58054618, -0.17349463, -15.61482098};
-    Lref[0] = -304.51974094735675;
-    Gref[1] = {3.12275107, 2.71625871, 0.93422588};
-    Lref[1] = -18.29995064373559;
-    Gref[2] = {-8.78246395, -1.37915766, 13.1318599};
-    Lref[2] = -251.26047201081255;
-    Gref[3] = {-0.53674627, -0.39394037, -0.40595175};
-    Lref[3] = -1.9358978672668563;
-    Gref[4] = {1.9271806, -0.8947564, 0.94093191};
-    Lref[4] = -5.676070869147436;
+    Gref[0] = {1.69155466, 0.57515117, -6.51474671};
+    Lref[0] = -47.03689953825609;
+    Gref[1] = {1.39715297, 2.55443726, 3.27057718};
+    Lref[1] = -19.380044871245367;
+    Gref[2] = {-2.56733439, -2.45232092, 3.30552091};
+    Lref[2] = -25.485185886646185;
+    Gref[3] = {-0.52971275, -0.47760647, -0.43386478};
+    Lref[3] = -2.033374656205245;
+    Gref[4] = {0.68774557, 0.2730102, 0.43364048};
+    Lref[4] = -2.3526677861768284;
     for (int i = 0; i < pf.num_elec_; i++)
     {
       CHECK(G[i][0] == ValueApprox(Gref[i][0]));
@@ -401,7 +402,7 @@ public:
     ValueVector newv = {0.07497445, 0.21713796, 0.57738733, 0.47357094, 0.18976185, 0.61038528};
     upspo->updateV(elec, iat, newv);
 
-    ValueType ref_ratio = 0.5987116104290142;
+    ValueType ref_ratio = 0.619845148928336;
     ValueType ratio     = pf.ratio(elec, iat);
     CHECK(ratio == ValueApprox(ref_ratio));
     //set values back to original since not accepting move
@@ -422,8 +423,8 @@ public:
     ValueVector newl = {0.05926236,  0.54275921, -0.3779285,  -0.55687445, -0.3165852,  -0.62102466};
     // clang-format on
     dnspo->updateVGL(elec, iat, newv, newg, newl);
-    ref_ratio         = 0.3377615956256773;
-    GradType ref_grad = {4.68506597, -2.51612158, 2.92862253};
+    ref_ratio         = 0.6432811011284547;
+    GradType ref_grad = {1.33729694, 0.73665635, 1.02832973};
     GradType grad;
     ratio = pf.ratioGrad(elec, iat, grad);
     CHECK(ratio == ValueApprox(ref_ratio));
@@ -529,10 +530,11 @@ public:
 
 
     //from finite differences
-    std::vector<ValueType> ref_derivs{0.37862070262564507, 1.3878555120704037,  -0.9788846351402541,
-                                      0.2321381974693597,  -0.3693788075711237, 1.3065045946394087,
-                                      -0.0798947364688594, -0.1376172644400222, -0.0691154586809057,
-                                      -0.0146054110987084, 0.0276146069981358,  0.04575607962540306};
+    std::vector<ValueType> ref_derivs{-0.15113309767512936, 0.4773609882285376,  -0.7022153622589955,
+                                      -0.08069831730561128, -0.7092918379802287, 0.3725852855472653,
+                                      -4.615645636943915,   -5.115722397967572,  0.3964642822551843,
+                                      -1.318567401160748,   1.2593480402595423,  1.515855381743893};
+
 
     //independent values of S, UU, DD matrix. use checkInVariablesExclusive to set matrices
     std::vector<RealType> parms{0.5981391841682085,   0.6942599356718862, 0.04132254367265181,    0.34934851353450946,

@@ -119,6 +119,8 @@ private:
 
   void initializePairingMats();
 
+  void updatePairingNorms();
+
   //current wavefunction ratio
   PsiValue cur_ratio_;
   
@@ -157,6 +159,9 @@ private:
   ValueMatrix singlet_mat_;
   ValueMatrix uu_triplet_mat_;
   ValueMatrix dd_triplet_mat_;
+  RealType singlet_inv_norm_;
+  RealType uu_triplet_inv_norm_;
+  RealType dd_triplet_inv_norm_;
 
   //Orbital values, grads, laps
   ValueMatrix up_psi_mat_;

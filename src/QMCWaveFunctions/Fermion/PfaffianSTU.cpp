@@ -39,6 +39,9 @@ PfaffianSTU::PfaffianSTU(ParticleSet& targetPtcl,
       num_up_(targetPtcl.last(0)),
       num_dn_(num_elec_ - num_up_),
       size_((num_elec_ % 2) == 0 ? num_elec_ : num_elec_ + 1),
+      singlet_inv_norm_(0.0),
+      uu_triplet_inv_norm_(0.0),
+      dd_triplet_inv_norm_(0.0),
       sposets_(std::move(sposets))
 {
   resize();
@@ -76,6 +79,30 @@ void PfaffianSTU::initializePairingMats()
       dd_triplet_mat_(i + 1, i) = -1.0;
     }
   }
+  updatePairingNorms();
+}
+
+void PfaffianSTU::updatePairingNorms()
+{
+  const RealType eps = 1e-12;
+
+  auto calcInvNorm = [&eps](const ValueMatrix& mat, const bool diag) {
+    RealType val    = 0.0;
+    const int norbs = mat.rows();
+    for (int i = 0; i < norbs; i++)
+    {
+      val += diag ? std::norm(mat(i, i)) : 0.0;
+      for (int j = i + 1; j < norbs; j++)
+        val += std::norm(mat(i, j));
+    }
+    RealType norm = std::sqrt(val);
+
+    return (norm > eps * eps) ? 1.0 / norm : 0.0;
+  };
+
+  singlet_inv_norm_    = calcInvNorm(singlet_mat_, true);
+  uu_triplet_inv_norm_ = calcInvNorm(uu_triplet_mat_, false);
+  dd_triplet_inv_norm_ = calcInvNorm(dd_triplet_mat_, false);
 }
 
 PfaffianSTU::LogValue PfaffianSTU::evaluateLog(const ParticleSet& P,
@@ -149,22 +176,23 @@ void PfaffianSTU::recompute(const ParticleSet& P)
       bool jup = (j < num_up_);
       int jj   = jup ? j : j - num_up_;
       //now get references and pointers to orbitals and pairing matrix depending on type
-      auto& pair_mat = (iup == jup) ? (iup ? uu_triplet_mat_ : dd_triplet_mat_) : singlet_mat_;
-      auto* psi_i    = iup ? up_psi_mat_[ii] : dn_psi_mat_[ii];
-      auto* psi_j    = jup ? up_psi_mat_[jj] : dn_psi_mat_[jj];
-      auto* dpsi_i   = iup ? up_dpsi_mat_[ii] : dn_dpsi_mat_[ii];
-      auto* dpsi_j   = jup ? up_dpsi_mat_[jj] : dn_dpsi_mat_[jj];
-      auto* d2psi_i  = iup ? up_d2psi_mat_[ii] : dn_d2psi_mat_[ii];
-      auto* d2psi_j  = jup ? up_d2psi_mat_[jj] : dn_d2psi_mat_[jj];
+      auto& pair_mat          = (iup == jup) ? (iup ? uu_triplet_mat_ : dd_triplet_mat_) : singlet_mat_;
+      const RealType inv_norm = (iup == jup) ? (iup ? uu_triplet_inv_norm_ : dd_triplet_inv_norm_) : singlet_inv_norm_;
+      auto* psi_i             = iup ? up_psi_mat_[ii] : dn_psi_mat_[ii];
+      auto* psi_j             = jup ? up_psi_mat_[jj] : dn_psi_mat_[jj];
+      auto* dpsi_i            = iup ? up_dpsi_mat_[ii] : dn_dpsi_mat_[ii];
+      auto* dpsi_j            = jup ? up_dpsi_mat_[jj] : dn_dpsi_mat_[jj];
+      auto* d2psi_i           = iup ? up_d2psi_mat_[ii] : dn_d2psi_mat_[ii];
+      auto* d2psi_j           = jup ? up_d2psi_mat_[jj] : dn_d2psi_mat_[jj];
       for (int k = 0; k < norb; k++)
       {
         for (int l = 0; l < norb; l++)
         {
-          psi_mat_(i, j) += psi_i[k] * pair_mat(k, l) * psi_j[l];
-          dpsi_rows_(i, j) += dpsi_i[k] * pair_mat(k, l) * psi_j[l];
-          dpsi_rows_(j, i) -= psi_i[k] * pair_mat(k, l) * dpsi_j[l];
-          d2psi_rows_(i, j) += d2psi_i[k] * pair_mat(k, l) * psi_j[l];
-          d2psi_rows_(j, i) -= psi_i[k] * pair_mat(k, l) * d2psi_j[l];
+          psi_mat_(i, j) += inv_norm * psi_i[k] * pair_mat(k, l) * psi_j[l];
+          dpsi_rows_(i, j) += inv_norm * dpsi_i[k] * pair_mat(k, l) * psi_j[l];
+          dpsi_rows_(j, i) -= inv_norm * psi_i[k] * pair_mat(k, l) * dpsi_j[l];
+          d2psi_rows_(i, j) += inv_norm * d2psi_i[k] * pair_mat(k, l) * psi_j[l];
+          d2psi_rows_(j, i) -= inv_norm * psi_i[k] * pair_mat(k, l) * d2psi_j[l];
         }
       }
       psi_mat_(j, i) = -psi_mat_(i, j);
@@ -294,16 +322,17 @@ PfaffianSTU::PsiValue PfaffianSTU::ratioGrad(ParticleSet& P, int iat, GradType& 
     //therefore, add sign only for singlet and if below diagonal
     ValueType sign = ((j < iat) && (iup != jup)) ? -1.0 : 1.0;
 
-    auto& pair_mat = (iup == jup) ? (iup ? uu_triplet_mat_ : dd_triplet_mat_) : singlet_mat_;
-    auto* psi_j    = jup ? up_psi_mat_[jj] : dn_psi_mat_[jj];
+    auto& pair_mat          = (iup == jup) ? (iup ? uu_triplet_mat_ : dd_triplet_mat_) : singlet_mat_;
+    const RealType inv_norm = (iup == jup) ? (iup ? uu_triplet_inv_norm_ : dd_triplet_inv_norm_) : singlet_inv_norm_;
+    auto* psi_j             = jup ? up_psi_mat_[jj] : dn_psi_mat_[jj];
 
     for (int k = 0; k < norb; k++)
     {
       for (int l = 0; l < norb; l++)
       {
-        row_update[j] += sign * tmp_psi_[k] * pair_mat(k, l) * psi_j[l];
-        dpsi_new_[j] += sign * tmp_dpsi_[k] * pair_mat(k, l) * psi_j[l];
-        d2psi_new_[j] += sign * tmp_d2psi_[k] * pair_mat(k, l) * psi_j[l];
+        row_update[j] += sign * inv_norm * tmp_psi_[k] * pair_mat(k, l) * psi_j[l];
+        dpsi_new_[j] += sign * inv_norm * tmp_dpsi_[k] * pair_mat(k, l) * psi_j[l];
+        d2psi_new_[j] += sign * inv_norm * tmp_d2psi_[k] * pair_mat(k, l) * psi_j[l];
       }
     }
   }
@@ -379,7 +408,8 @@ void PfaffianSTU::acceptMove(ParticleSet& P, int iat, bool safe_to_delay)
       const bool jup = (j < num_up_);
       const int jj   = jup ? j : j - num_up_;
 
-      auto& pair_mat = (jup == iup) ? (jup ? uu_triplet_mat_ : dd_triplet_mat_) : singlet_mat_;
+      auto& pair_mat          = (jup == iup) ? (jup ? uu_triplet_mat_ : dd_triplet_mat_) : singlet_mat_;
+      const RealType inv_norm = (jup == iup) ? (jup ? uu_triplet_inv_norm_ : dd_triplet_inv_norm_) : singlet_inv_norm_;
 
       auto* dpsi_j  = jup ? up_dpsi_mat_[jj] : dn_dpsi_mat_[jj];
       auto* d2psi_j = jup ? up_d2psi_mat_[jj] : dn_d2psi_mat_[jj];
@@ -389,8 +419,8 @@ void PfaffianSTU::acceptMove(ParticleSet& P, int iat, bool safe_to_delay)
       for (int k = 0; k < norb; k++)
         for (int l = 0; l < norb; l++)
         {
-          dpsi_rows_(j, iat) -= tmp_psi_[k] * pair_mat(k, l) * dpsi_j[l];
-          d2psi_rows_(j, iat) -= tmp_psi_[k] * pair_mat(k, l) * d2psi_j[l];
+          dpsi_rows_(j, iat) -= inv_norm * tmp_psi_[k] * pair_mat(k, l) * dpsi_j[l];
+          d2psi_rows_(j, iat) -= inv_norm * tmp_psi_[k] * pair_mat(k, l) * d2psi_j[l];
         }
 
       if (size_ == num_elec_ + 1)
@@ -435,12 +465,13 @@ PfaffianSTU::PsiValue PfaffianSTU::ratio(ParticleSet& P, int iat)
     //therefore, add sign only for singlet and if below diagonal
     ValueType sign = ((j < iat) && (iup != jup)) ? -1.0 : 1.0;
 
-    auto& pair_mat = (iup == jup) ? (iup ? uu_triplet_mat_ : dd_triplet_mat_) : singlet_mat_;
-    auto* psi_j    = jup ? up_psi_mat_[jj] : dn_psi_mat_[jj];
+    auto& pair_mat          = (iup == jup) ? (iup ? uu_triplet_mat_ : dd_triplet_mat_) : singlet_mat_;
+    const RealType inv_norm = (iup == jup) ? (iup ? uu_triplet_inv_norm_ : dd_triplet_inv_norm_) : singlet_inv_norm_;
+    auto* psi_j             = jup ? up_psi_mat_[jj] : dn_psi_mat_[jj];
 
     for (int k = 0; k < norb; k++)
       for (int l = 0; l < norb; l++)
-        row_update[j] += sign * tmp_psi_[k] * pair_mat(k, l) * psi_j[l];
+        row_update[j] += sign * inv_norm * tmp_psi_[k] * pair_mat(k, l) * psi_j[l];
   }
 
   if (size_ == num_elec_ + 1)
@@ -472,6 +503,7 @@ std::unique_ptr<WaveFunctionComponent> PfaffianSTU::makeClone(ParticleSet& tqp) 
   myclone->uu_triplet_mat_ = this->uu_triplet_mat_;
   myclone->dd_triplet_mat_ = this->dd_triplet_mat_;
   myclone->myVars          = this->myVars;
+  myclone->updatePairingNorms();
 
   return myclone;
 }
@@ -486,13 +518,58 @@ void PfaffianSTU::evaluateDerivativesWF(ParticleSet& P, const OptVariables& acti
 {
   evaluateLog(P, P.G, P.L); //bring everything up to date
 
-  const int norbs = singlet_mat_.rows();
-  int iv          = 0;
+  ValueType scale_ud = 0.0;
+  ValueType scale_uu = 0.0;
+  ValueType scale_dd = 0.0;
+  const int norbs    = singlet_mat_.rows();
+  if (opt_singlet_ && singlet_inv_norm_ > 0)
+  {
+    for (int ie = 0; ie < num_up_; ie++)
+      for (int je = num_up_; je < num_elec_; je++)
+      {
+        ValueType val = 0.0;
+        for (int k = 0; k < norbs; k++)
+          for (int l = 0; l < norbs; l++)
+            val += up_psi_mat_(ie, k) * singlet_mat_(k, l) * dn_psi_mat_(je - num_up_, l);
+        scale_ud += psi_matinv_(je, ie) * val;
+      }
+  }
+
+  if (opt_uu_triplet_ && uu_triplet_inv_norm_ > 0)
+  {
+    for (int ie = 0; ie < num_up_; ie++)
+      for (int je = ie + 1; je < num_up_; je++)
+      {
+        ValueType val = 0.0;
+        for (int k = 0; k < norbs; k++)
+          for (int l = 0; l < norbs; l++)
+            val += up_psi_mat_(ie, k) * uu_triplet_mat_(k, l) * up_psi_mat_(je, l);
+        scale_uu += psi_matinv_(je, ie) * val;
+      }
+  }
+
+  if (opt_dd_triplet_ && dd_triplet_inv_norm_ > 0)
+  {
+    for (int ie = num_up_; ie < num_elec_; ie++)
+      for (int je = ie + 1; je < num_elec_; je++)
+      {
+        ValueType val = 0.0;
+        for (int k = 0; k < norbs; k++)
+          for (int l = 0; l < norbs; l++)
+            val += dn_psi_mat_(ie - num_up_, k) * dd_triplet_mat_(k, l) * dn_psi_mat_(je - num_up_, l);
+        scale_dd += psi_matinv_(je, ie) * val;
+      }
+  }
+
+  int iv = 0;
   if (opt_singlet_)
   {
     for (int ip = 0; ip < norbs; ip++)
       for (int jp = ip; jp < norbs; jp++, iv++)
       {
+        if (singlet_inv_norm_ == 0.0)
+          continue;
+
         const int loc   = myVars.where(iv);
         ValueType deriv = 0;
         //singlet terms only effected by up, down pairs
@@ -504,6 +581,8 @@ void PfaffianSTU::evaluateDerivativesWF(ParticleSet& P, const OptVariables& acti
               val += up_psi_mat_(ie, jp) * dn_psi_mat_(je - num_up_, ip);
             deriv += psi_matinv_(je, ie) * val;
           }
+        //rescale
+        deriv = singlet_inv_norm_ * (deriv - singlet_mat_(ip, jp) * singlet_inv_norm_ * singlet_inv_norm_ * scale_ud);
         dlogpsi[loc] += deriv;
       }
   }
@@ -513,6 +592,8 @@ void PfaffianSTU::evaluateDerivativesWF(ParticleSet& P, const OptVariables& acti
     for (int ip = 0; ip < norbs; ip++)
       for (int jp = ip + 1; jp < norbs; jp++, iv++)
       {
+        if (uu_triplet_inv_norm_ == 0.0)
+          continue;
         const int loc   = myVars.where(iv);
         ValueType deriv = 0;
         for (int ie = 0; ie < num_up_; ie++)
@@ -521,6 +602,7 @@ void PfaffianSTU::evaluateDerivativesWF(ParticleSet& P, const OptVariables& acti
             ValueType val = up_psi_mat_(ie, ip) * up_psi_mat_(je, jp) - up_psi_mat_(ie, jp) * up_psi_mat_(je, ip);
             deriv += psi_matinv_(je, ie) * val;
           }
+        deriv = uu_triplet_inv_norm_ * (deriv - uu_triplet_mat_(ip, jp) * uu_triplet_inv_norm_ * uu_triplet_inv_norm_ * scale_uu);
         dlogpsi[loc] += deriv;
       }
   }
@@ -530,6 +612,8 @@ void PfaffianSTU::evaluateDerivativesWF(ParticleSet& P, const OptVariables& acti
     for (int ip = 0; ip < norbs; ip++)
       for (int jp = ip + 1; jp < norbs; jp++, iv++)
       {
+        if (dd_triplet_inv_norm_ == 0.0)
+          continue;
         const int loc   = myVars.where(iv);
         ValueType deriv = 0;
         for (int ie = num_up_; ie < num_elec_; ie++)
@@ -540,6 +624,7 @@ void PfaffianSTU::evaluateDerivativesWF(ParticleSet& P, const OptVariables& acti
             ValueType val = dn_psi_mat_(ii, ip) * dn_psi_mat_(jj, jp) - dn_psi_mat_(ii, jp) * dn_psi_mat_(jj, ip);
             deriv += psi_matinv_(je, ie) * val;
           }
+        deriv = dd_triplet_inv_norm_ * (deriv - dd_triplet_mat_(ip, jp) * dd_triplet_inv_norm_ * dd_triplet_inv_norm_ * scale_dd);
         dlogpsi[loc] += deriv;
       }
   }
@@ -799,6 +884,7 @@ void PfaffianSTU::resetParametersExclusive(const OptVariables& active)
     }
   }
   assert(idx == myVars.size());
+  updatePairingNorms();
 }
 
 void PfaffianSTU::extractOptimizableObjectRefs(UniqueOptObjRefs& opt_obj_refs) { opt_obj_refs.push_back(*this); }
