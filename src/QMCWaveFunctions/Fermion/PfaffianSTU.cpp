@@ -97,7 +97,7 @@ void PfaffianSTU::updatePairingNorms()
     }
     RealType norm = std::sqrt(val);
 
-    return (norm > eps * eps) ? 1.0 / norm : 0.0;
+    return (norm > eps) ? 1.0 / norm : 0.0;
   };
 
   singlet_inv_norm_    = calcInvNorm(singlet_mat_, true);
