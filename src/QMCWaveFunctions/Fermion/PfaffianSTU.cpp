@@ -500,9 +500,41 @@ PfaffianSTU::PsiValue PfaffianSTU::ratio(ParticleSet& P, int iat)
   }
   ScopedTimer local_timer(RatioTimer);
 
-  const int norb = sposets_[0]->size();
   ValueVector row_update(size_, 0.0);
-  bool iup = (iat < num_up_);
+
+  const int norb = sposets_[0]->size();
+  const bool iup = (iat < num_up_);
+  const int nmax = std::max(num_up_, num_dn_);
+
+  ValueVector prod(norb);
+  ValueVector res(nmax);
+  //same spin constribution
+  const auto& pair_mat = iup ? uu_triplet_mat_ : dd_triplet_mat_;
+  MatrixOperators::product_Atx(pair_mat, tmp_psi_, prod);
+  MatrixOperators::product(iup ? up_psi_mat_ : dn_psi_mat_, prod, res);
+  for (int j = 0; j < (iup ? num_up_ : num_dn_); j++)
+  {
+    if (j == iat)
+      continue;
+    row_update[(iup ? 0 : num_up_) + j] += res[j];
+  }
+
+  MatrixOperators::product_Atx(singlet_mat_, tmp_psi_, prod);
+  MatrixOperators::product(iup ? dn_psi_mat_ : up_psi_mat_, prod, res);
+  for (int j = 0; j < (iup ? num_dn_ : num_up_); j++)
+    row_update[(iup ? num_up_ : 0) + j] += res[j];
+
+  //now apply sign for singlet and if below diagonal. See Eqn 151 in https:://arxiv.org/pdf/1008.2369
+  for (int j = 0; j < num_elec_; j++)
+  {
+    if (j == iat)
+      continue;
+    bool jup = (j < num_up_);
+    ValueType sign = ((j < iat) && (iup != jup)) ? -1.0 : 1.0;
+    row_update[j] *= sign;
+  }
+
+  /*
   for (int j = 0; j < num_elec_; j++)
   {
     if (j == iat)
@@ -526,6 +558,7 @@ PfaffianSTU::PsiValue PfaffianSTU::ratio(ParticleSet& P, int iat)
       for (int l = 0; l < norb; l++)
         row_update[j] += sign * tmp_psi_[k] * pair_mat(k, l) * psi_j[l];
   }
+  */
 
   if (size_ == num_elec_ + 1)
   {
