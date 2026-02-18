@@ -134,42 +134,126 @@ void PfaffianSTU::recompute(const ParticleSet& P)
   dn_d2psi_mat_ = 0;
   sposets_[1]->evaluate_notranspose(P, num_up_, num_elec_, dn_psi_mat_, dn_dpsi_mat_, dn_d2psi_mat_);
 
+  psi_mat_       = 0;
+  dpsi_rows_     = 0;
+  d2psi_rows_    = 0;
   const int norb = sposets_[0]->size();
+  const int nmax = std::max(num_up_, num_dn_);
 
-  psi_mat_    = 0;
-  dpsi_rows_  = 0;
-  d2psi_rows_ = 0;
-  //update upper diagonal of matrix
-  for (int i = 0; i < num_elec_; i++)
-  {
-    bool iup = (i < num_up_);
-    int ii   = iup ? i : i - num_up_;
-    for (int j = i + 1; j < num_elec_; j++)
+  //tmp arrays
+  ValueMatrix tmp(nmax, norb);
+  ValueMatrix grad(nmax, norb);
+  ValueMatrix res(nmax, nmax);
+  //UU
+  MatrixOperators::product(up_psi_mat_, uu_triplet_mat_, tmp);
+  MatrixOperators::product_ABt(tmp, up_psi_mat_, res);
+  for (int i = 0; i < num_up_; i++)
+    for (int j = i + 1; j < num_up_; j++)
     {
-      bool jup = (j < num_up_);
-      int jj   = jup ? j : j - num_up_;
-      //now get references and pointers to orbitals and pairing matrix depending on type
-      auto& pair_mat = (iup == jup) ? (iup ? uu_triplet_mat_ : dd_triplet_mat_) : singlet_mat_;
-      auto* psi_i    = iup ? up_psi_mat_[ii] : dn_psi_mat_[ii];
-      auto* psi_j    = jup ? up_psi_mat_[jj] : dn_psi_mat_[jj];
-      auto* dpsi_i   = iup ? up_dpsi_mat_[ii] : dn_dpsi_mat_[ii];
-      auto* dpsi_j   = jup ? up_dpsi_mat_[jj] : dn_dpsi_mat_[jj];
-      auto* d2psi_i  = iup ? up_d2psi_mat_[ii] : dn_d2psi_mat_[ii];
-      auto* d2psi_j  = jup ? up_d2psi_mat_[jj] : dn_d2psi_mat_[jj];
-      for (int k = 0; k < norb; k++)
-      {
-        for (int l = 0; l < norb; l++)
-        {
-          psi_mat_(i, j) += psi_i[k] * pair_mat(k, l) * psi_j[l];
-          dpsi_rows_(i, j) += dpsi_i[k] * pair_mat(k, l) * psi_j[l];
-          dpsi_rows_(j, i) -= psi_i[k] * pair_mat(k, l) * dpsi_j[l];
-          d2psi_rows_(i, j) += d2psi_i[k] * pair_mat(k, l) * psi_j[l];
-          d2psi_rows_(j, i) -= psi_i[k] * pair_mat(k, l) * d2psi_j[l];
-        }
-      }
-      psi_mat_(j, i) = -psi_mat_(i, j);
+      ValueType val  = res(i, j);
+      psi_mat_(i, j) = val;
+      psi_mat_(j, i) = -val;
     }
+  for (int d = 0; d < DIM; d++)
+  {
+    std::transform(up_dpsi_mat_.data(), up_dpsi_mat_.data() + up_dpsi_mat_.size(), grad.data(),
+                   [d](const GradType& g) { return g[d]; });
+    MatrixOperators::product(grad, uu_triplet_mat_, tmp);
+    MatrixOperators::product_ABt(tmp, up_psi_mat_, res);
+    for (int i = 0; i < num_up_; i++)
+      for (int j = i + 1; j < num_up_; j++)
+        dpsi_rows_(i, j)[d] += res(i, j);
+    MatrixOperators::product(up_psi_mat_, uu_triplet_mat_, tmp);
+    MatrixOperators::product_ABt(tmp, grad, res);
+    for (int i = 0; i < num_up_; i++)
+      for (int j = i + 1; j < num_up_; j++)
+        dpsi_rows_(j, i)[d] -= res(i, j);
   }
+  MatrixOperators::product(up_d2psi_mat_, uu_triplet_mat_, tmp);
+  MatrixOperators::product_ABt(tmp, up_psi_mat_, res);
+  for (int i = 0; i < num_up_; i++)
+    for (int j = i + 1; j < num_up_; j++)
+      d2psi_rows_(i, j) += res(i, j);
+  MatrixOperators::product(up_psi_mat_, uu_triplet_mat_, tmp);
+  MatrixOperators::product_ABt(tmp, up_d2psi_mat_, res);
+  for (int i = 0; i < num_up_; i++)
+    for (int j = i + 1; j < num_up_; j++)
+      d2psi_rows_(j, i) -= res(i, j);
+
+  //DD
+  MatrixOperators::product(dn_psi_mat_, dd_triplet_mat_, tmp);
+  MatrixOperators::product_ABt(tmp, dn_psi_mat_, res);
+  for (int i = 0; i < num_dn_; i++)
+    for (int j = i + 1; j < num_dn_; j++)
+    {
+      ValueType val                      = res(i, j);
+      psi_mat_(num_up_ + i, num_up_ + j) = val;
+      psi_mat_(num_up_ + j, num_up_ + i) = -val;
+    }
+  for (int d = 0; d < DIM; d++)
+  {
+    std::transform(dn_dpsi_mat_.data(), dn_dpsi_mat_.data() + dn_dpsi_mat_.size(), grad.data(),
+                   [d](const GradType& g) { return g[d]; });
+    MatrixOperators::product(grad, dd_triplet_mat_, tmp);
+    MatrixOperators::product_ABt(tmp, dn_psi_mat_, res);
+    for (int i = 0; i < num_dn_; i++)
+      for (int j = i + 1; j < num_dn_; j++)
+        dpsi_rows_(num_up_ + i, num_up_ + j)[d] += res(i, j);
+    MatrixOperators::product(dn_psi_mat_, dd_triplet_mat_, tmp);
+    MatrixOperators::product_ABt(tmp, grad, res);
+    for (int i = 0; i < num_dn_; i++)
+      for (int j = i + 1; j < num_dn_; j++)
+        dpsi_rows_(num_up_ + j, num_up_ + i)[d] -= res(i, j);
+  }
+  MatrixOperators::product(dn_d2psi_mat_, dd_triplet_mat_, tmp);
+  MatrixOperators::product_ABt(tmp, dn_psi_mat_, res);
+  for (int i = 0; i < num_dn_; i++)
+    for (int j = i + 1; j < num_dn_; j++)
+      d2psi_rows_(num_up_ + i, num_up_ + j) += res(i, j);
+  MatrixOperators::product(dn_psi_mat_, dd_triplet_mat_, tmp);
+  MatrixOperators::product_ABt(tmp, dn_d2psi_mat_, res);
+  for (int i = 0; i < num_dn_; i++)
+    for (int j = i + 1; j < num_dn_; j++)
+      d2psi_rows_(num_up_ + j, num_up_ + i) -= res(i, j);
+
+  //UD
+  MatrixOperators::product(up_psi_mat_, singlet_mat_, tmp);
+  MatrixOperators::product_ABt(tmp, dn_psi_mat_, res);
+  for (int i = 0; i < num_up_; i++)
+    for (int j = 0; j < num_dn_; j++)
+    {
+      ValueType val            = res(i, j);
+      psi_mat_(i, num_up_ + j) = val;
+      psi_mat_(num_up_ + j, i) = -val;
+    }
+  for (int d = 0; d < DIM; d++)
+  {
+    std::transform(up_dpsi_mat_.data(), up_dpsi_mat_.data() + up_dpsi_mat_.size(), grad.data(),
+                   [d](const GradType& g) { return g[d]; });
+    MatrixOperators::product(grad, singlet_mat_, tmp);
+    MatrixOperators::product_ABt(tmp, dn_psi_mat_, res);
+    for (int i = 0; i < num_up_; i++)
+      for (int j = 0; j < num_dn_; j++)
+        dpsi_rows_(i, num_up_ + j)[d] += res(i, j);
+    std::transform(dn_dpsi_mat_.data(), dn_dpsi_mat_.data() + dn_dpsi_mat_.size(), grad.data(),
+                   [d](const GradType& g) { return g[d]; });
+    MatrixOperators::product(up_psi_mat_, singlet_mat_, tmp);
+    MatrixOperators::product_ABt(tmp, grad, res);
+    for (int i = 0; i < num_up_; i++)
+      for (int j = 0; j < num_dn_; j++)
+        dpsi_rows_(num_up_ + j, i)[d] -= res(i, j);
+  }
+  MatrixOperators::product(up_d2psi_mat_, singlet_mat_, tmp);
+  MatrixOperators::product_ABt(tmp, dn_psi_mat_, res);
+  for (int i = 0; i < num_up_; i++)
+    for (int j = 0; j < num_dn_; j++)
+      d2psi_rows_(i, num_up_ + j) += res(i, j);
+  MatrixOperators::product(up_psi_mat_, singlet_mat_, tmp);
+  MatrixOperators::product_ABt(tmp, dn_d2psi_mat_, res);
+  for (int i = 0; i < num_up_; i++)
+    for (int j = 0; j < num_dn_; j++)
+      d2psi_rows_(num_up_ + j, i) -= res(i, j);
+
   //Now need to update final col if odd num electrons
   if (size_ == num_elec_ + 1)
   {
