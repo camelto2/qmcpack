@@ -489,40 +489,56 @@ void PfaffianSTU::acceptMove(ParticleSet& P, int iat, bool safe_to_delay)
     simd::copy(dpsi_rows_[active_idx_], dpsi_new_.data(), size_);
     simd::copy(d2psi_rows_[active_idx_], d2psi_new_.data(), size_);
 
-    //active_idx_ column of dpsi_rows_ and d2psi_rows is also needs update
     const int norb = sposets_[0]->size();
+    const int nmax = std::max(num_up_, num_dn_);
     simd::copy(iup ? up_dpsi_mat_[ii] : dn_dpsi_mat_[ii], tmp_dpsi_.data(), norb);
     simd::copy(iup ? up_d2psi_mat_[ii] : dn_d2psi_mat_[ii], tmp_d2psi_.data(), norb);
 
-    for (int j = 0; j < num_elec_; j++)
+    //active_idx_ column of dpsi_rows_ and d2psi_rows is also needs update
+    ValueVector prod(norb);
+    ValueVector res(nmax);
+    ValueMatrix grad(nmax, norb);
+    MatrixOperators::product_Atx(iup ? uu_triplet_mat_ : dd_triplet_mat_, tmp_psi_, prod);
+    for (int d = 0; d < DIM; d++)
+    {
+      auto& dpsi = iup ? up_dpsi_mat_ : dn_dpsi_mat_;
+      std::transform(dpsi.begin(), dpsi.end(), grad.begin(), [d](const GradType& g) { return g[d]; });
+      MatrixOperators::product(grad, prod, res);
+      for (int j = 0; j < (iup ? num_up_ : num_dn_); j++)
+      {
+        if (j == iat)
+          continue;
+        dpsi_rows_((iup ? 0 : num_up_) + j, iat)[d] -= res[j];
+      }
+    }
+    MatrixOperators::product(iup ? up_d2psi_mat_ : dn_d2psi_mat_, prod, res);
+    for (int j = 0; j < (iup ? num_up_ : num_dn_); j++)
     {
       if (j == iat)
         continue;
-
-      const bool jup = (j < num_up_);
-      const int jj   = jup ? j : j - num_up_;
-
-      auto& pair_mat = (jup == iup) ? (jup ? uu_triplet_mat_ : dd_triplet_mat_) : singlet_mat_;
-
-      auto* dpsi_j  = jup ? up_dpsi_mat_[jj] : dn_dpsi_mat_[jj];
-      auto* d2psi_j = jup ? up_d2psi_mat_[jj] : dn_d2psi_mat_[jj];
-
-      dpsi_rows_(j, iat)  = 0.0;
-      d2psi_rows_(j, iat) = 0.0;
-      for (int k = 0; k < norb; k++)
-        for (int l = 0; l < norb; l++)
-        {
-          dpsi_rows_(j, iat) -= tmp_psi_[k] * pair_mat(k, l) * dpsi_j[l];
-          d2psi_rows_(j, iat) -= tmp_psi_[k] * pair_mat(k, l) * d2psi_j[l];
-        }
-
-      if (size_ == num_elec_ + 1)
-      {
-        const int idx         = size_ - 1;
-        dpsi_rows_(idx, iat)  = -dpsi_rows_(iat, idx);
-        d2psi_rows_(idx, iat) = -d2psi_rows_(iat, idx);
-      }
+      d2psi_rows_((iup ? 0 : num_up_) + j, iat) -= res[j];
     }
+
+    MatrixOperators::product_Atx(singlet_mat_, tmp_psi_, prod);
+    for (int d = 0; d < DIM; d++)
+    {
+      auto& dpsi = iup ? dn_dpsi_mat_ : up_dpsi_mat_;
+      std::transform(dpsi.begin(), dpsi.end(), grad.begin(), [d](const GradType& g) { return g[d]; });
+      MatrixOperators::product(grad, prod, res);
+      for (int j = 0; j < (iup ? num_dn_ : num_up_); j++)
+        dpsi_rows_((iup ? num_up_ : 0) + j, iat)[d] -= res[j];
+    }
+    MatrixOperators::product(iup ? dn_d2psi_mat_ : up_d2psi_mat_, prod, res);
+    for (int j = 0; j < (iup ? num_dn_ : num_up_); j++)
+      d2psi_rows_((iup ? num_up_ : 0) + j, iat) -= res[j];
+
+    if (size_ == num_elec_ + 1)
+    {
+      const int idx         = size_ - 1;
+      dpsi_rows_(idx, iat)  = -dpsi_rows_(iat, idx);
+      d2psi_rows_(idx, iat) = -d2psi_rows_(iat, idx);
+    }
+
   }
   active_idx_ = -1;
   cur_ratio_  = 1.0;
