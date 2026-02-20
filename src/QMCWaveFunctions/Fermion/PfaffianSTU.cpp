@@ -538,7 +538,6 @@ void PfaffianSTU::acceptMove(ParticleSet& P, int iat, bool safe_to_delay)
       dpsi_rows_(idx, iat)  = -dpsi_rows_(iat, idx);
       d2psi_rows_(idx, iat) = -d2psi_rows_(iat, idx);
     }
-
   }
   active_idx_ = -1;
   cur_ratio_  = 1.0;
@@ -633,60 +632,62 @@ void PfaffianSTU::evaluateDerivativesWF(ParticleSet& P, const OptVariables& acti
   evaluateLog(P, P.G, P.L); //bring everything up to date
 
   const int norbs = singlet_mat_.rows();
-  int iv          = 0;
+  ValueMatrix inv_uu(num_up_, num_up_);
+  ValueMatrix inv_dd(num_dn_, num_dn_);
+  ValueMatrix inv_du(num_dn_, num_up_);
+  for (int i = 0; i < num_up_; i++)
+    for (int j = 0; j < num_up_; j++)
+      inv_uu(i, j) = psi_matinv_(i, j);
+  for (int i = 0; i < num_dn_; i++)
+    for (int j = 0; j < num_dn_; j++)
+      inv_dd(i, j) = psi_matinv_(num_up_ + i, num_up_ + j);
+  for (int i = 0; i < num_dn_; i++)
+    for (int j = 0; j < num_up_; j++)
+      inv_du(i, j) = psi_matinv_(num_up_ + i, j);
+
+  int iv = 0;
   if (opt_singlet_)
   {
+    ValueMatrix prod(num_up_, norbs);
+    ValueMatrix res(norbs, norbs);
+    MatrixOperators::product_AtB(inv_du, dn_psi_mat_, prod);
+    MatrixOperators::product_AtB(up_psi_mat_, prod, res);
     for (int ip = 0; ip < norbs; ip++)
       for (int jp = ip; jp < norbs; jp++, iv++)
       {
         const int loc   = myVars.where(iv);
-        ValueType deriv = 0;
-        //singlet terms only effected by up, down pairs
-        for (int ie = 0; ie < num_up_; ie++)
-          for (int je = num_up_; je < num_elec_; je++)
-          {
-            ValueType val = up_psi_mat_(ie, ip) * dn_psi_mat_(je - num_up_, jp);
-            if (ip != jp)
-              val += up_psi_mat_(ie, jp) * dn_psi_mat_(je - num_up_, ip);
-            deriv += psi_matinv_(je, ie) * val;
-          }
+        ValueType deriv = (ip == jp) ? res(ip, jp) : res(ip, jp) + res(jp, ip);
         dlogpsi[loc] += deriv;
       }
   }
 
   if (opt_uu_triplet_)
   {
+    ValueMatrix prod(num_up_, norbs);
+    ValueMatrix res(norbs, norbs);
+    MatrixOperators::product_AtB(inv_uu, up_psi_mat_, prod);
+    MatrixOperators::product_AtB(up_psi_mat_, prod, res);
     for (int ip = 0; ip < norbs; ip++)
       for (int jp = ip + 1; jp < norbs; jp++, iv++)
       {
         const int loc   = myVars.where(iv);
-        ValueType deriv = 0;
-        for (int ie = 0; ie < num_up_; ie++)
-          for (int je = ie + 1; je < num_up_; je++)
-          {
-            ValueType val = up_psi_mat_(ie, ip) * up_psi_mat_(je, jp) - up_psi_mat_(ie, jp) * up_psi_mat_(je, ip);
-            deriv += psi_matinv_(je, ie) * val;
-          }
-        dlogpsi[loc] += deriv;
+        ValueType deriv = res(ip, jp) - res(jp, ip);
+        dlogpsi[loc] += 0.5 * deriv;
       }
   }
 
   if (opt_dd_triplet_)
   {
+    ValueMatrix prod(num_dn_, norbs);
+    ValueMatrix res(norbs, norbs);
+    MatrixOperators::product_AtB(inv_dd, dn_psi_mat_, prod);
+    MatrixOperators::product_AtB(dn_psi_mat_, prod, res);
     for (int ip = 0; ip < norbs; ip++)
       for (int jp = ip + 1; jp < norbs; jp++, iv++)
       {
         const int loc   = myVars.where(iv);
-        ValueType deriv = 0;
-        for (int ie = num_up_; ie < num_elec_; ie++)
-          for (int je = ie + 1; je < num_elec_; je++)
-          {
-            int ii        = ie - num_up_;
-            int jj        = je - num_up_;
-            ValueType val = dn_psi_mat_(ii, ip) * dn_psi_mat_(jj, jp) - dn_psi_mat_(ii, jp) * dn_psi_mat_(jj, ip);
-            deriv += psi_matinv_(je, ie) * val;
-          }
-        dlogpsi[loc] += deriv;
+        ValueType deriv = res(ip, jp) - res(jp, ip);
+        dlogpsi[loc] += 0.5 * deriv;
       }
   }
 }
@@ -831,7 +832,7 @@ void PfaffianSTU::updateInverse()
     V(1, i) = -u[i];
   }
 
-  //W = invA U 
+  //W = invA U
   ValueMatrix W(n, 2);
   MatrixOperators::product(psi_matinv_, U, W);
 
@@ -850,8 +851,8 @@ void PfaffianSTU::updateInverse()
   MatrixOperators::product(W, X, Z);
 
   const ValueType minus_one(-1.0);
-  BLAS::ger(n, n, minus_one, &Y(0,0), 1, &Z(0,0), 2, psi_matinv_.data(), n);
-  BLAS::ger(n, n, minus_one, &Y(1,0), 1, &Z(0,1), 2, psi_matinv_.data(), n);
+  BLAS::ger(n, n, minus_one, &Y(0, 0), 1, &Z(0, 0), 2, psi_matinv_.data(), n);
+  BLAS::ger(n, n, minus_one, &Y(1, 0), 1, &Z(0, 1), 2, psi_matinv_.data(), n);
 }
 
 void PfaffianSTU::buildOptVariables()
