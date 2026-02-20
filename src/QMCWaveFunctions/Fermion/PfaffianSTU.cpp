@@ -359,9 +359,79 @@ PfaffianSTU::PsiValue PfaffianSTU::ratioGrad(ParticleSet& P, int iat, GradType& 
   UpdateMode     = ORB_PBYP_PARTIAL;
   const int norb = sposets_[0]->size();
   ValueVector row_update(size_, 0.0);
-  dpsi_new_  = 0;
-  d2psi_new_ = 0;
-  bool iup   = (iat < num_up_);
+  dpsi_new_      = 0;
+  d2psi_new_     = 0;
+  const bool iup = (iat < num_up_);
+  const int nmax = std::max(num_up_, num_dn_);
+
+  ValueVector prod(norb);
+  ValueVector res(nmax);
+  ValueVector grad(norb);
+
+  //same spin
+  const auto& pair_mat = iup ? uu_triplet_mat_ : dd_triplet_mat_;
+  MatrixOperators::product_Atx(pair_mat, tmp_psi_, prod);
+  MatrixOperators::product(iup ? up_psi_mat_ : dn_psi_mat_, prod, res);
+  for (int j = 0; j < (iup ? num_up_ : num_dn_); j++)
+  {
+    if (j == iat)
+      continue;
+    row_update[(iup ? 0 : num_up_) + j] += res[j];
+  }
+  for (int d = 0; d < DIM; d++)
+  {
+    std::transform(tmp_dpsi_.data(), tmp_dpsi_.data() + tmp_dpsi_.size(), grad.data(),
+                   [d](const GradType& g) { return g[d]; });
+    MatrixOperators::product_Atx(pair_mat, grad, prod);
+    MatrixOperators::product(iup ? up_psi_mat_ : dn_psi_mat_, prod, res);
+    for (int j = 0; j < (iup ? num_up_ : num_dn_); j++)
+    {
+      if (j == iat)
+        continue;
+      dpsi_new_[(iup ? 0 : num_up_) + j][d] += res[j];
+    }
+  }
+  MatrixOperators::product_Atx(pair_mat, tmp_d2psi_, prod);
+  MatrixOperators::product(iup ? up_psi_mat_ : dn_psi_mat_, prod, res);
+  for (int j = 0; j < (iup ? num_up_ : num_dn_); j++)
+  {
+    if (j == iat)
+      continue;
+    d2psi_new_[(iup ? 0 : num_up_) + j] += res[j];
+  }
+
+  //singlet
+  MatrixOperators::product_Atx(singlet_mat_, tmp_psi_, prod);
+  MatrixOperators::product(iup ? dn_psi_mat_ : up_psi_mat_, prod, res);
+  for (int j = 0; j < (iup ? num_dn_ : num_up_); j++)
+    row_update[(iup ? num_up_ : 0) + j] += res[j];
+  for (int d = 0; d < DIM; d++)
+  {
+    std::transform(tmp_dpsi_.data(), tmp_dpsi_.data() + tmp_dpsi_.size(), grad.data(),
+                   [d](const GradType& g) { return g[d]; });
+    MatrixOperators::product_Atx(singlet_mat_, grad, prod);
+    MatrixOperators::product(iup ? dn_psi_mat_ : up_psi_mat_, prod, res);
+    for (int j = 0; j < (iup ? num_dn_ : num_up_); j++)
+      dpsi_new_[(iup ? num_up_ : 0) + j][d] += res[j];
+  }
+  MatrixOperators::product_Atx(singlet_mat_, tmp_d2psi_, prod);
+  MatrixOperators::product(iup ? dn_psi_mat_ : up_psi_mat_, prod, res);
+  for (int j = 0; j < (iup ? num_dn_ : num_up_); j++)
+    d2psi_new_[(iup ? num_up_ : 0) + j] += res[j];
+
+  //now apply sign for singlet and if below diagonal.
+  for (int j = 0; j < num_elec_; j++)
+  {
+    if (j == iat)
+      continue;
+    const bool jup = (j < num_up_);
+    ValueType sign = ((j < iat) && (iup != jup)) ? -1.0 : 1.0;
+    row_update[j] *= sign;
+    dpsi_new_[j] *= sign;
+    d2psi_new_[j] *= sign;
+  }
+
+  /*
   for (int j = 0; j < num_elec_; j++)
   {
     if (j == iat)
@@ -391,6 +461,7 @@ PfaffianSTU::PsiValue PfaffianSTU::ratioGrad(ParticleSet& P, int iat, GradType& 
       }
     }
   }
+  */
 
   if (size_ == num_elec_ + 1)
   {
@@ -529,36 +600,10 @@ PfaffianSTU::PsiValue PfaffianSTU::ratio(ParticleSet& P, int iat)
   {
     if (j == iat)
       continue;
-    bool jup = (j < num_up_);
+    bool jup       = (j < num_up_);
     ValueType sign = ((j < iat) && (iup != jup)) ? -1.0 : 1.0;
     row_update[j] *= sign;
   }
-
-  /*
-  for (int j = 0; j < num_elec_; j++)
-  {
-    if (j == iat)
-      continue;
-    bool jup = (j < num_up_);
-    int jj   = jup ? j : j - num_up_;
-
-    //for a row update, i need the full pfaffian matrix to be antisymmetric
-    //for singlets, the pairing matrix is symmetric
-    //for triplets, the pairing matrix is antisymmetric
-    //if the pairing matrix is symmetric, I need to add an explicit sign for the lower diagonal
-    //but if pairing is antisymmetric, there is no need since pairing(i,j) = -pairing(j,i)
-    //look at https://arxiv.org/pdf/1008.2369 and equation 151 for an example
-    //therefore, add sign only for singlet and if below diagonal
-    ValueType sign = ((j < iat) && (iup != jup)) ? -1.0 : 1.0;
-
-    auto& pair_mat = (iup == jup) ? (iup ? uu_triplet_mat_ : dd_triplet_mat_) : singlet_mat_;
-    auto* psi_j    = jup ? up_psi_mat_[jj] : dn_psi_mat_[jj];
-
-    for (int k = 0; k < norb; k++)
-      for (int l = 0; l < norb; l++)
-        row_update[j] += sign * tmp_psi_[k] * pair_mat(k, l) * psi_j[l];
-  }
-  */
 
   if (size_ == num_elec_ + 1)
   {
