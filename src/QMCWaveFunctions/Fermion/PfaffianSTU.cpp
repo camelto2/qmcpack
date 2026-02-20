@@ -814,6 +814,8 @@ PfaffianSTU::ValueType PfaffianSTU::calculateRatio(const ValueVector& newvals)
 
 void PfaffianSTU::updateInverse()
 {
+  //Sherman Woodbury
+  //invA' = invA - (invA U) inv(I + V invA U) (V invA)
   const int n = size_;
   ValueVector u(n, 0.0);
   u[active_idx_] = 1.0;
@@ -829,28 +831,27 @@ void PfaffianSTU::updateInverse()
     V(1, i) = -u[i];
   }
 
-  ValueMatrix tmp(n, 2);
-  MatrixOperators::product(psi_matinv_, U, tmp);
+  //W = invA U 
+  ValueMatrix W(n, 2);
+  MatrixOperators::product(psi_matinv_, U, W);
 
-  ValueMatrix M(2, 2);
-  MatrixOperators::product(V, tmp, M);
-
+  //X = inv(I + V invA U)
+  ValueMatrix X(2, 2);
+  MatrixOperators::product(V, W, X);
   for (int i = 0; i < 2; i++)
-    M(i, i) += 1.0;
+    X(i, i) += 1.0;
+  invert_matrix(X, false);
 
-  invert_matrix(M, false);
+  //Y = V invA
+  ValueMatrix Y(2, n);
+  MatrixOperators::product(V, psi_matinv_, Y);
 
-  ValueMatrix tmp2(2, n);
-  MatrixOperators::product(V, psi_matinv_, tmp2);
-  MatrixOperators::product(U, M, tmp);
+  ValueMatrix Z(n, 2);
+  MatrixOperators::product(W, X, Z);
 
-  ValueMatrix tmp3(n, n);
-  ValueMatrix tmp4(n, n);
-  MatrixOperators::product(tmp, tmp2, tmp3);
-  MatrixOperators::product(psi_matinv_, tmp3, tmp4);
-
-  std::transform(psi_matinv_.begin(), psi_matinv_.end(), tmp4.begin(), psi_matinv_.begin(),
-                 [](auto v1, auto v2) { return v1 - v2; });
+  const ValueType minus_one(-1.0);
+  BLAS::ger(n, n, minus_one, &Y(0,0), 1, &Z(0,0), 2, psi_matinv_.data(), n);
+  BLAS::ger(n, n, minus_one, &Y(1,0), 1, &Z(0,1), 2, psi_matinv_.data(), n);
 }
 
 void PfaffianSTU::buildOptVariables()
