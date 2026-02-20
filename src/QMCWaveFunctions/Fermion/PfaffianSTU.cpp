@@ -431,38 +431,6 @@ PfaffianSTU::PsiValue PfaffianSTU::ratioGrad(ParticleSet& P, int iat, GradType& 
     d2psi_new_[j] *= sign;
   }
 
-  /*
-  for (int j = 0; j < num_elec_; j++)
-  {
-    if (j == iat)
-      continue;
-    bool jup = (j < num_up_);
-    int jj   = jup ? j : j - num_up_;
-
-    //for a row update, i need the full pfaffian matrix to be antisymmetric
-    //for singlets, the pairing matrix is symmetric
-    //for triplets, the pairing matrix is antisymmetric
-    //if the pairing matrix is symmetric, I need to add an explicit sign for the lower diagonal
-    //but if pairing is antisymmetric, there is no need since pairing(i,j) = -pairing(j,i)
-    //look at https://arxiv.org/pdf/1008.2369 and equation 151 for an example
-    //therefore, add sign only for singlet and if below diagonal
-    ValueType sign = ((j < iat) && (iup != jup)) ? -1.0 : 1.0;
-
-    auto& pair_mat = (iup == jup) ? (iup ? uu_triplet_mat_ : dd_triplet_mat_) : singlet_mat_;
-    auto* psi_j    = jup ? up_psi_mat_[jj] : dn_psi_mat_[jj];
-
-    for (int k = 0; k < norb; k++)
-    {
-      for (int l = 0; l < norb; l++)
-      {
-        row_update[j] += sign * tmp_psi_[k] * pair_mat(k, l) * psi_j[l];
-        dpsi_new_[j] += sign * tmp_dpsi_[k] * pair_mat(k, l) * psi_j[l];
-        d2psi_new_[j] += sign * tmp_d2psi_[k] * pair_mat(k, l) * psi_j[l];
-      }
-    }
-  }
-  */
-
   if (size_ == num_elec_ + 1)
   {
     bool iup              = (iat < num_up_);
