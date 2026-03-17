@@ -83,7 +83,7 @@ public:
   void applyRotation(const ValueMatrix& rot_mat, bool use_stored_copy) override
   {
     SPLINEBASE::applyRotation(rot_mat, use_stored_copy);
-    HYBRIDBASE::applyRotation(rot_mat, use_stored_copy);
+    //HYBRIDBASE::applyRotation(rot_mat, use_stored_copy);
   }
 
   std::string getClassName() const final { return "Hybrid" + SPLINEBASE::getClassName(); }
