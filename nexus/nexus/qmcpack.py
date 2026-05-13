@@ -69,7 +69,6 @@ except:
     h5py = unavailable('h5py')
 #end try
 
-
 class GCTA(DevBase):
     '''
     This class holds the functionality and data to carry out grand canonical twist averaging in Nexus.
@@ -94,6 +93,7 @@ class GCTA(DevBase):
             symm_kgrid = self.system.generation_info.symm_kgrid
         except:
             symm_kgrid = False
+        #end if
         if (self.flavor.lower() in ['safl', 'afl']) and (symm_kgrid == True):
             self.error('''
                 safl and afl are not supported with symm_kgrid = True.
@@ -353,69 +353,135 @@ class GCTA(DevBase):
         return fermi_level
     #end if
 
-    def adapted_fermi_level(self):
-        combined_eigens = []
+    def reduced_twist_weights(self):
+        """
+        Return QMC twist weights normalized to sum to 1.
+        Works for both weighted and unweighted twists.
+        """
+        kweights = np.array(self.system.structure.kweights, dtype=float)
+        if len(kweights) == 0:
+            self.error('No twist weights are present in the QMC structure.')
+        #end if
+        wsum = kweights.sum()
+        if wsum <= 0:
+            self.error('Twist weights must sum to a positive value.')
+        #end if
+        return kweights / wsum
+    #end def reduced_twist_weights
+
+    def reduced_twist_map(self):
+        """
+        Map reduced QMC twist index -> representative converted SCF k-point index.
+        """
+        kmap = self.system.structure.kmap()
+        if kmap is None:
+            kmap = self.system.structure.unique_kpoints()
+        #end if
+
+        tmap = {}
+        for itwist in sorted(kmap.keys()):
+            ik = list(kmap[itwist])[0]
+            tmap[itwist] = self.gcta2conv[ik]
+        #end for
+        return tmap
+    #end def reduced_twist_map
+
+    def twist_fermi_level(self):
+        """
+        Unified AFL Fermi level from the reduced weighted twist ensemble.
+        Works for both unweighted and weighted twists.
+        """
         data = self.eig_data.data
-        norm_factor = self.eig_data.norm_factor # normalization factor to get integer k-weights
-        nkpoints = self.eig_data.nkpoints
+        kweights = self.reduced_twist_weights()
+        tmap = self.reduced_twist_map()
+
+        nelecs_target = float(self.unfolded_nelecs())
+
+        eig_list = []
         nspins = self.eig_data.nspins
-        for ispin in range(nspins):
-            for ikpoint in range(nkpoints):
-                kweight = data[ikpoint,ispin].kweight
-                ksym_range = kweight * norm_factor
-                ksym_range = self.int_kpoint_weight(ksym_range)
-                for ksym in range(ksym_range):
-                    combined_eigens.extend(data[ikpoint,ispin].eig)
+        spinor_run = self.input.get('spinor')
+
+        for itwist, wt in enumerate(kweights):
+            ik = tmap[itwist]
+            for ispin in range(nspins):
+                for eig in data[ik, ispin].eig:
+                    eig_list.append((eig, wt))
                 #end for
             #end for
         #end for
-        spinor_run = self.input.get('spinor')
-        if (spinor_run is not True) and (nspins == 1):
-            combined_eigens.extend(combined_eigens)
-        #end if
-        combined_eigens = sorted(combined_eigens)
-        nelecs_prim = self.unfolded_nelecs()
-        nosym_kpoints = self.unfolded_nkpoints()
-        lamda_index = nelecs_prim * nosym_kpoints # The index in the eigenvalue list that produces charge neutral system
-        fermi_level = float(combined_eigens[lamda_index-1] + combined_eigens[lamda_index]) / 2
-        return fermi_level
-    #end def adapted_fermi_level
 
-    def spin_adapted_fermi_level(self, scf_magnet):
+        occ_factor = 1.0
+        if (spinor_run is not True) and (nspins == 1):
+            occ_factor = 2.0
+        #end if
+
+        eig_list.sort(key=lambda x: x[0])
+
+        occ_running = 0.0
+        ef = None
+        for i in range(len(eig_list)-1):
+            eig, wt = eig_list[i]
+            occ_running += wt * occ_factor
+            if occ_running >= nelecs_target:
+                ef = 0.5 * (eig_list[i][0] + eig_list[i+1][0])
+                break
+            #end if
+        #end for
+
+        if ef is None:
+            self.error('Could not determine twist Fermi level.')
+        #end if
+        return ef
+    #end def twist_fermi_level
+
+    def twist_spin_fermi_level(self, scf_magnet):
+        """
+        Unified SAFL spin-resolved Fermi levels from the reduced weighted twist ensemble.
+        Works for both unweighted and weighted twists.
+        """
         if scf_magnet is None:
             self.error('The reference magnetization in safl can not be None. Please check that the SCF is appropriate.')
         #end if
-        combined_eigens = {}
+
         data = self.eig_data.data
-        norm_factor = self.eig_data.norm_factor # normalization factor to get integer k-weights
-        nkpoints = self.eig_data.nkpoints
-        nspins = self.eig_data.nspins
-        for ispin in range(nspins):
-            if ispin not in combined_eigens:
-                combined_eigens[ispin] = []
-            #end if
-            for ikpoint in range(nkpoints):
-                kweight = data[ikpoint,ispin].kweight
-                ksym_range = kweight * norm_factor
-                ksym_range = self.int_kpoint_weight(ksym_range)
-                for ksym in range(ksym_range):
-                    combined_eigens[ispin].extend(data[ikpoint,ispin].eig)
+        kweights = self.reduced_twist_weights()
+        tmap = self.reduced_twist_map()
+
+        nelecs_target = float(self.unfolded_nelecs())
+        target_up = 0.5 * (nelecs_target + scf_magnet)
+        target_dn = 0.5 * (nelecs_target - scf_magnet)
+
+        ef = []
+        for ispin, target in enumerate((target_up, target_dn)):
+            eig_list = []
+            for itwist, wt in enumerate(kweights):
+                ik = tmap[itwist]
+                for eig in data[ik, ispin].eig:
+                    eig_list.append((eig, wt))
                 #end for
             #end for
-            combined_eigens[ispin] = sorted(combined_eigens[ispin])
+
+            eig_list.sort(key=lambda x: x[0])
+
+            occ_running = 0.0
+            ef_spin = None
+            for i in range(len(eig_list)-1):
+                eig, wt = eig_list[i]
+                occ_running += wt
+                if occ_running >= target:
+                    ef_spin = 0.5 * (eig_list[i][0] + eig_list[i+1][0])
+                    break
+                #end if
+            #end for
+
+            if ef_spin is None:
+                self.error('Could not determine spin Fermi level for spin channel {}.'.format(ispin))
+            #end if
+            ef.append(ef_spin)
         #end for
-        if nspins == 1:
-            combined_eigens[1] = combined_eigens[0]
-        #end if
-        nelecs_prim = self.unfolded_nelecs()
-        nosym_kpoints = self.unfolded_nkpoints()
-        up_index = round((nelecs_prim + scf_magnet) * nosym_kpoints / 2)
-        dn_index = (nelecs_prim * nosym_kpoints) - up_index
-        up_fermi = float(combined_eigens[0][up_index-1] + combined_eigens[0][up_index]) / 2
-        dn_fermi = float(combined_eigens[1][dn_index-1] + combined_eigens[1][dn_index]) / 2
-        fermi_level = np.array([up_fermi, dn_fermi])
-        return fermi_level
-    #end def adapted_fermi_level
+
+        return np.array(ef)
+    #end def twist_spin_fermi_level
 
     def set_gcta_occupations(self, fermi_level):
         if fermi_level is None:
@@ -461,34 +527,34 @@ class GCTA(DevBase):
 
     def sum_charge_twists(self):
         '''
-        Returns the net charge of a system with multiple twists (not averaged)
+        Returns the weighted net charge per primitive-cell ensemble.
         '''
         n_up = self.system.particles.up_electron.count
         n_dn = self.system.particles.down_electron.count
         n_total = n_up + n_dn
         nelecs_at_twist = self.nelecs_at_twist
-        kweights = np.array(self.system.structure.kweights)
+        kweights = self.reduced_twist_weights()
         assert (len(kweights) == len(nelecs_at_twist))
-        q_sum_twists = 0
+        q_sum_twists = 0.0
         for itwist, nelec_up_dn in enumerate(nelecs_at_twist):
             nelec_twist = sum(nelec_up_dn)
             q_twist = n_total - nelec_twist
-            q_sum_twists += q_twist * round(kweights[itwist])
+            q_sum_twists += q_twist * kweights[itwist]
         #end for
         return q_sum_twists
     #end def sum_charge_twists
 
     def sum_spin_twists(self):
         '''
-        Returns the net spin of a system with multiple twists (not averaged)
+        Returns the weighted net spin per primitive-cell ensemble.
         '''
         nelecs_at_twist = self.nelecs_at_twist
-        kweights = np.array(self.system.structure.kweights)
+        kweights = self.reduced_twist_weights()
         assert (len(kweights) == len(nelecs_at_twist))
-        spin_sum_twists = 0
+        spin_sum_twists = 0.0
         for itwist, nelec_up_dn in enumerate(nelecs_at_twist):
             spin_twist = nelec_up_dn[0] - nelec_up_dn[1]
-            spin_sum_twists += spin_twist * round(kweights[itwist])
+            spin_sum_twists += spin_twist * kweights[itwist]
         #end for
         return spin_sum_twists
     #end def sum_spin_twists
@@ -498,9 +564,9 @@ class GCTA(DevBase):
         Check the net charge of the twist averaged system
         '''
         q_sum_twists = self.sum_charge_twists()
-        if (self.flavor.lower() in ['safl', 'afl']) and (q_sum_twists != 0):
+        if (self.flavor.lower() in ['safl', 'afl']) and (abs(q_sum_twists) > 1e-8):
             self.error('''
-                The sum of charges over all twists is {} electrons!
+                The weighted sum of charges over all twists is {} electrons!
                 This is not supposed to happen for afl or safl!
                 Check that the spinor keyword is correctly used in generate_qmcpack.
                 Otherwise, there might be a bug in the implementation of gcta.
@@ -513,12 +579,11 @@ class GCTA(DevBase):
         Check that the net magnetization is close to the reference SCF value
         '''
         if self.flavor.lower() == 'safl':
-            nosym_kpoints = self.unfolded_nkpoints()
             spin_sum_twists = self.sum_spin_twists()
-            qmc_magnet = spin_sum_twists / nosym_kpoints
-            feasible_accuracy = (1.0 / nosym_kpoints) + 1e-8
+            qmc_magnet = spin_sum_twists
+            feasible_accuracy = (1.0 / self.unfolded_nkpoints()) + 1e-8
             error_magnet = abs(qmc_magnet - scf_magnet)
-            if error_magnet > feasible_accuracy:
+            if error_magnet > feasible_accuracy + 1e-8:
                 self.error('''
                     The twist-averaged QMC magnetization ({:.16f}) is not close to the SCF reference value ({:.16f})!
                     This is not supposed to happen for safl. Likely, there is a bug in the implementation of safl.
@@ -529,17 +594,17 @@ class GCTA(DevBase):
 
     def write_gcta_report(self, locdir, fermi_level, scf_magnet = None):
         spinor_run = self.input.get('spinor')
-        nosym_kpoints = self.unfolded_nkpoints()
         q_sum_twists = self.sum_charge_twists()
-        qmc_charge = q_sum_twists / nosym_kpoints
+        qmc_charge = q_sum_twists
+        nelecs_at_twist = self.nelecs_at_twist
+        kweights = self.reduced_twist_weights()
         if spinor_run is not True:
             spin_sum_twists = self.sum_spin_twists()
-            qmc_magnet = spin_sum_twists / nosym_kpoints
+            qmc_magnet = spin_sum_twists
         #end if
         n_up = self.system.particles.up_electron.count
         n_dn = self.system.particles.down_electron.count
         n_total = n_up + n_dn
-        nelecs_at_twist = self.nelecs_at_twist
         fermi_level = np.array(fermi_level)
         filepath = '{}/gcta_report.txt'.format(locdir)
         with open(filepath, 'w') as gcta_file:
@@ -555,25 +620,25 @@ class GCTA(DevBase):
             else:
                 self.error('The number of provided Fermi levels ({}) does not make sense'.format(fermi_level.size))
             #end if
-            gcta_file.write('Net Charge:                     {}\n'.format(q_sum_twists))
-            gcta_file.write('Net Charge / Prim Cell:       {:20.16f}\n'.format(qmc_charge))
+            gcta_file.write('Weighted Net Charge:           {:20.16f}\n'.format(qmc_charge))
             if spinor_run is not True:
-                gcta_file.write('Net Magnetization / Prim Cell:{:20.16f}\n'.format(qmc_magnet))
+                gcta_file.write('Weighted Net Magnetization:    {:20.16f}\n'.format(qmc_magnet))
             #end if
             if scf_magnet is not None:
                 gcta_file.write('SCF Magnetization (Reference):{:20.16f}\n'.format(scf_magnet))
             #end if
             gcta_file.write('\n\n')
             if spinor_run is not True:
-                gcta_file.write(' TWISTNUM  NELEC_UP  NELEC_DN   CHARGE     SPIN   \n')
+                gcta_file.write(' TWISTNUM   WEIGHT    NELEC_UP  NELEC_DN   CHARGE     SPIN   \n')
             else:
-                gcta_file.write(' TWISTNUM    NELEC    CHARGE                      \n')
+                gcta_file.write(' TWISTNUM   WEIGHT      NELEC    CHARGE                      \n')
             #end if
             gcta_file.write('==================================================\n')
             for itwist, nelec_up_dn in enumerate(nelecs_at_twist):
                 nelec_twist = sum(nelec_up_dn)
                 q_twist = n_total - nelec_twist
                 gcta_file.write('{:^10}'.format(itwist))
+                gcta_file.write('{:^10.6f}'.format(kweights[itwist]))
                 gcta_file.write('{:^10}'.format(nelec_up_dn[0]))
                 if spinor_run is not True:
                     gcta_file.write('{:^10}'.format(nelec_up_dn[1]))
@@ -589,8 +654,6 @@ class GCTA(DevBase):
         self.log('    See the GCTA occupation report at:  {}'.format(filepath))
     #end def write_gcta_report
 #end class GCTA
-
-
 
 class Qmcpack(Simulation):
     input_type    = QmcpackInput
@@ -878,17 +941,16 @@ class Qmcpack(Simulation):
                 scf_magnet = None
 
                 if gcta_flavor.lower() == 'safl':
-                    # We need to get the SCF total magnetization for safl case
                     if isinstance(gcta_dependency,Pw2qmcpack):
                         filepath = gcta_obj.traceback_dependency(gcta_dependency, Pwscf, levels = 2)
                         scf_magnet = gcta_obj.pwscf_tot_magnet(filepath)
                     else:
                         gcta_obj.error('Reading the total magnetization for this workflow ({}) is not yet implemented.'.format(gcta_dependency.__class__.__name__))
                     #end if
-                    fermi_level = gcta_obj.spin_adapted_fermi_level(scf_magnet)
-
+                    fermi_level = gcta_obj.twist_spin_fermi_level(scf_magnet)
+                
                 elif gcta_flavor.lower() == 'afl':
-                    fermi_level = gcta_obj.adapted_fermi_level()
+                    fermi_level = gcta_obj.twist_fermi_level()
 
                 elif gcta_flavor.lower() == 'nscf':
                     if isinstance(gcta_dependency,Pw2qmcpack):
