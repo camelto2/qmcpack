@@ -584,26 +584,96 @@ class GCTA(DevBase):
     def apply_reduced_mesh_to_qmc_state(self, qmc):
         """
         Push the reduced fullred twist mesh into the live Qmcpack object state.
-        This updates both the GCTA system and the QMC object's system so that
-        later stages (write_prep, twist bundling, reports) see the reduced twists.
+        This updates:
+          - QMC structure kpoints/kweights
+          - folded structure kpoints/kweights if present
+          - GCTA-local system copy
+          - per-twist occupations
+          - orbital twist metadata in qmc.input so trace() generates only reduced twists
         """
+        # update live QMC structure
         s = qmc.system.structure
         kaxes = s.kaxes
-    
-        # reduced k-points are stored in unit coordinates
         kpts_abs = np.dot(self.reduced_kpts, kaxes)
-    
-        # update live QMC structure
         s.kpoints = np.array(kpts_abs, dtype=float)
         s.kweights = np.array(self.reduced_weights, dtype=float)
     
-        # keep GCTA's copy in sync too
+        # keep GCTA-local system in sync
         self.system.structure.kpoints = np.array(kpts_abs, dtype=float)
         self.system.structure.kweights = np.array(self.reduced_weights, dtype=float)
     
-        # update occupations on both objects
+        # keep folded/primitive structures in sync if present
+        if qmc.system.folded_system is not None:
+            fs = qmc.system.folded_system.structure
+            fkaxes = fs.kaxes
+            fkpts_abs = np.dot(self.reduced_kpts, fkaxes)
+            fs.kpoints = np.array(fkpts_abs, dtype=float)
+            fs.kweights = np.array(self.reduced_weights, dtype=float)
+        #end if
+    
+        if self.system.folded_system is not None:
+            fs = self.system.folded_system.structure
+            fkaxes = fs.kaxes
+            fkpts_abs = np.dot(self.reduced_kpts, fkaxes)
+            fs.kpoints = np.array(fkpts_abs, dtype=float)
+            fs.kweights = np.array(self.reduced_weights, dtype=float)
+        #end if
+    
+        # update twist occupations
         qmc.nelecs_at_twist = [list(x) for x in self.reduced_occ]
         self.nelecs_at_twist = [list(x) for x in self.reduced_occ]
+    
+        # --- critical part: update qmc.input orbital twist state ---
+        # We need the input object to reflect the reduced number of twists so that
+        # qmc.input.trace('twistnum', ...) generates only reduced inputs.
+    
+        wf = qmc.input.get('wavefunction')
+        if isinstance(wf, collection):
+            wf = wf.get_single('psi0')
+        #end if
+    
+        if wf is None:
+            qmc.error('Wavefunction not found while applying reduced GCTA mesh.')
+        #end if
+    
+        orb_elem = None
+        if 'sposet_builder' in wf and getattr(wf.sposet_builder, 'type', None) == 'bspline':
+            orb_elem = wf.sposet_builder
+        elif 'sposet_builders' in wf and 'bspline' in wf.sposet_builders:
+            orb_elem = wf.sposet_builders.bspline
+        elif 'sposet_builders' in wf and 'einspline' in wf.sposet_builders:
+            orb_elem = wf.sposet_builders.einspline
+        elif 'determinantset' in wf and getattr(wf.determinantset, 'type', None) in ('bspline','einspline'):
+            orb_elem = wf.determinantset
+        #end if
+    
+        if orb_elem is None:
+            qmc.error('Could not find bspline/einspline orbital element while applying reduced GCTA mesh.')
+        #end if
+    
+        # Reset twist selectors in the input so tracing is driven only by bundle_request values
+        if 'twist' in orb_elem:
+            del orb_elem.twist
+        #end if
+        if 'twistnum' in orb_elem:
+            del orb_elem.twistnum
+        #end if
+    
+        # Set a harmless placeholder twistnum; write_prep() will trace over reduced twistnums
+        orb_elem.twistnum = 0
+    
+        # If the input was already transformed into a traced input, force it back to the base input
+        # so write_prep() will rebuild the bundle from the reduced state.
+        if isinstance(qmc.input, TracedQmcpackInput):
+            qmc.input = qmc.input.inputs[0]
+        #end if
+
+        # Reset bundle request to match the reduced twist set exactly
+        twistnums = list(range(len(qmc.system.structure.kpoints)))
+        qmc.bundle_request = obj(
+            quantity = 'twistnum',
+            values   = twistnums,
+        )
     #end def apply_reduced_mesh_to_qmc_state
 
     @staticmethod
@@ -1833,25 +1903,37 @@ class Qmcpack(Simulation):
                 self.infile = input.filenames[-1]
                 self.input  = input
                 self.job.app_command = self.app_command()
+
                 # write twist info files
                 s = self.system.structure
                 kweights        = s.kweights.copy()
                 kpoints         = s.kpoints.copy()
                 kpoints_qmcpack = s.kpoints_qmcpack()
-                for file in input.filenames:
-                    if file.startswith(self.identifier+'.g'):
-                        tokens = file.split('.')
-                        twist_index = int(tokens[1].replace('g',''))
-                        twist_filename = '{}.{}.twist_info.dat'.format(tokens[0],tokens[1])
-                        kw  = kweights[twist_index]
-                        kp  = kpoints[twist_index]
-                        kpq = kpoints_qmcpack[twist_index]
-                        contents = ' {: 16.6f}  {: 16.12f} {: 16.12f} {: 16.12f}  {: 16.12f} {: 16.12f} {: 16.12f}\n'.format(kw,*kp,*kpq)
-                        fobj = open(os.path.join(self.locdir,twist_filename),'w')
-                        fobj.write(contents)
-                        fobj.close()
-                    #end if
+                
+                ntwists = len(input.inputs)
+                if len(kweights) != ntwists or len(kpoints) != ntwists:
+                    self.error(
+                        'Reduced GCTA twist data is inconsistent.\n'
+                        'len(input.inputs)  = {}\n'
+                        'len(kweights)      = {}\n'
+                        'len(kpoints)       = {}\n'.format(
+                            ntwists, len(kweights), len(kpoints)
+                        )
+                    )
+                #end if
+                
+                for twist_index in range(ntwists):
+                    twist_tag = 'g{}'.format(str(twist_index).zfill(3))
+                    twist_filename = '{}.{}.twist_info.dat'.format(self.identifier, twist_tag)
+                    kw  = kweights[twist_index]
+                    kp  = kpoints[twist_index]
+                    kpq = kpoints_qmcpack[twist_index]
+                    contents = ' {: 16.6f}  {: 16.12f} {: 16.12f} {: 16.12f}  {: 16.12f} {: 16.12f} {: 16.12f}\n'.format(kw,*kp,*kpq)
+                    fobj = open(os.path.join(self.locdir,twist_filename),'w')
+                    fobj.write(contents)
+                    fobj.close()
                 #end for
+
                 grand_canonical_twist_average = 'nelecs_at_twist' in self
                 if grand_canonical_twist_average:
                     for itwist, qi in enumerate(input.inputs):
