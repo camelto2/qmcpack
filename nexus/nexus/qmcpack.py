@@ -89,27 +89,16 @@ class GCTA(DevBase):
         if not gcta_possible:
             self.error('gcta keyword is not yet supported for this workflow. Please contact the developers.')
         #end if
-        try:
-            symm_kgrid = self.system.generation_info.symm_kgrid
-        except:
-            symm_kgrid = False
-        #end if
-        if (self.flavor.lower() in ['safl', 'afl']) and (symm_kgrid == True):
-            self.error('''
-                safl and afl are not supported with symm_kgrid = True.
-                It is possible to implement the afl and safl algorithms with k-point symmetries
-                but it requires significant changes to the current simple implementation
-                that strictly uses the Fermi level to set the occupations.
-                Please contact the developers if this feature is pressing.
-                    ''')
-        #end if
+
         spinor_run = self.input.get('spinor')
         if (self.flavor.lower() == 'safl') and (spinor_run is True):
             self.error('safl is not supported with spinors. Use afl instead.')
         #end if
-        if (self.flavor.lower() != 'afl') and (not isinstance(dependency,Pw2qmcpack)):
+
+        if (self.flavor.lower() != 'afl') and (not isinstance(dependency, Pw2qmcpack)):
             self.error('{} flavor of GCTA is only supported with pwscf at the moment.'.format(self.flavor))
         #end if
+
         twistnum_input = self.input.get('twistnum')
         supercell_nkpoints = len(self.system.structure.kpoints)
         if (twistnum_input is not None) or (supercell_nkpoints == 1):
@@ -131,11 +120,11 @@ class GCTA(DevBase):
             Please check the SCF conversion step.
             '''.format(float_value)
         return int_value
-    #end def check_kpoint_weight
+    #end def int_kpoint_weight
 
     def read_eshdf_data(self, filename):
         '''
-        Read the ESHDF eigenvalues, k-point info and store the data in the GCTA instance as an attribute
+        Read the ESHDF eigenvalues, k-point info and store the data in the GCTA instance as an attribute.
         '''
         def h5_scalar(i):
             value = np.array(i)
@@ -144,12 +133,15 @@ class GCTA(DevBase):
             else:
                 return value[0]
         #end def h5_scalar
-        h        = read_hdf(filename,view=True)
+
+        h        = read_hdf(filename, view=True)
         nkpoints = h5_scalar(h.electrons.number_of_kpoints)
         if hasattr(h.electrons, 'number_of_spins'):
-            nspins   = h5_scalar(h.electrons.number_of_spins) # pwscf collinear
+            nspins = h5_scalar(h.electrons.number_of_spins)  # pwscf collinear
         else:
-            nspins   = 1 # convertpw4qmc non-collinear
+            nspins = 1  # convertpw4qmc non-collinear
+        #end if
+
         data     = obj()
         kweights = []
         for ikpoint in range(nkpoints):
@@ -157,20 +149,22 @@ class GCTA(DevBase):
             kw = h5_scalar(kp.weight)
             kweights.append(kw)
             for ispin in range(nspins):
-                path = 'electrons/kpoint_{0}/spin_{1}'.format(ikpoint,ispin)
+                path = 'electrons/kpoint_{0}/spin_{1}'.format(ikpoint, ispin)
                 spin = h.get_path(path)
-                eigs = convert(np.array(spin.eigenvalues),'Ha','eV')
+                eigs = convert(np.array(spin.eigenvalues), 'Ha', 'eV')
                 nstates = h5_scalar(spin.number_of_states)
-                data[ikpoint,ispin] = obj(
-                    eig    = np.array(eigs),
-                    kpoint = np.array(kp.reduced_k), # unit (crystal) coordinates for kpoints. The range is [0, 1).
+                data[ikpoint, ispin] = obj(
+                    eig     = np.array(eigs),
+                    kpoint  = np.array(kp.reduced_k),  # unit (crystal) coordinates for kpoints. Range is [0,1)
                     kweight = kw,
                     )
             #end for
         #end for
+
         total_kweight = sum(kweights)
         total_kweight = self.int_kpoint_weight(total_kweight)
-        norm_factor = 1.0 / min(kweights) # Multiplicative factor to get integer weights
+        norm_factor = 1.0 / min(kweights)  # multiplicative factor to get integer weights
+
         res = obj(
             orbfile     = filename,
             nkpoints    = nkpoints,
@@ -185,7 +179,7 @@ class GCTA(DevBase):
 
     def unfolded_nelecs(self):
         '''
-        Returns the number of electrons in the primitive cell
+        Returns the number of electrons in the primitive cell.
         '''
         if self.system.folded_system is None:
             n_up = self.system.particles.up_electron.count
@@ -200,7 +194,7 @@ class GCTA(DevBase):
 
     def unfolded_nkpoints(self):
         '''
-        Returns the number of unsymmetrized k-points when a supercell is unfolded back to the primitive cell
+        Returns the number of unsymmetrized k-points when a supercell is unfolded back to the primitive cell.
         '''
         kgrid = np.array(self.system.generation_info.kgrid)
         nkgrid = np.prod(kgrid)
@@ -216,7 +210,7 @@ class GCTA(DevBase):
 
     def prim_kpoints(self):
         '''
-        Returns the k-points used to build the supercell in unit coordinates
+        Returns the k-points used to build the supercell in unit coordinates.
         '''
         if self.system.folded_system is None:
             qmc_kpoints = self.system.structure.kpoints_unit()
@@ -224,11 +218,11 @@ class GCTA(DevBase):
             qmc_kpoints = self.system.folded_system.structure.kpoints_unit()
         #end if
         return qmc_kpoints
-    #end def unfolded_nkpoints
+    #end def prim_kpoints
 
     def check_kmesh_size(self):
         '''
-        Make sure that NSCF k-points and QMC twists are commensurate for GCTA
+        Make sure that NSCF k-points and QMC twists are commensurate for GCTA.
         '''
         n_qmc_kpoints = len(self.prim_kpoints())
         n_scf_kpoints = self.eig_data.nkpoints
@@ -242,17 +236,15 @@ class GCTA(DevBase):
     def check_kpoint_consistency(self, tol=1e-8):
         '''
         The kpoints expected by the GCTA object and what is found in the self.eig_data.data should be consistent.
-        The kpoints in self.eig_data.data are expected to be in unit coordinates. (Conversion: dot(kpoints, inv(kaxes))).
-        This function checks if there is 1-to-1 mapping between the GCTA object and the converted data.
+        The kpoints in self.eig_data.data are expected to be in unit coordinates.
         '''
         gcta_kpoints = self.prim_kpoints()
         nkpoints = self.eig_data.nkpoints
         eig_kpoints = []
         for ikpoint in range(nkpoints):
-            eig_kpoints.append(self.eig_data.data[ikpoint, 0].kpoint) # 0: only checking the consistency in one spin channel
+            eig_kpoints.append(self.eig_data.data[ikpoint, 0].kpoint)
         #end for
         eig_kpoints = np.array(eig_kpoints)
-        # Check if each row of gcta_kpoints exists in eig_kpoints
         for gcta_row in gcta_kpoints:
             if not np.any(np.all(np.isclose(eig_kpoints, gcta_row, atol=tol), axis=1)):
                 self.error('''The GCTA k-point {} was not found in the converted data. This is not supposed to happen.
@@ -266,15 +258,14 @@ class GCTA(DevBase):
         The k-points defined by the GCTA object and the k-points written by a converter may have different ordering.
         We need to figure out the mapping between these two so that the k-points fold into correct twists.
         '''
-        gcta2conv = {}  # The dictionary that holds the gcta -> converter k-mapping
+        gcta2conv = {}
         gcta_kpoints = self.prim_kpoints()
         nkpoints = self.eig_data.nkpoints
         eig_kpoints = []
         for ikpoint in range(nkpoints):
-            eig_kpoints.append(self.eig_data.data[ikpoint, 0].kpoint) # 0: only need one spin channel
+            eig_kpoints.append(self.eig_data.data[ikpoint, 0].kpoint)
         #end for
         eig_kpoints = np.array(eig_kpoints)
-        # Check if each row of gcta_kpoints exists in eig_kpoints
         for i, gcta_row in enumerate(gcta_kpoints):
             for k, eig_row in enumerate(eig_kpoints):
                 if np.all(np.isclose(gcta_row, eig_row, atol=tol), axis=0):
@@ -286,9 +277,9 @@ class GCTA(DevBase):
     #end def gcta_converter_kmapping
 
     @staticmethod
-    def traceback_dependency(dependency, cls, levels = 1):
+    def traceback_dependency(dependency, cls, levels=1):
         '''
-        This function provides limited functionality to go back in dependency by a certain level 
+        This function provides limited functionality to go back in dependency by a certain level.
         '''
         if dependency is None:
             error('This function requires a valid dependency. None was given.')
@@ -311,7 +302,7 @@ class GCTA(DevBase):
             #end if
         #end for
         return current_dep.locdir
-    #end def
+    #end def traceback_dependency
 
     @staticmethod
     def pwscf_tot_magnet(filepath):
@@ -324,13 +315,13 @@ class GCTA(DevBase):
         spin_polarized = xml['qes:espresso']['input']['spin']['lsda']['text']
         if spin_polarized == 'true':
             scf_magnet = float(xml['qes:espresso']['output']['magnetization']['total']['text'])
-        elif spin_polarized == 'false': # total magnetization is not written for nspin = 1
+        elif spin_polarized == 'false':
             scf_magnet = 0.0
         else:
             scf_magnet = None
         #end if
         return scf_magnet
-    #end if
+    #end def pwscf_tot_magnet
 
     @staticmethod
     def pwscf_fermi(filepath, scf_type):
@@ -349,9 +340,9 @@ class GCTA(DevBase):
         else:
             fermi_level = float(xml['qes:espresso']['output']['band_structure']['fermi_energy']['text'])
         #end if
-        fermi_level = convert(fermi_level,'Ha','eV')
+        fermi_level = convert(fermi_level, 'Ha', 'eV')
         return fermi_level
-    #end if
+    #end def pwscf_fermi
 
     def reduced_twist_weights(self):
         """
@@ -389,7 +380,7 @@ class GCTA(DevBase):
     def twist_fermi_level(self):
         """
         Unified AFL Fermi level from the reduced weighted twist ensemble.
-        Works for both unweighted and weighted twists.
+        Works for both weighted and unweighted twists.
         """
         data = self.eig_data.data
         kweights = self.reduced_twist_weights()
@@ -429,15 +420,15 @@ class GCTA(DevBase):
         #end for
 
         if ef is None:
-            self.error('Could not determine twist Fermi level.')
+            self.error('Could not determine unified twist Fermi level.')
         #end if
         return ef
-    #end def twist_fermi_level
+    #end def unified_twist_fermi_level
 
     def twist_spin_fermi_level(self, scf_magnet):
         """
         Unified SAFL spin-resolved Fermi levels from the reduced weighted twist ensemble.
-        Works for both unweighted and weighted twists.
+        Works for both weighted and unweighted twists.
         """
         if scf_magnet is None:
             self.error('The reference magnetization in safl can not be None. Please check that the SCF is appropriate.')
@@ -475,44 +466,44 @@ class GCTA(DevBase):
             #end for
 
             if ef_spin is None:
-                self.error('Could not determine spin Fermi level for spin channel {}.'.format(ispin))
+                self.error('Could not determine unified spin Fermi level for spin channel {}.'.format(ispin))
             #end if
             ef.append(ef_spin)
         #end for
 
         return np.array(ef)
-    #end def twist_spin_fermi_level
+    #end def unified_twist_spin_fermi_level
 
     def set_gcta_occupations(self, fermi_level):
+        """
+        Set integer occupations per reduced QMC twist based on unified Fermi level(s).
+        """
         if fermi_level is None:
             self.error('The Fermi level can not be None. This indicates a bug in {}'.format(self.flavor))
         #end if
+
         ntwists = len(self.system.structure.kpoints)
         nspins = self.eig_data.nspins
         nstates = self.eig_data.nstates
-        gcta2conv = self.gcta2conv
+
         fermi_levels = fermi_level
         if isinstance(fermi_levels, float):
             fermi_levels = [fermi_levels, fermi_levels]
         #end if
-        # kmap is mapping between twists and k-points (internal to gcta, not to be confused by gcta2conv mapping)
-        kmap = self.system.structure.kmap()
-        if kmap is None:
-            kmap = self.system.structure.unique_kpoints()
-        #end if
+
+        tmap = self.reduced_twist_map()
+
         nelecs_at_twist = []
         for itwist in range(ntwists):
-            # calculate nelec for each spin
             nelec_up_dn = []
+            ikpoint = tmap[itwist]
             for ispin in range(nspins):
                 nelec_spin = 0
-                for ikpoint in kmap[itwist]:
-                    for istate in range(nstates):
-                        eig = self.eig_data.data[gcta2conv[ikpoint], ispin].eig[istate]
-                        if eig < fermi_levels[ispin]:
-                            nelec_spin += 1
-                        #end if
-                    #end for
+                for istate in range(nstates):
+                    eig = self.eig_data.data[ikpoint, ispin].eig[istate]
+                    if eig < fermi_levels[ispin]:
+                        nelec_spin += 1
+                    #end if
                 #end for
                 nelec_up_dn.append(nelec_spin)
                 spinor_run = self.input.get('spinor')
@@ -523,7 +514,7 @@ class GCTA(DevBase):
             nelecs_at_twist.append(nelec_up_dn)
         #end for
         self.nelecs_at_twist = nelecs_at_twist
-    #end set_gcta_occupation
+    #end def set_gcta_occupations
 
     def sum_charge_twists(self):
         '''
@@ -561,7 +552,7 @@ class GCTA(DevBase):
 
     def check_charge_neutrality(self):
         '''
-        Check the net charge of the twist averaged system
+        Check the weighted net charge of the twist-averaged system.
         '''
         q_sum_twists = self.sum_charge_twists()
         if (self.flavor.lower() in ['safl', 'afl']) and (abs(q_sum_twists) > 1e-8):
@@ -576,7 +567,7 @@ class GCTA(DevBase):
 
     def check_magnetization_accuracy(self, scf_magnet):
         '''
-        Check that the net magnetization is close to the reference SCF value
+        Check that the weighted net magnetization is close to the reference SCF value.
         '''
         if self.flavor.lower() == 'safl':
             spin_sum_twists = self.sum_spin_twists()
@@ -608,7 +599,6 @@ class GCTA(DevBase):
         fermi_level = np.array(fermi_level)
         filepath = '{}/gcta_report.txt'.format(locdir)
         with open(filepath, 'w') as gcta_file:
-            # Writing data to a file
             gcta_file.write('SUMMARY FOR GCTA OCCUPATIONS:\n')
             gcta_file.write('==================================================\n')
             gcta_file.write('GCTA Flavor:                    {}\n'.format(self.flavor))
@@ -941,8 +931,8 @@ class Qmcpack(Simulation):
                 scf_magnet = None
 
                 if gcta_flavor.lower() == 'safl':
-                    if isinstance(gcta_dependency,Pw2qmcpack):
-                        filepath = gcta_obj.traceback_dependency(gcta_dependency, Pwscf, levels = 2)
+                    if isinstance(gcta_dependency, Pw2qmcpack):
+                        filepath = gcta_obj.traceback_dependency(gcta_dependency, Pwscf, levels=2)
                         scf_magnet = gcta_obj.pwscf_tot_magnet(filepath)
                     else:
                         gcta_obj.error('Reading the total magnetization for this workflow ({}) is not yet implemented.'.format(gcta_dependency.__class__.__name__))
