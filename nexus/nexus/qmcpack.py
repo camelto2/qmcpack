@@ -83,17 +83,21 @@ class GCTA(DevBase):
     #end def __init__
 
     def check_implementation(self, gcta_possible, dependency):
-        gcta_flavors = {'safl', 'afl', 'nscf', 'scf'}
+        gcta_flavors = {'safl', 'afl', 'nscf', 'scf', 'afl_fullred', 'safl_fullred'}
         if self.flavor.lower() not in gcta_flavors:
             self.error('GCTA type {} is not recognized. Valid options are {}.'.format(self.flavor, gcta_flavors))
         #end if
         if not gcta_possible:
             self.error('gcta keyword is not yet supported for this workflow. Please contact the developers.')
         #end if
+    
         try:
             symm_kgrid = self.system.generation_info.symm_kgrid
         except:
             symm_kgrid = False
+        #end if
+    
+        # old afl/safl restriction retained
         if (self.flavor.lower() in ['safl', 'afl']) and (symm_kgrid == True):
             self.error('''
                 safl and afl are not supported with symm_kgrid = True.
@@ -103,13 +107,17 @@ class GCTA(DevBase):
                 Please contact the developers if this feature is pressing.
                     ''')
         #end if
+    
+        # new fullred modes are intended to support symmetry-reduced k-grids
         spinor_run = self.input.get('spinor')
-        if (self.flavor.lower() == 'safl') and (spinor_run is True):
-            self.error('safl is not supported with spinors. Use afl instead.')
+        if (self.flavor.lower() in ['safl', 'safl_fullred']) and (spinor_run is True):
+            self.error('safl and safl_fullred are not supported with spinors. Use afl or afl_fullred instead.')
         #end if
-        if (self.flavor.lower() != 'afl') and (not isinstance(dependency,Pw2qmcpack)):
+    
+        if (self.flavor.lower() not in ['afl', 'afl_fullred']) and (not isinstance(dependency,Pw2qmcpack)):
             self.error('{} flavor of GCTA is only supported with pwscf at the moment.'.format(self.flavor))
         #end if
+    
         twistnum_input = self.input.get('twistnum')
         supercell_nkpoints = len(self.system.structure.kpoints)
         if (twistnum_input is not None) or (supercell_nkpoints == 1):
@@ -118,6 +126,294 @@ class GCTA(DevBase):
                 Currently, this is not supported. Please contact the developers if this is needed.''')
         #end if
     #end def check_implementation
+
+    def primitive_structure(self):
+        """
+        Return the primitive/folded structure if available, otherwise the system structure.
+        """
+        if self.system.folded_system is None:
+            return self.system.structure
+        else:
+            return self.system.folded_system.structure
+    #end def primitive_structure
+    
+    
+    def fullmesh_fermi_level(self):
+        """
+        Original AFL logic on the full unfolded SCF/NSCF mesh.
+        This is just the old adapted_fermi_level logic under a new name.
+        """
+        combined_eigens = []
+        data = self.eig_data.data
+        norm_factor = self.eig_data.norm_factor # normalization factor to get integer k-weights
+        nkpoints = self.eig_data.nkpoints
+        nspins = self.eig_data.nspins
+        for ispin in range(nspins):
+            for ikpoint in range(nkpoints):
+                kweight = data[ikpoint,ispin].kweight
+                ksym_range = kweight * norm_factor
+                ksym_range = self.int_kpoint_weight(ksym_range)
+                for ksym in range(ksym_range):
+                    combined_eigens.extend(data[ikpoint,ispin].eig)
+                #end for
+            #end for
+        #end for
+        spinor_run = self.input.get('spinor')
+        if (spinor_run is not True) and (nspins == 1):
+            combined_eigens.extend(combined_eigens)
+        #end if
+        combined_eigens = sorted(combined_eigens)
+        nelecs_prim = self.unfolded_nelecs()
+        nosym_kpoints = self.unfolded_nkpoints()
+        lamda_index = nelecs_prim * nosym_kpoints
+        fermi_level = float(combined_eigens[lamda_index-1] + combined_eigens[lamda_index]) / 2
+        return fermi_level
+    #end def fullmesh_fermi_level
+    
+    
+    def fullmesh_spin_fermi_level(self, scf_magnet):
+        """
+        Original SAFL logic on the full unfolded SCF/NSCF mesh.
+        This is just the old spin_adapted_fermi_level logic under a new name.
+        """
+        if scf_magnet is None:
+            self.error('The reference magnetization in safl_fullred can not be None. Please check that the SCF is appropriate.')
+        #end if
+        combined_eigens = {}
+        data = self.eig_data.data
+        norm_factor = self.eig_data.norm_factor # normalization factor to get integer k-weights
+        nkpoints = self.eig_data.nkpoints
+        nspins = self.eig_data.nspins
+        for ispin in range(nspins):
+            if ispin not in combined_eigens:
+                combined_eigens[ispin] = []
+            #end if
+            for ikpoint in range(nkpoints):
+                kweight = data[ikpoint,ispin].kweight
+                ksym_range = kweight * norm_factor
+                ksym_range = self.int_kpoint_weight(ksym_range)
+                for ksym in range(ksym_range):
+                    combined_eigens[ispin].extend(data[ikpoint,ispin].eig)
+                #end for
+            #end for
+            combined_eigens[ispin] = sorted(combined_eigens[ispin])
+        #end for
+        if nspins == 1:
+            combined_eigens[1] = combined_eigens[0]
+        #end if
+        nelecs_prim = self.unfolded_nelecs()
+        nosym_kpoints = self.unfolded_nkpoints()
+        up_index = round((nelecs_prim + scf_magnet) * nosym_kpoints / 2)
+        dn_index = (nelecs_prim * nosym_kpoints) - up_index
+        up_fermi = float(combined_eigens[0][up_index-1] + combined_eigens[0][up_index]) / 2
+        dn_fermi = float(combined_eigens[1][dn_index-1] + combined_eigens[1][dn_index]) / 2
+        fermi_level = np.array([up_fermi, dn_fermi])
+        return fermi_level
+    #end def fullmesh_spin_fermi_level
+    
+    
+    def set_fullmesh_occupations(self, fermi_level):
+        """
+        Assign occupations on the full SCF k-mesh before reduction.
+        """
+        data = self.eig_data.data
+        nkpoints = self.eig_data.nkpoints
+        nspins = self.eig_data.nspins
+        nstates = self.eig_data.nstates
+    
+        fermi_levels = fermi_level
+        if isinstance(fermi_levels, float):
+            fermi_levels = [fermi_levels, fermi_levels]
+        #end if
+    
+        full_occ = obj()
+        for ikpoint in range(nkpoints):
+            nelec_up_dn = []
+            for ispin in range(nspins):
+                nelec_spin = 0
+                for istate in range(nstates):
+                    eig = data[ikpoint,ispin].eig[istate]
+                    if eig < fermi_levels[ispin]:
+                        nelec_spin += 1
+                    #end if
+                #end for
+                nelec_up_dn.append(nelec_spin)
+                spinor_run = self.input.get('spinor')
+                if (spinor_run is not True) and (nspins == 1):
+                    nelec_up_dn.append(nelec_spin)
+                #end if
+            #end for
+            full_occ[ikpoint] = nelec_up_dn
+        #end for
+        self.full_occ = full_occ
+    #end def set_fullmesh_occupations
+    
+    
+    def full_kpoint_symmetry_classes(self, tol=1e-8):
+        """
+        Determine symmetry representatives for the full SCF k-point mesh using spglib
+        point-group operations on the primitive structure.
+        """
+        s = self.primitive_structure()
+        rotations = s.point_group_operations(unit=True)
+    
+        nkpoints = self.eig_data.nkpoints
+        full_kpts = []
+        for ik in range(nkpoints):
+            full_kpts.append(np.array(self.eig_data.data[ik,0].kpoint))
+        #end for
+        full_kpts = np.array(full_kpts, dtype=float)
+    
+        def wrap_k(k):
+            return k - np.floor(k)
+        #end def wrap_k
+    
+        def canon_k(k):
+            return tuple(np.round(wrap_k(k), 8))
+        #end def canon_k
+    
+        orbit_rep = []
+        for ik, k in enumerate(full_kpts):
+            equiv = []
+            for R in rotations:
+                kr = np.dot(k, R)
+                equiv.append(canon_k(kr))
+            #end for
+            orbit_rep.append(min(equiv))
+        #end for
+    
+        self.full_kpts = full_kpts
+        self.orbit_rep = orbit_rep
+    #end def full_kpoint_symmetry_classes
+    
+    
+    def reduce_fullmesh_occupations(self):
+        """
+        Reduce the full SCF twist set by grouping twists with:
+          1) same symmetry representative
+          2) same occupation signature
+        """
+        if 'full_occ' not in self:
+            self.error('Full-mesh occupations have not been assigned yet.')
+        #end if
+        if 'orbit_rep' not in self:
+            self.error('Full-mesh symmetry representatives have not been constructed yet.')
+        #end if
+    
+        nkpoints = self.eig_data.nkpoints
+    
+        groups = obj()
+        for ik in range(nkpoints):
+            occ = tuple(self.full_occ[ik])
+            key = (self.orbit_rep[ik], occ)
+            if key not in groups:
+                groups[key] = []
+            #end if
+            groups[key].append(ik)
+        #end for
+    
+        reduced_kpts = []
+        reduced_wts  = []
+        reduced_occ  = []
+    
+        for key, members in groups.items():
+            ik0 = members[0]
+            reduced_kpts.append(self.full_kpts[ik0])
+            reduced_wts.append(float(len(members)))
+            reduced_occ.append(list(self.full_occ[ik0]))
+        #end for
+    
+        reduced_kpts = np.array(reduced_kpts, dtype=float)
+        reduced_wts  = np.array(reduced_wts , dtype=float)
+        reduced_wts /= reduced_wts.sum()
+    
+        self.reduced_kpts = reduced_kpts
+        self.reduced_weights = reduced_wts
+        self.reduced_occ = reduced_occ
+    #end def reduce_fullmesh_occupations
+    
+    
+    def apply_reduced_mesh(self):
+        """
+        Replace QMC twists and weights with the reduced fullred mesh and occupations.
+        """
+        s = self.system.structure
+        kaxes = s.kaxes
+        kpts_abs = np.dot(self.reduced_kpts, kaxes)
+        s.kpoints = np.array(kpts_abs, dtype=float)
+        s.kweights = np.array(self.reduced_weights, dtype=float)
+        self.nelecs_at_twist = [list(x) for x in self.reduced_occ]
+    #end def apply_reduced_mesh
+    
+    
+    def fullred_sum_charge_twists(self):
+        """
+        Weighted charge on the reduced fullred twist set.
+        """
+        n_up = self.system.particles.up_electron.count
+        n_dn = self.system.particles.down_electron.count
+        n_total = n_up + n_dn
+        nelecs_at_twist = self.nelecs_at_twist
+        kweights = np.array(self.system.structure.kweights, dtype=float)
+        assert len(kweights) == len(nelecs_at_twist)
+        q_sum_twists = 0.0
+        for itwist, nelec_up_dn in enumerate(nelecs_at_twist):
+            nelec_twist = sum(nelec_up_dn)
+            q_twist = n_total - nelec_twist
+            q_sum_twists += q_twist * kweights[itwist]
+        #end for
+        return q_sum_twists
+    #end def fullred_sum_charge_twists
+    
+    
+    def fullred_sum_spin_twists(self):
+        """
+        Weighted spin on the reduced fullred twist set.
+        """
+        nelecs_at_twist = self.nelecs_at_twist
+        kweights = np.array(self.system.structure.kweights, dtype=float)
+        assert len(kweights) == len(nelecs_at_twist)
+        spin_sum_twists = 0.0
+        for itwist, nelec_up_dn in enumerate(nelecs_at_twist):
+            spin_twist = nelec_up_dn[0] - nelec_up_dn[1]
+            spin_sum_twists += spin_twist * kweights[itwist]
+        #end for
+        return spin_sum_twists
+    #end def fullred_sum_spin_twists
+    
+    
+    def check_fullred_charge_neutrality(self, tol=1e-8):
+        """
+        Check charge neutrality for fullred modes after symmetry+occupation reduction.
+        """
+        q_sum_twists = self.fullred_sum_charge_twists()
+        if abs(q_sum_twists) > tol:
+            self.error('''
+                The weighted sum of charges over reduced fullred twists is {} electrons!
+                This is not supposed to happen for afl_fullred or safl_fullred.
+                There might be a bug in the reduction logic.
+                '''.format(q_sum_twists))
+        #end if
+    #end def check_fullred_charge_neutrality
+    
+    
+    def check_fullred_magnetization_accuracy(self, scf_magnet, tol=1e-8):
+        """
+        Check magnetization accuracy for safl_fullred.
+        """
+        if self.flavor.lower() == 'safl_fullred':
+            spin_sum_twists = self.fullred_sum_spin_twists()
+            qmc_magnet = spin_sum_twists
+            error_magnet = abs(qmc_magnet - scf_magnet)
+            if error_magnet > tol:
+                self.error('''
+                    The reduced fullred QMC magnetization ({:.16f}) is not equal to the SCF reference value ({:.16f})!
+                    This is not supposed to happen for safl_fullred.
+                    There might be a bug in the reduction logic.
+                    '''.format(qmc_magnet, scf_magnet))
+            #end if
+        #end if
+    #end def check_fullred_magnetization_accuracy
 
     @staticmethod
     def int_kpoint_weight(float_value, atol=1e-8):
@@ -886,10 +1182,33 @@ class Qmcpack(Simulation):
                         gcta_obj.error('Reading the total magnetization for this workflow ({}) is not yet implemented.'.format(gcta_dependency.__class__.__name__))
                     #end if
                     fermi_level = gcta_obj.spin_adapted_fermi_level(scf_magnet)
-
+                
                 elif gcta_flavor.lower() == 'afl':
                     fermi_level = gcta_obj.adapted_fermi_level()
-
+                
+                elif gcta_flavor.lower() == 'safl_fullred':
+                    if isinstance(gcta_dependency,Pw2qmcpack):
+                        filepath = gcta_obj.traceback_dependency(gcta_dependency, Pwscf, levels = 2)
+                        scf_magnet = gcta_obj.pwscf_tot_magnet(filepath)
+                    else:
+                        gcta_obj.error('Reading the total magnetization for this workflow ({}) is not yet implemented.'.format(gcta_dependency.__class__.__name__))
+                    #end if
+                    fermi_level = gcta_obj.fullmesh_spin_fermi_level(scf_magnet)
+                    gcta_obj.set_fullmesh_occupations(fermi_level)
+                    gcta_obj.full_kpoint_symmetry_classes()
+                    gcta_obj.reduce_fullmesh_occupations()
+                    gcta_obj.apply_reduced_mesh()
+                    gcta_obj.check_fullred_charge_neutrality()
+                    gcta_obj.check_fullred_magnetization_accuracy(scf_magnet)
+                
+                elif gcta_flavor.lower() == 'afl_fullred':
+                    fermi_level = gcta_obj.fullmesh_fermi_level()
+                    gcta_obj.set_fullmesh_occupations(fermi_level)
+                    gcta_obj.full_kpoint_symmetry_classes()
+                    gcta_obj.reduce_fullmesh_occupations()
+                    gcta_obj.apply_reduced_mesh()
+                    gcta_obj.check_fullred_charge_neutrality()
+                
                 elif gcta_flavor.lower() == 'nscf':
                     if isinstance(gcta_dependency,Pw2qmcpack):
                         filepath = gcta_obj.traceback_dependency(gcta_dependency, Pwscf, levels = 1)
@@ -897,7 +1216,7 @@ class Qmcpack(Simulation):
                     else:
                         gcta_obj.error('Reading the Fermi level for this workflow ({}) is not yet implemented.'.format(gcta_dependency.__class__.__name__))
                     #end if
-
+                
                 elif gcta_flavor.lower() == 'scf':
                     if isinstance(gcta_dependency,Pw2qmcpack):
                         filepath = gcta_obj.traceback_dependency(gcta_dependency, Pwscf, levels = 2)
@@ -905,17 +1224,18 @@ class Qmcpack(Simulation):
                     else:
                         gcta_obj.error('Reading the Fermi level for this workflow ({}) is not yet implemented.'.format(gcta_dependency.__class__.__name__))
                     #end if
-
+                
                 else:
                     gcta_obj.error('GCTA type {} is not recognized.'.format(gcta_flavor))
-                # === Finished determining the Fermi level ===
+                #end if
 
                 # Set the twist occupations based on the user-requested Fermi level
-                gcta_obj.set_gcta_occupations(fermi_level)
+                if gcta_flavor.lower() in ['afl', 'safl', 'scf', 'nscf']:
+                    gcta_obj.set_gcta_occupations(fermi_level)
+                    gcta_obj.check_charge_neutrality()
+                    gcta_obj.check_magnetization_accuracy(scf_magnet)
+                #end if
 
-                # Final checks and report
-                gcta_obj.check_charge_neutrality()
-                gcta_obj.check_magnetization_accuracy(scf_magnet)
                 gcta_obj.write_gcta_report(gcta_locdir, fermi_level, scf_magnet)
 
                 # The final GCTA occupations are deepcopied to the Qmcpack instance
