@@ -581,6 +581,31 @@ class GCTA(DevBase):
         self.gcta2conv = gcta2conv
     #end def gcta_converter_kmapping
 
+    def apply_reduced_mesh_to_qmc_state(self, qmc):
+        """
+        Push the reduced fullred twist mesh into the live Qmcpack object state.
+        This updates both the GCTA system and the QMC object's system so that
+        later stages (write_prep, twist bundling, reports) see the reduced twists.
+        """
+        s = qmc.system.structure
+        kaxes = s.kaxes
+    
+        # reduced k-points are stored in unit coordinates
+        kpts_abs = np.dot(self.reduced_kpts, kaxes)
+    
+        # update live QMC structure
+        s.kpoints = np.array(kpts_abs, dtype=float)
+        s.kweights = np.array(self.reduced_weights, dtype=float)
+    
+        # keep GCTA's copy in sync too
+        self.system.structure.kpoints = np.array(kpts_abs, dtype=float)
+        self.system.structure.kweights = np.array(self.reduced_weights, dtype=float)
+    
+        # update occupations on both objects
+        qmc.nelecs_at_twist = [list(x) for x in self.reduced_occ]
+        self.nelecs_at_twist = [list(x) for x in self.reduced_occ]
+    #end def apply_reduced_mesh_to_qmc_state
+
     @staticmethod
     def traceback_dependency(dependency, cls, levels = 1):
         '''
@@ -1197,7 +1222,7 @@ class Qmcpack(Simulation):
                     gcta_obj.set_fullmesh_occupations(fermi_level)
                     gcta_obj.full_kpoint_symmetry_classes()
                     gcta_obj.reduce_fullmesh_occupations()
-                    gcta_obj.apply_reduced_mesh()
+                    gcta_obj.apply_reduced_mesh_to_qmc_state(self)
                     gcta_obj.check_fullred_charge_neutrality()
                     gcta_obj.check_fullred_magnetization_accuracy(scf_magnet)
                 
@@ -1206,7 +1231,7 @@ class Qmcpack(Simulation):
                     gcta_obj.set_fullmesh_occupations(fermi_level)
                     gcta_obj.full_kpoint_symmetry_classes()
                     gcta_obj.reduce_fullmesh_occupations()
-                    gcta_obj.apply_reduced_mesh()
+                    gcta_obj.apply_reduced_mesh_to_qmc_state(self)
                     gcta_obj.check_fullred_charge_neutrality()
                 
                 elif gcta_flavor.lower() == 'nscf':
