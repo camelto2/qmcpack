@@ -77,13 +77,13 @@ if performed_runs:
         start_force = pa.tot_forces[0]
         max_force   = pa.tot_forces.max()
         ncycles     = len(pa.tot_forces)
-        print('  {0:10}  {1:10}     {2:10}  {3:8}'.format(kgrid,start_force,max_force,ncycles))
+        print(f'  {kgrid:10}  {start_force:10}     {max_force:10}  {ncycles:8}')
     #end for
     print()
     print()
     print('The final structure is:')
     print()
-    print(pa.structures.list()[-1].positions)
+    print(list(pa.structures.values())[-1].positions)
 #end if
 
 

@@ -1,5 +1,5 @@
 #! /usr/bin/env python3
-from nexus import settings,job,run_project,obj
+from nexus import settings,job,run_project
 from nexus import generate_physical_system
 from nexus import generate_pwscf, generate_hp
 
@@ -41,7 +41,7 @@ for step in range(num_steps):
 
     scf = generate_pwscf(
         identifier   = 'scf',
-        path         = 'diamond/scf_step_{}'.format(step),
+        path         = f'diamond/scf_step_{step}',
         job          = job(cores=16,app='pw.x'),
         input_type   = 'generic',
         calculation  = 'scf',
@@ -55,7 +55,7 @@ for step in range(num_steps):
         nogamma      = True,
         hubbard      = hubbard,
         dependencies = hubbard_result
-    )
+        )
     scf.show_input()
     sims.append(scf)
 
@@ -65,9 +65,9 @@ for step in range(num_steps):
         nq3          = 2,
         lmin         = 0,
         job          = job(cores=16,app='hp.x'),
-        path         = 'diamond/scf_step_{}'.format(step),
+        path         = f'diamond/scf_step_{step}',
         dependencies = (sims[-1], 'other')
-    )
+        )
     sims.append(hp)
 
 run_project()

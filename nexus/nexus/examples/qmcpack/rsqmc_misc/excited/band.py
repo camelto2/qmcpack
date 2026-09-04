@@ -3,9 +3,8 @@
 from nexus import settings,job,run_project
 from nexus import generate_physical_system
 from nexus import generate_pwscf
-from nexus import generate_pw2qmcpack
-from nexus import generate_qmcpack,vmc
-from nexus.structure import *
+
+from nexus.structure import get_primitive_cell, get_kpath
 
 settings(
     pseudo_dir    = '../../pseudopotentials',
@@ -89,6 +88,6 @@ if band.finished:
     p = PwscfAnalyzer(band)
     p.analyze()
     p.plot_bandstructure()
-    print("VBM: {0}".format(p.bands.vbm))
-    print("CBM: {0}".format(p.bands.cbm))
+    print(f"VBM: {p.bands.vbm}")
+    print(f"CBM: {p.bands.cbm}")
 #end if
