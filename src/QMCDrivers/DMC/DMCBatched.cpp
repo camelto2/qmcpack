@@ -33,24 +33,13 @@
 #include "TauParams.hpp"
 #include "WalkerLogManager.h"
 #include "CPU/math.hpp"
-#include "QMCHamiltonians/NonLocalTOperator.h"
+#include "DMCContextForSteps.h"
 
 namespace qmcplusplus
 {
 using std::placeholders::_1;
 using WP       = WalkerProperties::Indexes;
 using PsiValue = TrialWaveFunction::PsiValue;
-
-class DMCBatched::DMCContextForSteps : public ContextForSteps
-{
-public:
-  DMCContextForSteps(RandomBase<FullPrecRealType>& random_gen, NonLocalTOperator&& non_local_ops)
-      : ContextForSteps(random_gen), non_local_ops(non_local_ops)
-  {}
-
-  ///non local operator
-  NonLocalTOperator non_local_ops;
-};
 
 /** Constructor maintains proper ownership of input parameters
  *
@@ -153,7 +142,7 @@ void DMCBatched::advanceWalkers(const StateForThread& sft,
     ScopedTimer pbyp_local_timer(timers.movepbyp_timer);
     for (int ig = 0; ig < pset_leader.groups(); ++ig)
     {
-      TauParams<RealType, CT> taus(sft.qmcdrv_input.get_tau(), sft.population.get_ptclgrp_inv_mass()[ig],
+      TauParams<RealType, CT> taus(sft.qmcdrv_input.get_tau(), 1.0 / pset_leader.get_mass_by_group()[ig],
                                    sft.qmcdrv_input.get_spin_mass());
 
       twf_dispatcher.flex_prepareGroup(walker_twfs, walker_elecs, ig);
@@ -291,7 +280,7 @@ void DMCBatched::advanceWalkers(const StateForThread& sft,
 
     // evaluate non-physical hamiltonian elements
     for (int iw = 0; iw < walkers.size(); ++iw)
-      walker_hamiltonians[iw].auxHevaluate(walker_elecs[iw], walkers[iw]);
+      walker_hamiltonians[iw].auxHevaluate(walker_twfs[iw], walker_elecs[iw], walkers[iw]);
 
     // save properties into walker
     for (int iw = 0; iw < walkers.size(); ++iw)
@@ -319,11 +308,10 @@ void DMCBatched::advanceWalkers(const StateForThread& sft,
     moved_nonlocal_walker_elecs.reserve(num_walkers);
     moved_nonlocal_walker_twfs.reserve(num_walkers);
 
-    for (int iw = 0; iw < walkers.size(); ++iw)
-    {
-      walker_non_local_moves_accepted[iw] =
-          walker_hamiltonians[iw].makeNonLocalMoves(walker_elecs[iw], step_context.non_local_ops);
+    walker_non_local_moves_accepted = ham_dispatcher.flex_makeNonLocalMoves(walker_hamiltonians, walker_twfs,
+                                                                            walker_elecs, step_context.non_local_ops);
 
+    for (int iw = 0; iw < walkers.size(); ++iw)
       if (walker_non_local_moves_accepted[iw] > 0)
       {
         crowd.incNonlocalAccept(walker_non_local_moves_accepted[iw]);
@@ -331,7 +319,6 @@ void DMCBatched::advanceWalkers(const StateForThread& sft,
         moved_nonlocal_walker_elecs.push_back(walker_elecs[iw]);
         moved_nonlocal_walker_twfs.push_back(walker_twfs[iw]);
       }
-    }
 
     if (moved_nonlocal_walkers.size())
     {
@@ -377,7 +364,7 @@ void DMCBatched::runDMCStep(int crowd_id,
   const IndexType step = sft.step;
   // Are we entering the the last step of a block to recompute at?
   const bool recompute_this_step  = (sft.is_recomputing_block && (step + 1) == sft.steps_per_block);
-  const bool accumulate_this_step = true;
+  const bool accumulate_this_step = (step % sft.qmcdrv_input.get_estimator_measurement_period() == 0);
   const bool spin_move            = sft.population.get_golden_electrons().isSpinor();
   if (spin_move)
     advanceWalkers<CoordsType::POS_SPIN>(sft, crowd, timers, dmc_timers, *context_for_steps[crowd_id],
@@ -450,7 +437,7 @@ void DMCBatched::process(xmlNodePtr node)
     measureImbalance("Startup");
 }
 
-bool DMCBatched::run()
+void DMCBatched::run()
 {
   IndexType num_blocks = qmcdriver_input_.get_max_blocks();
 
@@ -560,7 +547,7 @@ bool DMCBatched::run()
   wlog_manager.stopRun();
   estimator_manager_->stopDriverRun();
 
-  return finalize(num_blocks, true);
+  finalize(num_blocks, true);
 }
 
 RefVector<QMCDriverNew::ContextForSteps> DMCBatched::getContextForStepsRefs() const

@@ -10,6 +10,10 @@
 #// File created by: Ye Luo, yeluo@anl.gov, Argonne National Laboratory
 #//////////////////////////////////////////////////////////////////////////////////////
 
+add_library(minimal_wavefunction_pool MinimalWaveFunctionPool.cpp)
+target_include_directories(minimal_wavefunction_pool PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}")
+target_link_libraries(minimal_wavefunction_pool PUBLIC qmcwfs)
+
 set(SRC_DIR wavefunction)
 set(UTEST_DIR ${CMAKE_CURRENT_BINARY_DIR})
 #SET(UTEST_HDF_INPUT ${qmcpack_SOURCE_DIR}/tests/solids/monoO_1x1x1_pp/pwscf.pwscf.h5)
@@ -104,7 +108,11 @@ set(TRIALWF_SRC
     test_wavefunction_pool.cpp
     test_example_he.cpp
     test_lattice_gaussian.cpp
+    test_twf_fastderiv_raii.cpp
     test_TWFGrads.cpp)
+if(ENABLE_DEEPQMC_INFERENCE)
+  set(TRIALWF_SRC ${TRIALWF_SRC} test_deepqmc_wfc.cpp)
+endif()
 
 set(SPOSET_SRC
     test_spo_collection_input_spline.cpp
@@ -171,6 +179,8 @@ if(ENABLE_OFFLOAD)
   set(DETERMINANT_SRC ${DETERMINANT_SRC} test_DiracMatrixInverterOMPTarget.cpp)
 endif(ENABLE_OFFLOAD)
 
+set(CATEGORY_MPI sposet)
+
 foreach(CATEGORY common trialwf sposet jastrow determinant)
   set(UTEST_EXE test_${SRC_DIR}_${CATEGORY})
   set(UTEST_NAME deterministic-unit_${UTEST_EXE})
@@ -185,14 +195,42 @@ foreach(CATEGORY common trialwf sposet jastrow determinant)
     platform_runtime
     sposets_for_testing
     utilities_for_test
-    container_testing)
+    container_testing
+    minimal_particle_pool
+    minimal_wavefunction_pool)
   if(USE_OBJECT_TARGET)
     target_link_libraries(${UTEST_EXE} qmcparticle qmcparticle_omptarget qmcwfs_omptarget spline2 spline2_omptarget qmcutil platform_omptarget_LA)
   endif()
 
   add_unit_test(${UTEST_NAME} 1 1 $<TARGET_FILE:${UTEST_EXE}>)
   set_tests_properties(${UTEST_NAME} PROPERTIES WORKING_DIRECTORY ${UTEST_DIR})
+
+  if(CATEGORY IN_LIST CATEGORY_MPI AND HAVE_MPI)
+    foreach(NUM_RANKS 2 3 6)
+      set(UTEST_NAME_MPI ${UTEST_NAME}-r${NUM_RANKS})
+      add_unit_test(${UTEST_NAME_MPI} ${NUM_RANKS} 1 $<TARGET_FILE:${UTEST_EXE}>)
+      set_tests_properties(${UTEST_NAME_MPI} PROPERTIES WORKING_DIRECTORY ${UTEST_DIR})
+    endforeach()
+  endif()
+
 endforeach()
+
+if(ENABLE_DEEPQMC_INFERENCE AND BUILD_MICRO_BENCHMARKS)
+  set(UTEST_EXE benchmark_deepqmc_wfc)
+  add_executable(${UTEST_EXE} benchmark_deepqmc_wfc.cpp)
+  target_link_libraries(
+    ${UTEST_EXE}
+    catch_main
+    qmcwfs
+    platform_LA
+    platform_runtime
+    utilities_for_test
+    container_testing)
+  if(USE_OBJECT_TARGET)
+    target_link_libraries(${UTEST_EXE} qmcutil qmcparticle qmcparticle_omptarget qmcwfs_omptarget platform_omptarget_LA)
+  endif()
+  target_include_directories(${UTEST_EXE} PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/..")
+endif()
 
 if((ENABLE_CUDA OR ENABLE_SYCL) AND BUILD_MICRO_BENCHMARKS)
   set(UTEST_EXE benchmark_diracmatrixcompute)

@@ -8,17 +8,17 @@
 //
 // File created by: Peter Doak, doakpw@ornl.gov, Oak Ridge National Laboratory
 //////////////////////////////////////////////////////////////////////////////////////
-
-#include "catch.hpp"
+#include <catch2/catch_test_macros.hpp>
+#include "Utilities/for_testing/Catch2Approx.h"
 
 #include "Message/Communicate.h"
 #include "QMCDrivers/VMC/VMCDriverInput.h"
 #include "QMCDrivers/VMC/VMCBatched.h"
 #include "QMCDrivers/tests/ValidQMCInputSections.h"
 #include "EstimatorInputDelegates.h"
-#include "Particle/tests/MinimalParticlePool.h"
-#include "QMCWaveFunctions/tests/MinimalWaveFunctionPool.h"
-#include "QMCHamiltonians/tests/MinimalHamiltonianPool.h"
+#include <MinimalParticlePool.h>
+#include <MinimalWaveFunctionPool.h>
+#include <MinimalHamiltonianPool.h>
 #include "Concurrency/Info.hpp"
 #include "Concurrency/UtilityFunctions.hpp"
 #include "Particle/SampleStack.h"

@@ -9,9 +9,8 @@
 //
 // File created by: Mark Dewing, markdewing@gmail.com, University of Illinois at Urbana-Champaign
 //////////////////////////////////////////////////////////////////////////////////////
-
-
-#include "catch.hpp"
+#include <catch2/catch_test_macros.hpp>
+#include "Utilities/for_testing/Catch2Approx.h"
 
 #include "OhmmsData/Libxml2Doc.h"
 #include "Particle/ParticleSet.h"
@@ -24,8 +23,8 @@
 #include "TWFGrads.hpp"
 #include "Utilities/RuntimeOptions.h"
 #include <ResourceCollection.h>
-#include "Particle/tests/MinimalParticlePool.h"
-#include "QMCWaveFunctions/tests/MinimalWaveFunctionPool.h"
+#include <MinimalParticlePool.h>
+#include <MinimalWaveFunctionPool.h>
 #include "Utilities/ProjectData.h"
 
 namespace qmcplusplus
@@ -61,7 +60,7 @@ TEST_CASE("TrialWaveFunction_diamondC_1x1x1", "[wavefunction]")
   lattice.reset();
 
   ParticleSetPool ptcl = ParticleSetPool(c);
-  ptcl.setSimulationCell(lattice);
+  ptcl.createSimulationCellByLattice(lattice);
   auto ions_uptr = std::make_unique<ParticleSet>(ptcl.getSimulationCell(), kind_selected);
   auto elec_uptr = std::make_unique<ParticleSet>(ptcl.getSimulationCell(), kind_selected);
   ParticleSet& ions_(*ions_uptr);
@@ -105,8 +104,7 @@ TEST_CASE("TrialWaveFunction_diamondC_1x1x1", "[wavefunction]")
 )";
 
   Libxml2Document doc;
-  bool okay = doc.parseFromString(spo_xml);
-  REQUIRE(okay);
+  REQUIRE(doc.parseFromString(spo_xml));
 
   xmlNodePtr spo_root = doc.getRoot();
   xmlNodePtr ein1     = xmlFirstElementChild(spo_root);
@@ -136,8 +134,7 @@ TEST_CASE("TrialWaveFunction_diamondC_1x1x1", "[wavefunction]")
 </tmp>
 )";
   Libxml2Document doc_jas;
-  okay = doc.parseFromString(jas_input);
-  REQUIRE(okay);
+  REQUIRE(doc.parseFromString(jas_input));
 
   xmlNodePtr jas_root = doc.getRoot();
   xmlNodePtr jas1     = xmlFirstElementChild(jas_root);
@@ -376,15 +373,15 @@ TEST_CASE("TrialWaveFunction_diamondC_1x1x1", "[wavefunction]")
 }
 
 #if defined(QMC_COMPLEX) && !defined(ENABLE_CUDA)
-/** This test is intended to catch a bug that was found in the batched code 
-  * when using spinors and jastrows. The issue came about because WFCs that don't 
+/** This test is intended to catch a bug that was found in the batched code
+  * when using spinors and jastrows. The issue came about because WFCs that don't
   * contribute to the spin gradient end up going back to the normal mw_evalGrad
   * In the TWF::mw_evalGrad, it uses TWFGrads to accumulate the spin gradient and normal gradients
-  * using a returned variable grads. The individual components are stored in grads_z and the update over the 
-  * component loop is grads += grads_z. Internally to the WFCs, the position gradients get zeroed and computed. 
-  * However, for the spins, if they weren't being touched then the spin part is left untouched. But that means that if 
-  * grads += grads_z didn't account for zeroing out the spin part for that component, then it acctually accumulates the previous ones. 
-  * This test fails with the buggy code, and now makes sure TWF has the right behavior. 
+  * using a returned variable grads. The individual components are stored in grads_z and the update over the
+  * component loop is grads += grads_z. Internally to the WFCs, the position gradients get zeroed and computed.
+  * However, for the spins, if they weren't being touched then the spin part is left untouched. But that means that if
+  * grads += grads_z didn't account for zeroing out the spin part for that component, then it acctually accumulates the previous ones.
+  * This test fails with the buggy code, and now makes sure TWF has the right behavior.
   }
   */
 TEST_CASE("TrialWaveFunction::mw_evalGrad for spinors", "[wavefunction]")
@@ -396,8 +393,8 @@ TEST_CASE("TrialWaveFunction::mw_evalGrad for spinors", "[wavefunction]")
   auto wavefunction_pool =
       MinimalWaveFunctionPool::make_O2_spinor(test_project.getRuntimeOptions(), comm, particle_pool);
 
-  auto& elec    = *(particle_pool).getParticleSet("e");
-  auto& psi_noJ = *(wavefunction_pool).getWaveFunction("wavefunction");
+  auto& elec = *(particle_pool).getParticleSet("e");
+  TrialWaveFunction& psi_noJ(wavefunction_pool.getWaveFunction().value());
 
   elec.update();
   auto logpsi = psi_noJ.evaluateLog(elec);
@@ -414,7 +411,7 @@ TEST_CASE("TrialWaveFunction::mw_evalGrad for spinors", "[wavefunction]")
   // Now tack on a jastrow to make sure it is still the same since jastrows don't contribute
   auto wavefunction_pool2 =
       MinimalWaveFunctionPool::make_O2_spinor_J12(test_project.getRuntimeOptions(), comm, particle_pool);
-  auto& psi = *(wavefunction_pool2).getWaveFunction("wavefunction");
+  TrialWaveFunction& psi = wavefunction_pool2.getWaveFunction().value();
 
   // make clones
   ParticleSet elec_clone(elec);

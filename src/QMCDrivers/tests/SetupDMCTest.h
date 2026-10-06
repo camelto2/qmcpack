@@ -12,9 +12,9 @@
 #ifndef QMCPLUSPLUS_SETUP_DMCTEST_H
 #define QMCPLUSPLUS_SETUP_DMCTEST_H
 
-#include "Particle/tests/MinimalParticlePool.h"
-#include "QMCWaveFunctions/tests/MinimalWaveFunctionPool.h"
-#include "QMCHamiltonians/tests/MinimalHamiltonianPool.h"
+#include <MinimalParticlePool.h>
+#include <MinimalWaveFunctionPool.h>
+#include <MinimalHamiltonianPool.h>
 #include "Concurrency/Info.hpp"
 #include "Concurrency/UtilityFunctions.hpp"
 #include "QMCDrivers/DMC/DMCBatched.h"
@@ -50,8 +50,8 @@ public:
             nullptr,
             std::move(dmc_input_copy),
             walker_confs,
-            MCPopulation(comm->size(), comm->rank(), particle_pool->getParticleSet("e"),
-                         wavefunction_pool->getPrimary(), hamiltonian_pool->getPrimary()),
+            MCPopulation(comm->size(), comm->rank(), *particle_pool->getParticleSet("e"),
+                         wavefunction_pool->getWaveFunction().value(), hamiltonian_pool->getHamiltonian().value()),
             rng_pool.getRngRefs(),
             comm};
   }

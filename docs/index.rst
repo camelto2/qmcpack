@@ -18,6 +18,7 @@ User's Guide and Developer's Manual
 
    introduction
    features
+   citing
    performance_portable
    installation
    running
@@ -49,6 +50,7 @@ User's Guide and Developer's Manual
    running_docker
    design_features
    developing
+   bibliography
    appendices
 
 

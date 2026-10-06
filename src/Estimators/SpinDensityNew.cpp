@@ -21,7 +21,7 @@
 namespace qmcplusplus
 {
 SpinDensityNew::SpinDensityNew(SpinDensityInput&& input, const SpeciesSet& species, DataLocality dl)
-    : OperatorEstBase(dl, input.get_name(), input.get_type()),
+    : OperatorEstBase(dl, input.get_name(), std::string{SpinDensityInput::type_tag}),
       input_(std::move(input)),
       species_(species),
       species_size_(getSpeciesSize(species))
@@ -48,7 +48,7 @@ SpinDensityNew::SpinDensityNew(SpinDensityInput&& input,
                                const Lattice& lattice,
                                const SpeciesSet& species,
                                const DataLocality dl)
-    : OperatorEstBase(dl, input.get_name(), input.get_type()),
+    : OperatorEstBase(dl, input.get_name(), std::string{SpinDensityInput::type_tag}),
       input_(std::move(input)),
       species_(species),
       species_size_(getSpeciesSize(species)),
@@ -100,7 +100,7 @@ std::unique_ptr<OperatorEstBase> SpinDensityNew::spawnCrowdClone() const
 
 void SpinDensityNew::startBlock(int steps)
 {
-  if (data_locality_ == DataLocality::rank)
+  if (data_locality_ == DataLocality::queue)
   {
     int num_particles = std::accumulate(species_size_.begin(), species_size_.end(), 0);
     size_t data_size  = num_particles * steps * 2;

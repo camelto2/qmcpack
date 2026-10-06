@@ -33,8 +33,10 @@ set(DRIVER_TEST_SRC
     test_LMYEngine.cpp
     test_vmc_driver.cpp
     test_dmc_driver.cpp
+    test_PsiHamNamePairReader.cpp
     test_SimpleFixedNodeBranch.cpp
-    test_QMCDriverFactory.cpp)
+    test_QMCDriverFactory.cpp
+    test_WalkerLogManager.cpp)
 
 # legacy driver mpi, not tested in a meaningful way since the standard unit test is
 # just one rank with mpi.
@@ -43,7 +45,7 @@ if(HAVE_MPI)
 endif()
 add_executable(${UTEST_EXE} ${DRIVER_TEST_SRC})
 
-target_link_libraries(${UTEST_EXE} catch_main qmcdriver)
+target_link_libraries(${UTEST_EXE} catch_main qmcdriver minimal_test_pools)
 if(USE_OBJECT_TARGET)
   target_link_libraries(
     ${UTEST_EXE}
@@ -87,7 +89,7 @@ set(DRIVER_TEST_SRC
     test_Eigensolver.cpp
     test_WFOptDriverInput.cpp)
 add_executable(${UTEST_EXE} ${DRIVER_TEST_SRC})
-target_link_libraries(${UTEST_EXE} catch_main qmcdriver)
+target_link_libraries(${UTEST_EXE} catch_main qmcdriver minimal_test_pools)
 if(USE_OBJECT_TARGET)
   target_link_libraries(
     ${UTEST_EXE}
@@ -111,7 +113,7 @@ if(HAVE_MPI)
   #this is dependent on the directory creation and sym linking of earlier driver tests
   set(DRIVER_TEST_SRC SetupPools.cpp test_WalkerControl.cpp test_QMCDriverNew.cpp)
   add_executable(${UTEST_EXE} ${DRIVER_TEST_SRC})
-  target_link_libraries(${UTEST_EXE} catch_main qmcdriver)
+  target_link_libraries(${UTEST_EXE} catch_main qmcdriver minimal_test_pools)
   if(USE_OBJECT_TARGET)
     target_link_libraries(
       ${UTEST_EXE}
@@ -120,6 +122,8 @@ if(HAVE_MPI)
       qmcwfs
       qmcparticle
       qmcwfs_omptarget
+      spline2
+      spline2_omptarget
       qmcparticle_omptarget
       qmcutil
       platform_omptarget_LA)

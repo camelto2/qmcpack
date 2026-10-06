@@ -18,6 +18,7 @@
 
 #include "EstimatorManagerNew.h"
 #include "EstimatorInputDelegates.h"
+#include "PairCorrelationInput.h"
 #include "SpinDensityNew.h"
 #include "MomentumDistribution.h"
 #include "OneBodyDensityMatrices.h"
@@ -31,6 +32,7 @@
 #include "Message/CommUtilities.h"
 #include <Pools/PooledData.h>
 #include "Estimators/StructureFactorEstimator.h"
+#include "PairCorrelationEstimator.h"
 #include "Estimators/LocalEnergyEstimator.h"
 #include "Estimators/LocalEnergyOnlyEstimator.h"
 #include "Estimators/RMCLocalEnergyEstimator.h"
@@ -111,7 +113,14 @@ void EstimatorManagerNew::constructEstimators(EstimatorManagerInput&& emi,
           createEstimator<MagnetizationDensityInput>(est_input, pset.getLattice()) ||
           createEstimator<PerParticleHamiltonianLoggerInput>(est_input, my_comm_->rank()) ||
           createEstimator<EnergyDensityInput>(est_input, pset_pool) ||
-          createEstimator<StructureFactorInput>(est_input, pset_pool)))
+          createEstimator<StructureFactorInput>(est_input, pset_pool) ||
+          // Estimators are preferred not modifying pset, twf, H during the constructor call
+          // PairCorrelation ported from legacy adds a distance table (DT) in pset.
+          // Thus, we remove const, namely altering pset.
+          // A potential clean solution is to create the needed DT inside the estimator
+          // if pset doesn't have one already. In this way, there will be no side effect
+          // when PairCorrelation is not used in the next QMC driver section.
+          createEstimator<PairCorrelationInput>(est_input, pset_pool, const_cast<ParticleSet&>(pset))))
       throw UniformCommunicateError(std::string(error_tag_) +
                                     "cannot construct an estimator from estimator input object.");
 
@@ -245,7 +254,12 @@ void EstimatorManagerNew::startDriverRun()
 
 void EstimatorManagerNew::stopDriverRun() { h_file.reset(); }
 
-void EstimatorManagerNew::startBlock(int steps) { block_timer_.restart(); }
+void EstimatorManagerNew::startBlock(int steps)
+{
+  block_timer_.restart();
+  for (auto& op_est : operator_ests_)
+    op_est->startBlock(steps);
+}
 
 void EstimatorManagerNew::stopBlock(unsigned long accept, unsigned long reject, FullPrecRealType block_weight)
 {
@@ -258,6 +272,10 @@ void EstimatorManagerNew::stopBlock(unsigned long accept, unsigned long reject, 
   makeBlockAverages(accept, reject);
   reduceOperatorEstimators();
   writeOperatorEstimators();
+  // This is an entry point for rank level estimators to do one last
+  // thing before being zerod
+  for (auto& op_est : operator_ests_)
+    op_est->stopBlock();
   zeroOperatorEstimators();
   // intentionally put after all the estimator I/O
   PropertyCache[cpuInd] = block_timer_.elapsed();
@@ -416,8 +434,8 @@ void EstimatorManagerNew::reduceOperatorEstimators()
                               0);
 #else
       operator_recv_buffer = operator_send_buffer;
+      operator_recv_buffer.rewind();
 #endif
-
       // This is a crucial step where summed over weighted observable is normalized by the total weight.  For correctness this should be done
       // only after the full weighted sum is done.
       // i.e.  (1 / Sum(w_1 + ... + w_n)) * (w_1 * S_1 + ... + w_n * S_n) != (1/w_1) * w_1 * S_1 + ... + (1/w_n) * w_n * S_n
@@ -425,6 +443,8 @@ void EstimatorManagerNew::reduceOperatorEstimators()
       // Assumptions lead rank is 0, true for Ensembles?
       if (my_comm_->rank() == 0)
       {
+        assert(estimator.getFullDataSize() < operator_recv_buffer.size());
+        assert(operator_recv_buffer.current() == 0);
         estimator.unpackData(operator_recv_buffer);
         RealType reduced_walker_weights = 0.0;
         operator_recv_buffer.get(reduced_walker_weights);
