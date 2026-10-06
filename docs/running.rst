@@ -209,7 +209,7 @@ When there are more MPI ranks than GPUs, the primary GPU will be assigned in the
 Performance portable implementation assigns GPUs to equal amount of blocks of MPI ranks.
 MPI ranks within a block are assigned the same GPU as their primary GPU.
 Legacy implementation assigns GPUs to MPI ranks in a round-robin order.
-It is guaranteed that MPI ranks are distributed among GPUs as evenly as possbile.
+It is guaranteed that MPI ranks are distributed among GPUs as evenly as possible.
 Currently, for medium to large runs, 1 MPI task should be used per GPU per node.
 For very smaller system sizes, use of multiple MPI tasks per GPU might yield improved performance.
 
@@ -250,5 +250,3 @@ Coarsening the grids of the B-splines representation (by decreasing
 the value of the mesh factor in the input file) can also lower the memory
 usage, at the expense (risk) of obtaining less accurate results. Proceed
 with caution if this option has to be considered.
-
-.. bibliography:: /bibs/running.bib
