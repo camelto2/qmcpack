@@ -112,6 +112,11 @@ QMCCostFunctionBase::Return_rt QMCCostFunctionBase::fillHamVec(std::vector<Retur
 void QMCCostFunctionBase::calcOvlParmVec(const std::vector<Return_rt>& param, std::vector<Return_rt>& ovlParmVec)
 { throw std::runtime_error("Need to implement calcOvlParmVec"); }
 
+void QMCCostFunctionBase::constructDerivativeMatrices(Vector<Return_rt>& ham, Matrix<Return_rt>& derivMat, Matrix<Return_rt>& hamDerivMat)
+{
+  throw std::runtime_error("Need to implement constructDerivativeMatrices");
+}
+
 void QMCCostFunctionBase::checkConfigurationsSR(EngineHandle& handle)
 { throw std::runtime_error("Need to implement checkConfigurationsSR"); }
 

@@ -115,6 +115,9 @@ private:
   // simple stochastic reconfig
   void stochastic_reconfiguration_conjugate_gradient();
 
+  // straighforward implementation of PII from https://doi.org/10.48550/arXiv.2507.10835
+  bool projected_inverse_iteration();
+
   // perform optimization using a gradient descent algorithm
   void descent_run();
 
@@ -198,6 +201,10 @@ private:
   RealType sr_regularization;
   /// tolerance for CG solution in SR
   RealType sr_tolerance;
+
+  RealType pii_regularization;
+  RealType pii_spectral_shift;
+  RealType pii_tau; 
 
   // ------------------------------------
   // Parameters in this struct are used by one or more of the adaptive LM, descent, or hybrid optimizers

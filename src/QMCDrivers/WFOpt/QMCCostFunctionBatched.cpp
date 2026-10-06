@@ -1060,4 +1060,61 @@ void QMCCostFunctionBatched::calcOvlParmVec(const std::vector<Return_rt>& param,
   }
   myComm->allreduce(ovlParmVec);
 }
+
+void QMCCostFunctionBatched::constructDerivativeMatrices(Vector<Return_rt>& ham,
+                                                         Matrix<Return_rt>& derivMat,
+                                                         Matrix<Return_rt>& hamDerivMat)
+{
+  ScopedTimer tmp_timer(fill_timer_);
+
+  const int num_params = getNumParams();
+  ham.resize(rank_local_num_samples_);
+  derivMat.resize(rank_local_num_samples_, num_params);
+  hamDerivMat.resize(rank_local_num_samples_, num_params);
+
+  Return_rt eavg       = SumValue[SUM_E_WGT] / SumValue[SUM_WGT];
+  std::vector<Return_t> derivAvg(num_params, 0.0);
+  Return_rt wgtinv = 1.0 / SumValue[SUM_WGT];
+
+  for (int iw = 0; iw < rank_local_num_samples_; iw++)
+  {
+    const Return_rt* restrict saved = RecordsOnNode_[iw];
+    Return_rt weight                = saved[REWEIGHT] * wgtinv;
+    const Return_t* Dsaved          = DerivRecords_[iw];
+    for (int pm = 0; pm < num_params; pm++)
+      derivAvg[pm] += Dsaved[pm] * weight;
+  }
+  myComm->allreduce(derivAvg);
+
+  for (int iw = 0; iw < rank_local_num_samples_; iw++)
+  {
+    const Return_rt* restrict saved = RecordsOnNode_[iw];
+    const Return_t* Dsaved          = DerivRecords_[iw];
+    const Return_rt* HDsaved        = HDerivRecords_[iw];
+    Return_rt eloc                  = saved[ENERGY_NEW];
+    Return_rt weight                = saved[REWEIGHT] * wgtinv;
+
+    size_t opt_num_crowds = walkers_per_crowd_.size();
+    std::vector<int> params_per_crowd(opt_num_crowds + 1);
+    FairDivide(getNumParams(), opt_num_crowds, params_per_crowd);
+
+    auto build = [](int crowd_id, std::vector<int>& crowd_ranges, int num_params, int iw, const Return_t* Dsaved,
+                    const Return_rt* HDsaved, Return_rt weight, Return_rt eloc, 
+                    std::vector<Return_t>& derivAvg, Matrix<Return_rt>& derivMat, Matrix<Return_rt>& hamDerivMat)
+    {
+      int local_pm_start = crowd_ranges[crowd_id];
+      int local_pm_end   = crowd_ranges[crowd_id + 1];
+
+      for (int pm = local_pm_start; pm < local_pm_end; pm++)
+      {
+        derivMat(iw, pm)    = std::sqrt(weight) * std::real(Dsaved[pm] - derivAvg[pm]);
+        hamDerivMat(iw, pm) = std::sqrt(weight) * (HDsaved[pm] + eloc * derivMat(iw, pm));
+      }
+    };
+    ParallelExecutor<> crowd_tasks;
+    crowd_tasks(opt_num_crowds, build, params_per_crowd, num_params, iw, Dsaved, HDsaved, weight, eloc, derivAvg, derivMat, hamDerivMat);
+    ham[iw] = 2.0 * std::sqrt(weight) * (eloc - eavg);
+  }
+}
+
 } // namespace qmcplusplus

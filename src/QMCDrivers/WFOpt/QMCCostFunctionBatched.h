@@ -64,6 +64,7 @@ public:
   Return_rt fillOverlapHamiltonianMatrices(Matrix<Return_rt>& Left, Matrix<Return_rt>& Right) override;
   Return_rt fillHamVec(std::vector<Return_rt>& ham) override;
   void calcOvlParmVec(const std::vector<Return_rt>& param, std::vector<Return_rt>& ovlParmVec) override;
+  void constructDerivativeMatrices(Vector<Return_rt>& ham, Matrix<Return_rt>& derivMat, Matrix<Return_rt>& hamDerivMat) override;
 
 protected:
 

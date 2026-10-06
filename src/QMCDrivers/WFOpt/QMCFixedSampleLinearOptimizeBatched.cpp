@@ -1,4 +1,5 @@
 //////////////////////////////////////////////////////////////////////////////////////
+
 // This file is distributed under the University of Illinois/NCSA Open Source License.
 // See LICENSE file in top directory for details.
 //
@@ -34,6 +35,7 @@
 #include "Numerics/DeterminantOperators.h"
 #include "LinearMethod.h"
 #include <cassert>
+#include <ostream>
 #ifdef HAVE_LMY_ENGINE
 #include "formic/utils/matrix.h"
 #include "formic/utils/random.h"
@@ -86,6 +88,9 @@ QMCFixedSampleLinearOptimizeBatched::QMCFixedSampleLinearOptimizeBatched(
       sr_tau(0.01),
       sr_regularization(0.01),
       sr_tolerance(1e-6),
+      pii_regularization(0.01),
+      pii_spectral_shift(0.0),
+      pii_tau(0.01),
       MinMethod("OneShiftOnly"),
       do_output_matrices_csv_(false),
       do_output_matrices_hdf_(false),
@@ -119,6 +124,9 @@ QMCFixedSampleLinearOptimizeBatched::QMCFixedSampleLinearOptimizeBatched(
   m_param.add(sr_tau, "sr_tau");
   m_param.add(sr_regularization, "sr_regularization");
   m_param.add(sr_tolerance, "sr_tolerance");
+  m_param.add(pii_regularization, "pii_regularization");
+  m_param.add(pii_spectral_shift, "pii_spectral_shift");
+  m_param.add(pii_tau, "pii_tau");
   // options_LMY_
   m_param.add(options_LMY_.targetExcited, "options_LMY_.targetExcited");
   m_param.add(options_LMY_.block_lm, "options_LMY_.block_lm");
@@ -262,12 +270,14 @@ void QMCFixedSampleLinearOptimizeBatched::run()
   else if (options_LMY_.current_optimizer_type == OptimizerType::DESCENT)
     descent_run();
 #endif
-  else if (options_LMY_.current_optimizer_type == OptimizerType::ONESHIFTONLY)
-    one_shift_run();
+  if (options_LMY_.current_optimizer_type == OptimizerType::ONESHIFTONLY)
+    return one_shift_run();
   else if (options_LMY_.current_optimizer_type == OptimizerType::STOCHASTIC_RECONFIGURATION_CG)
-    stochastic_reconfiguration_conjugate_gradient();
+    return stochastic_reconfiguration_conjugate_gradient();
+  else if (options_LMY_.current_optimizer_type == OptimizerType::PROJECTED_INVERSE_ITERATION)
+    return projected_inverse_iteration();
   else
-    previous_linear_methods_run();
+    return previous_linear_methods_run();
 }
 
 void QMCFixedSampleLinearOptimizeBatched::test_run()
@@ -1929,6 +1939,172 @@ void QMCFixedSampleLinearOptimizeBatched::stochastic_reconfiguration_conjugate_g
 
   // return whether the cost function's report counter is positive
 
+}
+
+bool QMCFixedSampleLinearOptimizeBatched::projected_inverse_iteration()
+{
+  app_log() << std::endl
+            << "*****************************************************************************" << std::endl
+            << "                   Projected Inverse Iteration                               " << std::endl
+            << "*****************************************************************************" << std::endl;
+  // ensure the cost function is set to compute derivative vectors
+  optTarget->setneedGrads(true);
+
+  // generate samples and compute weights, local energies, and derivative vectors
+  // Note: this has a switch for checkConfigurations or checkConfigurationsSR to do stochastic reconfiguration
+  // The SR version avoids calculating the dhpsioverpsi terms and only does dlogpsi
+  start();
+
+  const int num_samples = optTarget->getNumSamples();
+  const int num_params  = optTarget->getNumParams();
+
+  std::vector<RealType> currentParams(num_params, 0.0);
+  for (int ip = 0; ip < num_params; ip++)
+    currentParams.at(ip) = std::real(optTarget->Params(ip));
+
+  const RealType initCost = optTarget->computedCost();
+
+  Vector<RealType> dp(num_params);
+  Vector<RealType> loc_ham;
+  Matrix<RealType> loc_deriv_mat;
+  Matrix<RealType> loc_ham_deriv_mat;
+
+  Vector<RealType> ham;
+  Matrix<RealType> derivMat;
+  Matrix<RealType> hamDerivMat;
+  {
+    ScopedTimer local(build_olv_ham_timer_);
+    Timer timer;
+    app_log() << std::endl
+              << "*****************************************************************************" << std::endl
+              << " calculating r, O, A from https://doi.org/10.48550/arXiv.2507.10835          " << std::endl
+              << "*****************************************************************************" << std::endl;
+    optTarget->constructDerivativeMatrices(loc_ham, loc_deriv_mat, loc_ham_deriv_mat);
+    app_log() << "  Execution time (construct local matrices) = " << std::setprecision(4) << timer.elapsed() << std::endl;
+  }
+
+  {
+    Timer timer;
+    if (is_manager())
+    {
+      ham.resize(num_samples);
+      derivMat.resize(num_samples, num_params);
+      hamDerivMat.resize(num_samples, num_params);
+
+      assert(ham.size() == myComm->size() * loc_ham.size());
+      assert(derivMat.size() == myComm->size() * loc_deriv_mat.size());
+      assert(hamDerivMat.size() == myComm->size() * loc_ham_deriv_mat.size());
+      std::copy(loc_ham.begin(), loc_ham.end(), ham.begin());
+      std::copy(loc_deriv_mat.begin(), loc_deriv_mat.end(), derivMat.begin());
+      std::copy(loc_ham_deriv_mat.begin(), loc_ham_deriv_mat.end(), hamDerivMat.begin());
+
+      for (int ir = 1; ir < myComm->size(); ir++)
+      {
+        std::vector<RealType> tmp(loc_ham.size());
+        myComm->recv(ir, ir, tmp);
+        std::copy(tmp.begin(), tmp.end(), ham.begin() + ir * tmp.size());
+
+        tmp.resize(loc_deriv_mat.size());
+        myComm->recv(ir, ir, tmp);
+        std::copy(tmp.begin(), tmp.end(), derivMat.begin() + ir * tmp.size());
+
+        myComm->recv(ir, ir, tmp);
+        std::copy(tmp.begin(), tmp.end(), hamDerivMat.begin() + ir * tmp.size());
+      }
+    }
+    else 
+    {
+      std::vector<RealType> tmp(loc_ham.size());
+      std::copy(loc_ham.begin(), loc_ham.end(), tmp.begin());
+      myComm->send(0, myComm->rank(), tmp);
+
+      tmp.resize(loc_deriv_mat.size());
+      std::copy(loc_deriv_mat.begin(), loc_deriv_mat.end(), tmp.begin());
+      myComm->send(0, myComm->rank(), tmp);
+
+      std::copy(loc_ham_deriv_mat.begin(), loc_ham_deriv_mat.end(), tmp.begin());
+      myComm->send(0, myComm->rank(), tmp);
+    }
+    app_log() << "  Execution time (collect local to global) = " << std::setprecision(4) << timer.elapsed() << std::endl;
+  }
+
+  if (is_manager())
+  {
+    ScopedTimer local(eigenvalue_timer_);
+    Timer timer_total;
+
+    if (pii_spectral_shift == 0.0)
+        throw std::runtime_error("Must set spectral shift fraction. Should be something like (1.2-1.5)*E_gs ");
+    
+    if (num_samples >= num_params) {
+      Matrix<RealType> ovlMat(num_params, num_params);
+      Timer timer1;
+      MatrixOperators::product_AtB(derivMat, derivMat, ovlMat);
+      app_log() << "  Execution time (S = Ot * O) : " << std::setprecision(4) << timer1.elapsed() << std::endl;
+
+      Matrix<RealType> hMat(num_params, num_params);
+      Timer timer2;
+      MatrixOperators::product_AtB(derivMat, hamDerivMat, hMat);
+      app_log() << "  Execution time (H = Ot * A) : " << std::setprecision(4) << timer2.elapsed() << std::endl;
+
+      Matrix<RealType> invMat(num_params, num_params);
+      invMat = hMat - pii_spectral_shift * ovlMat;
+      for (int pm = 0; pm < num_params; pm++)
+        invMat(pm, pm) += pii_regularization;
+      Timer timer3;
+      invert_matrix(invMat, false);
+      app_log() << "  Execution time X = inv(H - tau*S + eI) : " << std::setprecision(4) << timer3.elapsed() << std::endl;
+
+      Matrix<RealType> prodMat(num_params, num_samples);
+      Timer timer4;
+      MatrixOperators::product_ABt(invMat, derivMat, prodMat);
+      app_log() << "  Execution time Y=X*Ot : " << std::setprecision(4) << timer4.elapsed() << std::endl;
+
+      Timer timer5;
+      MatrixOperators::product(prodMat, ham, dp);
+      app_log() << "  Execution time Y*r : " << std::setprecision(4) << timer5.elapsed() << std::endl;
+    }
+    else {
+      Matrix<RealType> ovlMat(num_samples, num_samples);
+      Timer timer1;
+      MatrixOperators::product_ABt(derivMat, derivMat, ovlMat);
+      app_log() << "  Execution time S = (O * Ot) : " << std::setprecision(4) << timer1.elapsed() << std::endl;
+
+      Matrix<RealType> hMat(num_samples, num_samples);
+      Timer timer2;
+      MatrixOperators::product_ABt(hamDerivMat, derivMat, hMat);
+      app_log() << "  Execution time H = (A*Ot) : " << std::setprecision(4) << timer2.elapsed() << std::endl;
+
+      Matrix<RealType> invMat(num_samples, num_samples);
+      invMat = hMat - pii_spectral_shift * ovlMat;
+      for (int iw = 0; iw < num_samples; iw++)
+        invMat(iw, iw) += pii_regularization;
+      Timer timer3;
+      invert_matrix(invMat, false);
+      app_log() << "  Execution time X = inv(H - tau*S + eI) : " << std::setprecision(4) << timer3.elapsed() << std::endl;
+
+      Matrix<RealType> prodMat(num_params, num_samples);
+      Timer timer4;
+      MatrixOperators::product_AtB(derivMat, invMat, prodMat);
+      app_log() << "  Execution time Y = Ot*X : " << std::setprecision(4) << timer4.elapsed() << std::endl;
+
+      Timer timer5;
+      MatrixOperators::product(prodMat, ham, dp);
+      app_log() << "  Execution time Y*r : " << std::setprecision(4) << timer5.elapsed() << std::endl;
+    }
+    app_log() << "  Execution time (param_update) = " << std::setprecision(4) << timer_total.elapsed() << std::endl;
+  }
+  myComm->bcast(dp);
+
+  for (int pm = 0; pm < num_params; pm++)
+    optTarget->Params(pm) = currentParams.at(pm) - pii_tau * dp[pm];
+
+  accept_history <<= 1;
+  accept_history.set(0, true);
+
+  finish();
+
+  return (optTarget->getReportCounter() > 0);
 }
 
 #ifdef HAVE_LMY_ENGINE

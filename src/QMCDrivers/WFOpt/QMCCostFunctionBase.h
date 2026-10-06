@@ -149,6 +149,8 @@ public:
   virtual Return_rt fillHamVec(std::vector<Return_rt>& ham);
   virtual void calcOvlParmVec(const std::vector<Return_rt>& param, std::vector<Return_rt>& ovlParmVec);
 
+  virtual void constructDerivativeMatrices(Vector<Return_rt>& ham, Matrix<Return_rt>& derivMat, Matrix<Return_rt>& hamDerivMat); 
+
 #ifdef HAVE_LMY_ENGINE
   Return_rt LMYEngineCost(const bool needDeriv, cqmc::engine::LMYEngine<Return_t>& EngineObj);
 #endif

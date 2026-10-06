@@ -55,6 +55,10 @@ inline void Communicate::send(int dest, int tag, T&)
 {}
 
 template<typename T>
+inline void Communicate::recv(int source, int tag, T&)
+{}
+
+template<typename T>
 inline void Communicate::gather(T& sb, T& rb, int dest)
 {}
 

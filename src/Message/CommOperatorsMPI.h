@@ -68,6 +68,12 @@ inline void Communicate::send(int dest, int tag, T&)
 }
 
 template<typename T>
+inline void Communicate::recv(int source, int tag, T&)
+{
+  throw std::runtime_error("Need specialization for recv(int, int, T& )");
+}
+
+template<typename T>
 inline void Communicate::gather(T& sb, T& rb, int dest)
 {
   throw std::runtime_error("Need specialization for gather(T&, T&, int)");
@@ -761,6 +767,13 @@ template<>
 inline void Communicate::send(int dest, int tag, std::vector<double>& g)
 {
   MPI_Send(g.data(), g.size(), MPI_DOUBLE, dest, tag, myMPI);
+}
+
+template<>
+inline void Communicate::recv(int source, int tag, std::vector<double>& g)
+{
+  status s;
+  MPI_Recv(&(g[0]), g.size(), MPI_DOUBLE, source, tag, myMPI, &s);
 }
 
 template<>
