@@ -654,7 +654,7 @@ Optimizers
 QMCPACK implements a number of different optimizers each with different
 priorities for accuracy, convergence, memory usage, and stability. The
 optimizers can be switched among “OneShiftOnly” (default), “adaptive,”
-“descent,” “hybrid,” "sr_cg," and “quartic” (old) using the following line in the
+“descent,” “hybrid,” "sr_cg," "minSR," "pii," and “quartic” (old) using the following line in the
 optimization block:
 
 .. code-block:: xml
@@ -1263,6 +1263,61 @@ We are currently investigating various improvements to make this a more reliable
   +-----------------------+--------------+-------------+-------------+----------------------------------------------+
   | ``line_search``       | text         | yes/no      | no          | Use linesearch to find optimal move          |
   +-----------------------+--------------+-------------+-------------+----------------------------------------------+
+
+
+MinSR Optimizer
+^^^^^^^^^^^^^^^
+
+The ``minSR`` optimizer solves the same stochastic reconfiguration equation as ``sr_cg``, but in the
+space of samples rather than parameters. With :math:`\mathbf{O}` the :math:`N_s \times N_p` matrix of
+weighted, mean-subtracted log-derivatives and :math:`\mathbf{e}` the weighted, mean-subtracted local energies,
+the update is
+
+:math:`\Delta \mathbf{p} = \tau\, \mathbf{O}^T (\mathbf{O}\mathbf{O}^T + \epsilon \mathbf{I})^{-1} \mathbf{e}`
+
+so only an :math:`N_s \times N_s` matrix is inverted. This method requires the total number of samples to be
+smaller than the number of optimizable parameters. Like ``sr_cg``, only the log-derivatives are computed.
+It reuses the ``sr_tau`` and ``sr_regularization`` parameters.
+
+``minSR`` method:
+
+  parameters:
+
+  +-----------------------+--------------+-------------+-------------+----------------------------------------------+
+  | **Name**              | **Datatype** | **Values**  | **Default** | **Description**                              |
+  +=======================+==============+=============+=============+==============================================+
+  | ``sr_tau``            | real         | :math:`> 0` | 0.01        | Effective timestep for the parameter update  |
+  +-----------------------+--------------+-------------+-------------+----------------------------------------------+
+  | ``sr_regularization`` | real         | :math:`> 0` | 0.01        | Diagonal shift added to the sample overlap   |
+  +-----------------------+--------------+-------------+-------------+----------------------------------------------+
+
+Projected Inverse Iteration Optimizer
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+The ``pii`` optimizer implements projected inverse iteration (https://doi.org/10.48550/arXiv.2507.10835).
+It builds the weighted log-derivative matrix :math:`\mathbf{O}`, the Hamiltonian-derivative matrix
+:math:`\mathbf{A}`, and the residual vector :math:`\mathbf{r}`, and updates the parameters via
+
+:math:`\Delta \mathbf{p} = -\tau\, (\mathbf{H} - \sigma \mathbf{S} + \epsilon \mathbf{I})^{-1} \mathbf{O}^T \mathbf{r}`
+
+with :math:`\mathbf{S}=\mathbf{O}^T\mathbf{O}` and :math:`\mathbf{H}=\mathbf{O}^T\mathbf{A}`. When there are fewer samples than
+parameters, the equivalent sample-space form is used automatically. Because the Hamiltonian derivatives are
+needed, this method costs more per step than ``sr_cg`` or ``minSR``. The spectral shift :math:`\sigma`
+must be set explicitly; a value around 1.2-1.5 times the ground-state energy is a reasonable start.
+
+``pii`` method:
+
+  parameters:
+
+  +------------------------+--------------+-------------+-------------+----------------------------------------------+
+  | **Name**               | **Datatype** | **Values**  | **Default** | **Description**                              |
+  +========================+==============+=============+=============+==============================================+
+  | ``pii_tau``            | real         | :math:`> 0` | 0.01        | Step size for the parameter update           |
+  +------------------------+--------------+-------------+-------------+----------------------------------------------+
+  | ``pii_spectral_shift`` | real         | :math:`≠ 0` | 0.0         | Spectral shift :math:`\sigma` (required)     |
+  +------------------------+--------------+-------------+-------------+----------------------------------------------+
+  | ``pii_regularization`` | real         | :math:`> 0` | 0.01        | Diagonal regularization :math:`\epsilon`     |
+  +------------------------+--------------+-------------+-------------+----------------------------------------------+
 
 
 Quartic Optimizer

@@ -26,7 +26,8 @@ enum class OptimizerType
   HYBRID,
   GRADIENT_TEST,
   STOCHASTIC_RECONFIGURATION_CG,
-  PROJECTED_INVERSE_ITERATION
+  PROJECTED_INVERSE_ITERATION,
+  MIN_STOCHASTIC_RECONFIGURATION
 };
 
 const std::map<std::string, OptimizerType> OptimizerNames =
@@ -35,7 +36,8 @@ const std::map<std::string, OptimizerType> OptimizerNames =
      {"descent", OptimizerType::DESCENT}, {"hybrid", OptimizerType::HYBRID},
      {"gradient_test", OptimizerType::GRADIENT_TEST},
      {"sr_cg", OptimizerType::STOCHASTIC_RECONFIGURATION_CG},
-     {"pii", OptimizerType::PROJECTED_INVERSE_ITERATION}};
+     {"pii", OptimizerType::PROJECTED_INVERSE_ITERATION},
+     {"minSR", OptimizerType::MIN_STOCHASTIC_RECONFIGURATION}};
 
 } // namespace qmcplusplus
 #endif

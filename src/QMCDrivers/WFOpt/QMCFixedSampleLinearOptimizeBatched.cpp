@@ -1,5 +1,4 @@
 //////////////////////////////////////////////////////////////////////////////////////
-
 // This file is distributed under the University of Illinois/NCSA Open Source License.
 // See LICENSE file in top directory for details.
 //
@@ -166,7 +165,8 @@ void QMCFixedSampleLinearOptimizeBatched::start()
     optTarget->getConfigurations("");
     optTarget->setRng(rngs_);
     NullEngineHandle handle;
-    if (options_LMY_.current_optimizer_type == OptimizerType::STOCHASTIC_RECONFIGURATION_CG)
+    if (options_LMY_.current_optimizer_type == OptimizerType::STOCHASTIC_RECONFIGURATION_CG ||
+        options_LMY_.current_optimizer_type == OptimizerType::MIN_STOCHASTIC_RECONFIGURATION)
       optTarget->checkConfigurationsSR(handle);
     else
       optTarget->checkConfigurations(handle);
@@ -270,14 +270,16 @@ void QMCFixedSampleLinearOptimizeBatched::run()
   else if (options_LMY_.current_optimizer_type == OptimizerType::DESCENT)
     descent_run();
 #endif
-  if (options_LMY_.current_optimizer_type == OptimizerType::ONESHIFTONLY)
-    return one_shift_run();
+  else if (options_LMY_.current_optimizer_type == OptimizerType::ONESHIFTONLY)
+    one_shift_run();
   else if (options_LMY_.current_optimizer_type == OptimizerType::STOCHASTIC_RECONFIGURATION_CG)
-    return stochastic_reconfiguration_conjugate_gradient();
+    stochastic_reconfiguration_conjugate_gradient();
+  else if (options_LMY_.current_optimizer_type == OptimizerType::MIN_STOCHASTIC_RECONFIGURATION)
+    min_stochastic_reconfiguration();
   else if (options_LMY_.current_optimizer_type == OptimizerType::PROJECTED_INVERSE_ITERATION)
-    return projected_inverse_iteration();
+    projected_inverse_iteration();
   else
-    return previous_linear_methods_run();
+    previous_linear_methods_run();
 }
 
 void QMCFixedSampleLinearOptimizeBatched::test_run()
@@ -1939,6 +1941,90 @@ void QMCFixedSampleLinearOptimizeBatched::stochastic_reconfiguration_conjugate_g
 
   // return whether the cost function's report counter is positive
 
+}
+
+bool QMCFixedSampleLinearOptimizeBatched::min_stochastic_reconfiguration()
+{
+  app_log() << std::endl
+            << "*****************************************************************************" << std::endl
+            << "                   Running MinSR                   " << std::endl
+            << "*****************************************************************************" << std::endl;
+  // ensure the cost function is set to compute derivative vectors
+  optTarget->setneedGrads(true);
+
+  // generate samples and compute weights, local energies, and derivative vectors
+  // Note: this has a switch for checkConfigurations or checkConfigurationsSR to do stochastic reconfiguration
+  // The SR version avoids calculating the dhpsioverpsi terms and only does dlogpsi
+  start();
+
+  // get number of optimizable parameters
+  const int numParams  = optTarget->getNumParams();
+  const int numSamples = optTarget->getNumSamples();
+  if (numSamples > numParams)
+    throw std::runtime_error("MinSR works in the limit that Nsamples < Nparameters");
+
+  // prepare vectors to hold the initial and current parameters
+  std::vector<RealType> currentParameters(numParams, 0.0);
+
+  // initialize the initial and current parameter vectors
+  for (int i = 0; i < numParams; i++)
+    currentParameters.at(i) = std::real(optTarget->Params(i));
+
+  // prepare vectors to hold the parameter update directions for each shift
+  std::vector<RealType> parameterDirections;
+  parameterDirections.assign(numParams, 0.0);
+
+  // compute the initial cost
+  const RealType initCost = optTarget->computedCost();
+
+  Vector<RealType> ham(numSamples);
+  Matrix<RealType> derivMat(numSamples, numParams);
+  Matrix<RealType> ovlMat(numSamples, numSamples);
+  Matrix<RealType> invMat(numSamples, numSamples);
+  Matrix<RealType> prod(numParams, numSamples);
+  Vector<RealType> dp(numParams);
+
+  {
+    ScopedTimer local(build_olv_ham_timer_);
+    Timer t_build_matrices;
+    // say what we are doing
+    app_log() << std::endl
+              << "********************************************************" << std::endl
+              << "Building <Psi_i/Psi_0 Psi_j/Psi_0> and <Psi_i/Psi_0 E_L>" << std::endl
+              << "********************************************************" << std::endl;
+
+    //This constructs \langle \psi_i/\Psi_0 * E_L \rangle
+    optTarget->getMinSRData(ham, derivMat);
+  }
+
+  if (is_manager())
+  {
+    ScopedTimer local(sr_solver_timer_);
+
+    MatrixOperators::product_ABt(derivMat, derivMat, ovlMat);
+    //dp = O.T * (S + lambda I)^-1 * e 
+    invMat.copy(ovlMat);
+    for (int i = 0; i < numSamples; i++)
+      invMat(i,i) += sr_regularization;
+    invert_matrix(invMat, false);
+    MatrixOperators::product_AtB(derivMat, invMat, prod);
+    MatrixOperators::product(prod, ham, dp);
+  }
+  myComm->bcast(dp);
+
+  for (int i = 0; i < numParams; i++)
+    optTarget->Params(i) = currentParameters.at(i) + sr_tau * dp[i];
+
+  // say what we are doing
+  app_log() << std::endl << "The new set of parameters is valid. Updating the trial wave function!" << std::endl;
+  accept_history <<= 1;
+  accept_history.set(0, true);
+
+  // perform some finishing touches for this linear method iteration
+  finish();
+
+  // return whether the cost function's report counter is positive
+  return (optTarget->getReportCounter() > 0);
 }
 
 bool QMCFixedSampleLinearOptimizeBatched::projected_inverse_iteration()

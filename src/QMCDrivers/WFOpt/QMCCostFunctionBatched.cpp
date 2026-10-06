@@ -23,6 +23,7 @@
 #include "Message/CommOperators.h"
 #include "QMCDrivers/Optimizers/DescentEngine.h"
 #include "Concurrency/ParallelExecutor.hpp"
+#include "Platforms/CPU/BLAS.hpp"
 //#define QMCCOSTFUNCTION_DEBUG
 
 namespace qmcplusplus
@@ -1059,6 +1060,60 @@ void QMCCostFunctionBatched::calcOvlParmVec(const std::vector<Return_rt>& param,
                 ovlParmVec);
   }
   myComm->allreduce(ovlParmVec);
+}
+
+void QMCCostFunctionBatched::getMinSRData(Vector<Return_rt>& ham, Matrix<Return_rt>& derivMat)
+{
+  ScopedTimer tmp_timer(fill_timer_);
+
+  std::fill(ham.begin(), ham.end(), 0.0);
+  std::fill(derivMat.begin(), derivMat.end(), 0.0);
+
+  //calculate averages
+  Return_rt eavg   = SumValue[SUM_E_WGT] / SumValue[SUM_WGT];
+  std::vector<Return_t> derivAvg(getNumParams(), 0.0);
+  Return_rt wgtinv = 1.0 / SumValue[SUM_WGT];
+  for (int iw = 0; iw < rank_local_num_samples_; iw++)
+  {
+    const Return_rt* restrict saved = RecordsOnNode_[iw];
+    Return_rt weight                = saved[REWEIGHT] * wgtinv;
+    const Return_t* Dsaved          = DerivRecords_[iw];
+    for (int pm = 0; pm < getNumParams(); pm++)
+      derivAvg[pm] += Dsaved[pm] * weight;
+  }
+  myComm->allreduce(derivAvg);
+
+  //set these up in row major layout
+  std::vector<Return_rt> localDerivDiffs(rank_local_num_samples_ * getNumParams());
+  std::vector<Return_rt> localEnergyDiffs(rank_local_num_samples_);
+  for (int iw = 0; iw < rank_local_num_samples_; iw++)
+  {
+    const Return_rt* restrict saved = RecordsOnNode_[iw];
+    const Return_t* Dsaved          = DerivRecords_[iw];
+    Return_rt eloc                  = saved[ENERGY_NEW];
+    for (int pm = 0; pm < getNumParams(); pm++)
+      localDerivDiffs[iw * getNumParams() + pm] = std::sqrt(wgtinv) * std::real(Dsaved[pm] - derivAvg[pm]);
+    localEnergyDiffs[iw] = -std::sqrt(wgtinv) * (eloc - eavg);
+  }
+
+  // gather is a no-op without MPI, so copy directly when running on a single rank
+  if (myComm->size() == 1)
+  {
+    std::copy(localEnergyDiffs.begin(), localEnergyDiffs.end(), ham.begin());
+    std::copy(localDerivDiffs.begin(), localDerivDiffs.end(), derivMat.begin());
+    return;
+  }
+
+  std::vector<Return_rt> hamVec(getNumSamples());
+  //gather local energies into global energies
+  myComm->gather(localEnergyDiffs, hamVec);
+  std::copy(hamVec.begin(), hamVec.end(), ham.begin());
+
+  //gather local derivs into global derivs
+  std::vector<Return_rt> derivVec(getNumSamples() * getNumParams());
+  myComm->gather(localDerivDiffs, derivVec);
+  std::copy(derivVec.begin(), derivVec.end(), derivMat.begin());
+
 }
 
 void QMCCostFunctionBatched::constructDerivativeMatrices(Vector<Return_rt>& ham,

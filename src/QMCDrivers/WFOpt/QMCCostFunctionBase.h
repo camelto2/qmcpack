@@ -148,6 +148,7 @@ public:
 
   virtual Return_rt fillHamVec(std::vector<Return_rt>& ham);
   virtual void calcOvlParmVec(const std::vector<Return_rt>& param, std::vector<Return_rt>& ovlParmVec);
+  virtual void getMinSRData(Vector<Return_rt>& ham, Matrix<Return_rt>& derivMat);
 
   virtual void constructDerivativeMatrices(Vector<Return_rt>& ham, Matrix<Return_rt>& derivMat, Matrix<Return_rt>& hamDerivMat); 
 
