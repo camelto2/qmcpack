@@ -116,10 +116,10 @@ private:
   void stochastic_reconfiguration_conjugate_gradient();
 
   // MinSR: stochastic reconfiguration solved in sample space (requires Nsamples < Nparameters)
-  bool min_stochastic_reconfiguration();
+  void min_stochastic_reconfiguration();
 
   // straighforward implementation of PII from https://doi.org/10.48550/arXiv.2507.10835
-  bool projected_inverse_iteration();
+  void projected_inverse_iteration();
 
   // perform optimization using a gradient descent algorithm
   void descent_run();

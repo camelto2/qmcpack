@@ -1943,7 +1943,7 @@ void QMCFixedSampleLinearOptimizeBatched::stochastic_reconfiguration_conjugate_g
 
 }
 
-bool QMCFixedSampleLinearOptimizeBatched::min_stochastic_reconfiguration()
+void QMCFixedSampleLinearOptimizeBatched::min_stochastic_reconfiguration()
 {
   app_log() << std::endl
             << "*****************************************************************************" << std::endl
@@ -2022,12 +2022,9 @@ bool QMCFixedSampleLinearOptimizeBatched::min_stochastic_reconfiguration()
 
   // perform some finishing touches for this linear method iteration
   finish();
-
-  // return whether the cost function's report counter is positive
-  return (optTarget->getReportCounter() > 0);
 }
 
-bool QMCFixedSampleLinearOptimizeBatched::projected_inverse_iteration()
+void QMCFixedSampleLinearOptimizeBatched::projected_inverse_iteration()
 {
   app_log() << std::endl
             << "*****************************************************************************" << std::endl
@@ -2189,8 +2186,6 @@ bool QMCFixedSampleLinearOptimizeBatched::projected_inverse_iteration()
   accept_history.set(0, true);
 
   finish();
-
-  return (optTarget->getReportCounter() > 0);
 }
 
 #ifdef HAVE_LMY_ENGINE
