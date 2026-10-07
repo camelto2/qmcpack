@@ -145,30 +145,34 @@ unsupported and untested by the developers although they may still work.
 Many of the utilities provided with QMCPACK require Python (v3). The numpy and matplotlib libraries are required for full
 functionality.
 
+.. note::
+
+  We additionally recommend installing ``pytest`` for testing Python code, such as that in Nexus, however this is not a requirement for QMCPACK.
+
 Nightly testing currently includes at least the following software versions:
 
 * Compilers
   
-  * Clang/LLVM 20.1.4
-  * GCC 14.2.0, 12.4.0
+  * Clang/LLVM 22.1.1
+  * GCC 15.2.0, 13.4.0
   * OneAPI 2025.3
 
-* Boost 1.88.0, 1.82.0
+* Boost 1.90.0, 1.84.0
 * HDF5 1.14.5
 * FFTW 3.3.10
-* CMake 3.31.6
-* OpenMPI 5.0.6
-* CUDA 12.6
-* ROCm 6.4.0
-* Python 3.13.2
-* NumPy 2.2.5
+* CMake 4.2.3, 3.27.9
+* OpenMPI 5.0.10
+* CUDA 12.9
+* ROCm 7.0.1
+* Python 3.14.2
+* NumPy 2.3.5
 
 For GPU acceleration on NVIDIA GPUs we test LLVM with CUDA using the above versions. On AMD GPUs we support using the latest ROCm
 version and its matching amdclang compiler, as listed above. On Intel GPUs we test the up-to-date OneAPI release.
 
 GitHub Actions-based tests include additional version combinations from within our two-year support window.
 
-Workflow tests are currently performed with Quantum ESPRESSO v7.4.1 and PySCF v2.9.0. These check trial wavefunction generation and
+Workflow tests are currently performed with Quantum ESPRESSO v7.5 and PySCF v2.13.0. These check trial wavefunction generation and
 conversion through to actual QMC runs.
 
 C++ 17 standard library
@@ -324,9 +328,9 @@ the path to the source directory.
     QMC_GPU_ARCHS         Specify GPU architectures. For example, "gfx90a" targets AMD MI200 series GPUs.
                           "intel_gpu_pvc" targets Intel Data Center GPU Max 1xxx.
                           "sm_80;sm_70" creates a single executable running on both NVIDIA A100 and V100 GPUs.
-                          Mixing vendor "gfx90a;sm_70" is not supported. If not set, atempt to derive it
+                          Mixing vendor "gfx90a;sm_70" is not supported. If not set, attempt to derive it
                           from CMAKE_CUDA_ARCHITECTURES or CMAKE_HIP_ARCHITECTURES if available and then
-                          atempt to auto-detect existing GPUs.
+                          attempt to auto-detect existing GPUs.
 
 - General build options
 
@@ -334,7 +338,7 @@ the path to the source directory.
 
     CMAKE_BUILD_TYPE     A variable which controls the type of build
                          (defaults to Release). Possible values are:
-                         None (Do not set debug/optmize flags, use
+                         None (Do not set debug/optimize flags, use
                          CMAKE_C_FLAGS or CMAKE_CXX_FLAGS)
                          Debug (create a debug build)
                          Release (create a release/optimized build)
@@ -351,7 +355,6 @@ the path to the source directory.
                          Also supported: CMAKE_CXX_FLAGS_DEBUG,
                          CMAKE_CXX_FLAGS_RELEASE, and CMAKE_CXX_FLAGS_RELWITHDEBINFO
     CMAKE_INSTALL_PREFIX Set the install location (if using the optional install step)
-    INSTALL_NEXUS        Install Nexus alongside QMCPACK (if using the optional install step)
 
 - Additional QMCPACK build options
 
@@ -377,6 +380,8 @@ the path to the source directory.
     ENABLE_PPCONVERT       ON/OFF. Enable the ppconvert tool. If requirements are met, it is ON by default.
     USE_OBJECT_TARGET      ON/OFF(default). Use CMake object library targets to workaround linker not being able to handle hybrid
                            binary archives which contain both host and device codes.
+    QMC_INSTALL_NEXUS      ON(default)/OFF. Install Nexus alongside QMCPACK (if using the optional install step).
+    QMC_DOXYGEN            ON(default)/OFF. Enable use of Doxygen documentation generator tool.
 
 - Expert performance fine tuning options
 
@@ -430,10 +435,16 @@ the path to the source directory.
 
   ::
 
-    MPIEXEC_EXECUTABLE     Specify the mpi wrapper, e.g. srun, aprun, mpirun, etc.
-    MPIEXEC_NUMPROC_FLAG   Specify the number of mpi processes flag,
-                           e.g. "-n", "-np", etc.
-    MPIEXEC_PREFLAGS       Flags to pass to MPIEXEC_EXECUTABLE directly before the executable to run.
+    MPIEXEC_EXECUTABLE           Specify the mpi wrapper, e.g. srun, aprun, mpirun, etc.
+    MPIEXEC_NUMPROC_FLAG         Specify the number of mpi processes flag,
+                                 e.g. "-n", "-np", etc.
+    MPIEXEC_PREFLAGS             Flags to pass to MPIEXEC_EXECUTABLE directly before the executable to run.
+    QMC_CTEST_NUM_GPUS           Number of GPUs available to CTest on the local node (default: 1).
+                                 CTest uses this value to run independent GPU tests simultaneously,
+                                 assigning one GPU to each test. With default value, GPU tests
+                                 are serialized and only used 1 GPU. Must be a positive integer.
+    QMC_GPU_VISIBILITY_VARIABLE  Optionally specify the environment variable to control GPU visibility for CTest.
+                                 By default, "CUDA_VISIBLE_DEVICES", "ROCR_VISIBLE_DEVICES", and "ZE_AFFINITY_MASK" are used. 
 
 - Sanitizers Developer Options
 
@@ -449,7 +460,7 @@ See :ref:`Sanitizer-Libraries` for more information.
   ::
 
     ENABLE_GCOV  OFF(default)/ON, build with C++ source code line coverage measurement using gcov
-    ENABLE_PYCOV OFF(default)/ON, build with Python source code line coverage measurement using coverage.py
+    ENABLE_PYCOV OFF(default)/ON, build with Python source code line coverage measurement using coverage.py and/or pytest
 
 
 Installation from CMake
@@ -895,7 +906,7 @@ Job script example with one MPI rank per GPU. Frontier is configured in low oper
 cores are not available on each node by default. i.e. We use 7 OpenMP CPU threads per MPI rank. The part of the job script that
 makes specific modules available is copied directly from the build script used above.
 
-::
+.. code-block:: bash
 
   #!/bin/bash
   #SBATCH -A MAT151
@@ -947,7 +958,7 @@ Installing on systems with ARMv8-based processors
 
 The following build recipe was verified using the 'Arm Compiler for HPC' on the ANL JLSE Comanche system with Cavium ThunderX2 processors on November 6, 2018.
 
-::
+.. code-block:: bash
 
   # load armclang compiler
   module load Generic-AArch64/RHEL/7/arm-hpc-compiler/18.4
@@ -959,7 +970,7 @@ The following build recipe was verified using the 'Arm Compiler for HPC' on the 
 
 Then using the following command:
 
-::
+.. code-block:: bash
 
   mkdir build_armclang
   cd build_armclang
@@ -970,7 +981,7 @@ Then using the following command:
       ..
   make -j 56
 
-Note that armclang is recognized as an 'unknown' compiler by CMake v3.13* and below. In this case, we need to force it as clang to apply necessary flags. To do so, pass the following additionals option to CMake:
+Note that armclang is recognized as an 'unknown' compiler by CMake v3.13* and below. In this case, we need to force it as clang to apply necessary flags. To do so, pass the following additional option to CMake:
 
 ::
 
@@ -1744,7 +1755,7 @@ expected to work with any recent version.
 Quantum ESPRESSO converter support for old versions via source code patches
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-For QE 6.3-7.0, the pw2qmcpack converter can be addded via a source code patch specific to the specific version of QE. **Note that
+For QE 6.3-7.0, the pw2qmcpack converter can be added via a source code patch specific to the specific version of QE. **Note that
 this route is no longer recommended. Unless a specific old version of QE is required, users should use the latest version of QE and
 the cmake route described above.**
 

@@ -1,6 +1,9 @@
+import pytest
+from . import NexusTestOrder
+pytestmark = pytest.mark.order(NexusTestOrder.PYSCF_INPUT)
 
-from .. import testing
-from ..testing import value_eq,object_eq,text_eq
+
+from ..testing import object_eq,text_eq
 
 
 mno_poscar = '''MnO Crystal
@@ -40,13 +43,8 @@ mf.kernel()
 '''
 
 
-def test_import():
-    from ..pyscf_input import PyscfInput,generate_pyscf_input
-#end def test_import
-
-
 def test_empty_init():
-    from ..developer import obj
+    from ..developer import obj, to_obj
     from ..pyscf_input import PyscfInput,generate_pyscf_input
 
     ref = obj(
@@ -61,7 +59,7 @@ def test_empty_init():
         )
 
     pi = PyscfInput()
-    assert(object_eq(pi.to_obj(),ref))
+    assert(object_eq(to_obj(pi),ref))
 
     pi2 = generate_pyscf_input()
     assert(isinstance(pi2,PyscfInput))
@@ -70,20 +68,17 @@ def test_empty_init():
 
 
 
-def test_generate():
-    import os
-    from ..developer import obj
+def test_generate(tmp_path):
+    from ..developer import obj, to_obj
     from ..physical_system import generate_physical_system
     from ..pyscf_input import generate_pyscf_input
 
-    tpath = testing.setup_unit_test_output_directory('pyscf_input','test_generate')
-
     # water molecule
-    xyz_path      = os.path.join(tpath,'H2O.xyz')
-    template_path = os.path.join(tpath,'scf_template.py')
+    xyz_path      = tmp_path / 'H2O.xyz'
+    template_path = tmp_path / 'scf_template.py'
 
-    open(xyz_path,'w').write(h2o_xyz)
-    open(template_path,'w').write(scf_template)
+    xyz_path.write_text(h2o_xyz)
+    template_path.write_text(scf_template)
 
     system = generate_physical_system(
         structure = xyz_path,
@@ -130,7 +125,7 @@ def test_generate():
         )
     del pi.template
     del pi.values
-    assert(object_eq(pi.to_obj(),ref_internal))
+    assert(object_eq(to_obj(pi),ref_internal))
 
     
     # diamond crystal
@@ -195,12 +190,12 @@ def test_generate():
 
     del pi.template
     del pi.values
-    assert(object_eq(pi.to_obj(),ref_internal))
+    assert(object_eq(to_obj(pi),ref_internal))
 
     # water molecule without template
-    xyz_path      = os.path.join(tpath,'H2O.xyz')
+    xyz_path = tmp_path / 'H2O.xyz'
 
-    open(xyz_path,'w').write(h2o_xyz)
+    xyz_path.write_text(h2o_xyz)
 
     system = generate_physical_system(
         structure = xyz_path,
@@ -273,13 +268,13 @@ def test_generate():
     del pi.values
     del pi.calculation
     del pi.template
-    assert(object_eq(pi.to_obj(),ref_internal))
+    assert(object_eq(to_obj(pi),ref_internal))
 
     
     # MnO crystal without template
-    poscar_path      = os.path.join(tpath,'MnO.POSCAR')
+    poscar_path = tmp_path / 'MnO.POSCAR'
 
-    open(poscar_path,'w').write(mno_poscar)
+    poscar_path.write_text(mno_poscar)
 
     system = generate_physical_system(
         structure = poscar_path,
@@ -394,27 +389,22 @@ def test_generate():
     del pi.values
     del pi.calculation
     del pi.template
-    assert(object_eq(pi.to_obj(),ref_internal))
-
-
+    assert(object_eq(to_obj(pi),ref_internal))
 #end def test_generate
 
 
 
-def test_write():
-    import os
+def test_write(tmp_path):
     from ..developer import obj
     from ..physical_system import generate_physical_system
     from ..pyscf_input import generate_pyscf_input
 
-    tpath = testing.setup_unit_test_output_directory('pyscf_input','test_write')
-
     # water molecule
-    xyz_path      = os.path.join(tpath,'H2O.xyz')
-    template_path = os.path.join(tpath,'scf_template.py')
+    xyz_path      = tmp_path / 'H2O.xyz'
+    template_path = tmp_path / 'scf_template.py'
 
-    open(xyz_path,'w').write(h2o_xyz)
-    open(template_path,'w').write(scf_template)
+    xyz_path.write_text(h2o_xyz)
+    template_path.write_text(scf_template)
 
     system = generate_physical_system(
         structure = xyz_path,
@@ -432,13 +422,13 @@ def test_write():
         save_qmc   = True,
         )
 
-    write_path = os.path.join(tpath,'h2o.py')
+    write_path = tmp_path / 'h2o.py'
 
     pi.write(write_path)
 
-    assert(os.path.exists(write_path))
+    assert(write_path.exists())
 
-    text = open(write_path,'r').read().strip()
+    text = write_path.read_text().strip()
 
     ref_text = '''
 #! /usr/bin/env python3
@@ -506,13 +496,13 @@ savetoqmcpack(mol,mf,'scf')
         save_qmc   = True,
         )
 
-    write_path = os.path.join(tpath,'diamond.py')
+    write_path = tmp_path / 'diamond.py'
 
     pi.write(write_path)
 
-    assert(os.path.exists(write_path))
+    assert(write_path.exists())
 
-    text = open(write_path,'r').read()
+    text = write_path.read_text()
 
     ref_text = '''
         #! /usr/bin/env python3

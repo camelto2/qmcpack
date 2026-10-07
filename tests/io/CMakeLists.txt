@@ -84,15 +84,16 @@ endfunction()
 run_restart_and_check(
   deterministic-restart
   "${qmcpack_SOURCE_DIR}/tests/io/restart"
-  qmc_short
+  qmc
   2
   2
   check.sh
   false)
+
 run_restart_and_check(
   deterministic-restart
   "${qmcpack_SOURCE_DIR}/tests/io/restart"
-  qmc_short
+  qmc
   1
   4
   check.sh
@@ -101,25 +102,55 @@ run_restart_and_check(
 run_restart_and_check(
   deterministic-restart_batch
   "${qmcpack_SOURCE_DIR}/tests/io/restart_batch"
-  qmc_short_batch
+  qmc_batch
   2
   2
   check.sh
   false)
 
-add_test_check_file_existence(deterministic-restart_batch-2-2 qmc_short_batch.s000.config.h5 TRUE)
-add_test_check_file_existence(deterministic-restart_batch-2-2 qmc_short_batch.s000.random.h5 TRUE)
-add_test_check_file_existence(deterministic-restart_batch-2-2 qmc_short_batch.s001.config.h5 FALSE)
-add_test_check_file_existence(deterministic-restart_batch-2-2 qmc_short_batch.s001.random.h5 FALSE)
+add_test_check_file_existence(deterministic-restart_batch-r2-t2 qmc_batch.s000.config.h5 TRUE)
+add_test_check_file_existence(deterministic-restart_batch-r2-t2 qmc_batch.s000.random.h5 TRUE)
+add_test_check_file_existence(deterministic-restart_batch-r2-t2 qmc_batch.s001.config.h5 FALSE)
+add_test_check_file_existence(deterministic-restart_batch-r2-t2 qmc_batch.s001.random.h5 FALSE)
 
 run_restart_and_check(
   deterministic-restart_batch
   "${qmcpack_SOURCE_DIR}/tests/io/restart_batch"
-  qmc_short_batch
+  qmc_batch
   1
   4
   check.sh
   true)
+
+if(NOT QMC_MIXED_PRECISION)  
+  run_restart_and_check(
+    deterministic-restart_batch_opt
+    "${qmcpack_SOURCE_DIR}/tests/io/restart_batch_opt"
+    qmc_batch
+    2
+    2
+    check.sh
+    false)
+  
+  add_test_check_file_existence(deterministic-restart_batch_opt-r2-t2 qmc_batch.s000.config.h5 TRUE)
+  add_test_check_file_existence(deterministic-restart_batch_opt-r2-t2 qmc_batch.s000.random.h5 TRUE)
+  add_test_check_file_existence(deterministic-restart_batch_opt-r2-t2 qmc_batch.s001.config.h5 FALSE)
+  add_test_check_file_existence(deterministic-restart_batch_opt-r2-t2 qmc_batch.s001.random.h5 FALSE)
+  
+  run_restart_and_check(
+    deterministic-restart_batch_opt
+    "${qmcpack_SOURCE_DIR}/tests/io/restart_batch_opt"
+    qmc_batch
+    1
+    4
+    check.sh
+    true)
+  
+  add_test_check_file_existence(deterministic-restart_batch_opt-r1-t4 qmc_batch.s000.config.h5 TRUE)
+  add_test_check_file_existence(deterministic-restart_batch_opt-r1-t4 qmc_batch.s000.random.h5 TRUE)
+  add_test_check_file_existence(deterministic-restart_batch_opt-r1-t4 qmc_batch.s001.config.h5 FALSE)
+  add_test_check_file_existence(deterministic-restart_batch_opt-r1-t4 qmc_batch.s001.random.h5 FALSE)
+endif()
 
 run_restart_and_check(
   deterministic-restart_dmc
@@ -160,16 +191,26 @@ run_restart_and_check(
 run_restart_and_check(
   deterministic-save_spline_coefs
   "${qmcpack_SOURCE_DIR}/tests/io/save_spline_coefs"
-  qmc_short
+  qmc
   2
   2
   check.sh
   false)
+
 run_restart_and_check(
   deterministic-save_spline_coefs
   "${qmcpack_SOURCE_DIR}/tests/io/save_spline_coefs"
-  qmc_short
+  qmc
   1
   4
+  check.sh
+  true)
+
+run_restart_and_check(
+  deterministic-save_spline_coefs_hybridrep
+  "${qmcpack_SOURCE_DIR}/tests/io/save_spline_coefs_hybridrep"
+  qmc
+  1
+  3
   check.sh
   true)

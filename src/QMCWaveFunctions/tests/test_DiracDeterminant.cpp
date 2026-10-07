@@ -9,9 +9,8 @@
 //
 // File created by: Mark Dewing, mdewing@anl.gov, Argonne National Laboratory
 //////////////////////////////////////////////////////////////////////////////////////
-
-
-#include "catch.hpp"
+#include <catch2/catch_test_macros.hpp>
+#include "Utilities/for_testing/Catch2Approx.h"
 
 #include "OhmmsData/Libxml2Doc.h"
 #include "OhmmsPETE/OhmmsMatrix.h"
@@ -51,9 +50,8 @@ void check_matrix(Matrix<T1>& a, Matrix<T2>& b)
 template<typename DET>
 void test_DiracDeterminant_first(const DetMatInvertor inverter_kind)
 {
-  auto spo_init  = std::make_unique<FakeSPO<Value>>();
   const int norb = 3;
-  spo_init->setOrbitalSetSize(norb);
+  auto spo_init  = std::make_unique<FakeSPO<Value>>(norb);
   DET ddb(*spo_init, 0, norb, 1, inverter_kind);
   auto spo = dynamic_cast<FakeSPO<Value>&>(ddb.getPhi());
 
@@ -159,9 +157,8 @@ TEST_CASE("DiracDeterminant_first", "[wavefunction][fermion]")
 template<typename DET>
 void test_DiracDeterminant_second(const DetMatInvertor inverter_kind)
 {
-  auto spo_init  = std::make_unique<FakeSPO<Value>>();
   const int norb = 4;
-  spo_init->setOrbitalSetSize(norb);
+  auto spo_init  = std::make_unique<FakeSPO<Value>>(norb);
   DET ddb(*spo_init, 0, norb, 1, inverter_kind);
   auto spo = dynamic_cast<FakeSPO<Value>&>(ddb.getPhi());
 
@@ -300,9 +297,8 @@ TEST_CASE("DiracDeterminant_second", "[wavefunction][fermion]")
 template<typename DET>
 void test_DiracDeterminant_delayed_update(const DetMatInvertor inverter_kind)
 {
-  auto spo_init  = std::make_unique<FakeSPO<Value>>();
   const int norb = 4;
-  spo_init->setOrbitalSetSize(norb);
+  auto spo_init  = std::make_unique<FakeSPO<Value>>(norb);
   // maximum delay 2
   DET ddc(*spo_init, 0, norb, 2, inverter_kind);
   auto spo = dynamic_cast<FakeSPO<Value>&>(ddc.getPhi());
@@ -524,8 +520,7 @@ void test_DiracDeterminant_spinor_update(const DetMatInvertor inverter_kind)
   auto spo_up = std::make_unique<FreeOrbital>("free_orb_up", kup);
   auto spo_dn = std::make_unique<FreeOrbital>("free_orb_up", kdn);
 
-  auto spinor_set = std::make_unique<SpinorSet>("free_orb_spinor");
-  spinor_set->set_spos(std::move(spo_up), std::move(spo_dn));
+  auto spinor_set = std::make_unique<SpinorSet>("free_orb_spinor", std::move(spo_up), std::move(spo_dn));
 
   DET dd(*spinor_set, 0, nelec, 1, inverter_kind);
   app_log() << " nelec=" << nelec << std::endl;

@@ -16,7 +16,7 @@ namespace qmcplusplus
 {
 
 template<typename T>
-FakeSPO<T>::FakeSPO() : SPOSet("one_FakeSPO")
+FakeSPO<T>::FakeSPO(size_t size) : SPOSet("one_FakeSPO", size)
 {
   a.resize(3, 3);
 
@@ -81,15 +81,7 @@ FakeSPO<T>::FakeSPO() : SPOSet("one_FakeSPO")
 
 template<typename T>
 std::unique_ptr<SPOSetT<T>> FakeSPO<T>::makeClone() const
-{
-  return std::make_unique<FakeSPO>(*this);
-}
-
-template<typename T>
-void FakeSPO<T>::setOrbitalSetSize(int norbs)
-{
-  OrbitalSetSize = norbs;
-}
+{ return std::make_unique<FakeSPO>(*this); }
 
 template<typename T>
 void FakeSPO<T>::evaluateValue(const ParticleSet& P, int iat, ValueVector& psi)
@@ -153,6 +145,10 @@ void FakeSPO<T>::evaluate_notranspose(const ParticleSet& P,
       }
   }
 }
+
+template<typename T>
+void FakeSPO<T>::applyRotation(const ValueMatrix& rot_mat, bool use_stored_copy)
+{}
 
 #if !defined(MIXED_PRECISION)
 template class FakeSPO<double>;

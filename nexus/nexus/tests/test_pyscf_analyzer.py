@@ -1,8 +1,7 @@
+import pytest
+from . import NexusTestOrder
+pytestmark = pytest.mark.order(NexusTestOrder.PYSCF_ANALYZER)
 
-
-def test_import():
-    from ..pyscf_analyzer import PyscfAnalyzer
-#end def test_import
 
 
 

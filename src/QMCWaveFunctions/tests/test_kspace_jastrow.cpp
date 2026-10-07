@@ -11,7 +11,8 @@
 
 
 #include "OptimizableObject.h"
-#include "catch.hpp"
+#include <catch2/catch_test_macros.hpp>
+#include "Utilities/for_testing/Catch2Approx.h"
 
 #include "OhmmsData/Libxml2Doc.h"
 #include "OhmmsPETE/OhmmsMatrix.h"
@@ -48,8 +49,7 @@ TEST_CASE("kspace jastrow", "[wavefunction]")
   </simulationcell>
 </tmp>)";
   Libxml2Document doc;
-  bool okay = doc.parseFromString(xmltext);
-  REQUIRE(okay);
+  REQUIRE(doc.parseFromString(xmltext));
 
   xmlNodePtr root  = doc.getRoot();
   xmlNodePtr part1 = xmlFirstElementChild(root);
@@ -90,8 +90,7 @@ TEST_CASE("kspace jastrow", "[wavefunction]")
 </jastrow>
 </tmp>
 )";
-  okay                  = doc.parseFromString(particles);
-  REQUIRE(okay);
+  REQUIRE(doc.parseFromString(particles));
 
   root            = doc.getRoot();
   xmlNodePtr jas1 = xmlFirstElementChild(root);
@@ -125,8 +124,7 @@ TEST_CASE("kspace jastrow derivatives", "[wavefunction]")
   </simulationcell>
 </tmp>)";
   Libxml2Document doc;
-  bool okay = doc.parseFromString(xmltext);
-  REQUIRE(okay);
+  REQUIRE(doc.parseFromString(xmltext));
 
   xmlNodePtr root  = doc.getRoot();
   xmlNodePtr part1 = xmlFirstElementChild(root);
@@ -168,8 +166,7 @@ TEST_CASE("kspace jastrow derivatives", "[wavefunction]")
 </jastrow>
 </tmp>
 )";
-  okay                 = doc.parseFromString(jk1input);
-  REQUIRE(okay);
+  REQUIRE(doc.parseFromString(jk1input));
 
   root            = doc.getRoot();
   xmlNodePtr jas1 = xmlFirstElementChild(root);
@@ -232,8 +229,7 @@ TEST_CASE("kspace jastrow derivatives", "[wavefunction]")
 </jastrow>
 </tmp>
 )";
-  okay                 = doc.parseFromString(jk2input);
-  REQUIRE(okay);
+  REQUIRE(doc.parseFromString(jk2input));
 
   root            = doc.getRoot();
   xmlNodePtr jas2 = xmlFirstElementChild(root);

@@ -31,11 +31,7 @@ namespace qmcplusplus
  *\param els the positions of the electrons
  *\param psi trial wavefunction
  */
-ECPotentialBuilder::ECPotentialBuilder(QMCHamiltonian& h,
-                                       ParticleSet& ions,
-                                       ParticleSet& els,
-                                       TrialWaveFunction& psi,
-                                       Communicate* c)
+ECPotentialBuilder::ECPotentialBuilder(QMCHamiltonian& h, ParticleSet& ions, ParticleSet& els, Communicate* c)
     : MPIObjectBase(c),
       hasLocalPot(false),
       hasNonLocalPot(false),
@@ -43,8 +39,7 @@ ECPotentialBuilder::ECPotentialBuilder(QMCHamiltonian& h,
       hasL2Pot(false),
       targetH(h),
       IonConfig(ions),
-      targetPtcl(els),
-      targetPsi(psi)
+      targetPtcl(els)
 {}
 
 ECPotentialBuilder::~ECPotentialBuilder() = default;
@@ -154,7 +149,7 @@ bool ECPotentialBuilder::put(xmlNodePtr cur)
       throw UniformCommunicateError("spin_integrator=\"exact\" requires algorithm=\"batched\".\n");
 
     std::unique_ptr<SOECPotential> apot =
-        std::make_unique<SOECPotential>(IonConfig, targetPtcl, targetPsi, use_exact_spin, NLPP_algo == "batched");
+        std::make_unique<SOECPotential>(IonConfig, targetPtcl, use_exact_spin, NLPP_algo == "batched");
     int nknot_max = 0;
     int sknot_max = 0;
     for (int i = 0; i < soPot.size(); i++)
@@ -180,7 +175,7 @@ bool ECPotentialBuilder::put(xmlNodePtr cur)
   }
   if (hasL2Pot)
   {
-    std::unique_ptr<L2Potential> apot = std::make_unique<L2Potential>(IonConfig, targetPtcl, targetPsi);
+    std::unique_ptr<L2Potential> apot = std::make_unique<L2Potential>(IonConfig, targetPtcl);
     for (int i = 0; i < L2Pot.size(); i++)
       if (L2Pot[i])
         apot->add(i, std::move(L2Pot[i]));
@@ -337,7 +332,7 @@ void ECPotentialBuilder::useSimpleTableFormat()
     std::ifstream fin(fname.c_str(), std::ios_base::in);
     if (!fin)
     {
-      ERRORMSG("Could not open file " << fname)
+      app_error() << "Could not open file " << fname << std::endl;
       exit(-1);
     }
     // Read Number of potentials (local and non) for this atom

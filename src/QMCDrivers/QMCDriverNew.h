@@ -92,8 +92,7 @@ public:
   /** This type provides all the functionality needed by drivers to instantiate estimators so we use it to reduce coupling
    *  with ParticleSetPool
    */
-  using PSPool   = ParticleSetPool::PoolType;
-  using WFBuffer = MCPopulation::WFBuffer;
+  using PSPool = ParticleSetPool::PoolType;
 
   using SetNonLocalMoveHandler = std::function<void(QMCHamiltonian&)>;
   /** bits to classify QMCDriver
@@ -105,7 +104,7 @@ public:
   std::bitset<QMC_MODE_MAX> qmc_driver_mode_;
 
   /// whether to allow walker logs
-  bool allow_walker_logs;
+  bool allow_walker_logs{false};
   /// walker logs input
   WalkerLogInput walker_logs_input;
   //xmlNodePtr walker_logs_xml;
@@ -200,7 +199,7 @@ public:
    * Accumulate energy and weight is written to a hdf5 file.
    * Finialize the estimators
    */
-  bool finalize(int block, bool dumpwalkers = true);
+  void finalize(int block, bool dumpwalkers = true);
 
   ///return current step
   inline IndexType current() const { return current_step_; }
@@ -216,8 +215,6 @@ public:
    * is the suffix for the output file.
    */
   void setStatus(const std::string& aname, const std::string& h5name, bool append) override;
-
-  void add_H_and_Psi(QMCHamiltonian* h, TrialWaveFunction* psi) override{};
 
   void putWalkers(std::vector<xmlNodePtr>& wset) override;
 

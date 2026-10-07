@@ -9,9 +9,8 @@
 //
 // File created by: Mark Dewing, markdewing@gmail.com, University of Illinois at Urbana-Champaign
 //////////////////////////////////////////////////////////////////////////////////////
-
-
-#include "catch.hpp"
+#include <catch2/catch_test_macros.hpp>
+#include "Utilities/for_testing/Catch2Approx.h"
 
 #include "Configuration.h"
 #include "Numerics/Quadrature.h"
@@ -220,8 +219,7 @@ TEST_CASE("Evaluate_ecp", "[hamiltonian]")
   </tmp>
   )";
   Libxml2Document doc;
-  bool okay = doc.parseFromString(particles);
-  REQUIRE(okay);
+  REQUIRE(doc.parseFromString(particles));
 
   xmlNodePtr root = doc.getRoot();
 
@@ -240,8 +238,7 @@ TEST_CASE("Evaluate_ecp", "[hamiltonian]")
       </jastrow>
   </tmp>
   )";
-  bool okay3             = doc.parseFromString(particles2);
-  REQUIRE(okay3);
+  REQUIRE(doc.parseFromString(particles2));
 
   root = doc.getRoot();
 
@@ -253,7 +250,7 @@ TEST_CASE("Evaluate_ecp", "[hamiltonian]")
   //Now we set up the nonlocal ECP component.
   ECPComponentBuilder ecp("test_read_ecp", c);
 
-  bool okay2 = ecp.read_pp_file("Na.BFD.xml");
+  REQUIRE(ecp.read_pp_file("Na.BFD.xml"));
 
   NonLocalECPComponent* nlpp = ecp.pp_nonloc.get();
 
@@ -494,8 +491,7 @@ TEST_CASE("Evaluate_soecp", "[hamiltonian]")
   auto spo_up = std::make_unique<FreeOrbital>("free_orb_up", kup);
   auto spo_dn = std::make_unique<FreeOrbital>("free_orb_dn", kdn);
 
-  auto spinor_set = std::make_unique<SpinorSet>("free_orb_spinor");
-  spinor_set->set_spos(std::move(spo_up), std::move(spo_dn));
+  auto spinor_set           = std::make_unique<SpinorSet>("free_orb_spinor", std::move(spo_up), std::move(spo_dn));
   QMCTraits::IndexType norb = spinor_set->getOrbitalSetSize();
   REQUIRE(norb == 2);
 
@@ -515,8 +511,7 @@ TEST_CASE("Evaluate_soecp", "[hamiltonian]")
   </tmp>
   )";
   Libxml2Document doc;
-  bool okay = doc.parseFromString(particles);
-  REQUIRE(okay);
+  REQUIRE(doc.parseFromString(particles));
   xmlNodePtr root = doc.getRoot();
   xmlNodePtr jas2 = xmlFirstElementChild(root);
   RadialJastrowBuilder jastrow(c, elec);

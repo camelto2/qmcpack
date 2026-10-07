@@ -46,23 +46,20 @@ static const TimerNameList_t<DMTimers> DMTimerNames =
      {DM_matrix_products, "DensityMatrices1B::evaluate_matrix_products"},
      {DM_accumulate, "DensityMatrices1B::evaluate_matrix_accum"}};
 
-DensityMatrices1B::DensityMatrices1B(ParticleSet& P, TrialWaveFunction& psi, ParticleSet* Pcl)
+DensityMatrices1B::DensityMatrices1B(ParticleSet& P, const SPOSet::SPOMap& spomap, ParticleSet* Pcl)
     : timers(getGlobalTimerManager(), DMTimerNames, timer_level_fine),
-      basis_functions("DensityMatrices1B::basis"),
       lattice_(P.getLattice()),
-      spomap(psi.getSPOMap()),
+      spomap_(spomap),
       Pq(P),
       Pc(Pcl)
-{
-  reset();
-}
+{ reset(); }
 
-DensityMatrices1B::DensityMatrices1B(DensityMatrices1B& master, ParticleSet& P, TrialWaveFunction& psi)
+DensityMatrices1B::DensityMatrices1B(const DensityMatrices1B& master, ParticleSet& P, TrialWaveFunction& psi)
     : OperatorBase(master),
       timers(getGlobalTimerManager(), DMTimerNames, timer_level_fine),
-      basis_functions(master.basis_functions),
+      basis_functions(std::make_unique<CompositeSPOSet<Value_t>>(*master.basis_functions)),
       lattice_(P.getLattice()),
-      spomap(psi.getSPOMap()),
+      spomap_(master.spomap_),
       Pq(P),
       Pc(master.Pc)
 {
@@ -81,15 +78,14 @@ DensityMatrices1B::~DensityMatrices1B()
 }
 
 
-std::unique_ptr<OperatorBase> DensityMatrices1B::makeClone(ParticleSet& qp, TrialWaveFunction& psi)
-{
-  return std::make_unique<DensityMatrices1B>(*this, qp, psi);
-}
+std::unique_ptr<OperatorBase> DensityMatrices1B::makeClone(ParticleSet& qp, TrialWaveFunction& psi) const
+{ return std::make_unique<DensityMatrices1B>(*this, qp, psi); }
 
 
 void DensityMatrices1B::reset()
 {
   // uninitialized data
+#if !defined(REMOVE_TRACEMANAGER)
   w_trace        = NULL;
   T_trace        = NULL;
   Vq_trace       = NULL;
@@ -97,6 +93,7 @@ void DensityMatrices1B::reset()
   Vqq_trace      = NULL;
   Vqc_trace      = NULL;
   Vcc_trace      = NULL;
+#endif
   basis_size     = -1;
   nindex         = -1;
   eindex         = -1;
@@ -123,6 +120,7 @@ void DensityMatrices1B::reset()
   volume_normed          = true;
   check_overlap          = false;
   check_derivatives      = false;
+#if !defined(REMOVE_TRACEMANAGER)
   // trace data is required
   request_.request_scalar("weight");
   request_.request_array("Kinetic_complex");
@@ -131,6 +129,7 @@ void DensityMatrices1B::reset()
   request_.request_array("Vqq");
   request_.request_array("Vqc");
   request_.request_array("Vcc");
+#endif
   // has not been initialized
   initialized = false;
 }
@@ -278,21 +277,25 @@ void DensityMatrices1B::set_state(xmlNodePtr cur)
   if (sposets.size() == 0)
     throw std::runtime_error("DensityMatrices1B::put  basis must have at least one sposet");
 
+  std::vector<std::unique_ptr<SPOSet>> spos;
+  spos.reserve(sposets.size());
   for (int i = 0; i < sposets.size(); ++i)
   {
-    auto spo_it = spomap.find(sposets[i]);
-    if (spo_it == spomap.end())
+    auto spo_it = spomap_.find(sposets[i]);
+    if (spo_it == spomap_.end())
       throw std::runtime_error("DensityMatrices1B::put  sposet " + sposets[i] + " does not exist.");
-    basis_functions.add(spo_it->second->makeClone());
+    spos.emplace_back(spo_it->second->makeClone());
   }
-  basis_size = basis_functions.size();
+
+  basis_functions = std::make_unique<CompositeSPOSet<Value_t>>("DensityMatrices1B::basis", std::move(spos));
+  basis_size      = basis_functions->size();
 
   if (basis_size < 1)
     throw std::runtime_error("DensityMatrices1B::put  basis_size must be greater than one");
 }
 
 
-void DensityMatrices1B::set_state(DensityMatrices1B& master)
+void DensityMatrices1B::set_state(const DensityMatrices1B& master)
 {
   basis_size    = master.basis_size;
   energy_mat    = master.energy_mat;
@@ -495,6 +498,7 @@ void DensityMatrices1B::report(const std::string& pad)
 }
 
 
+#if !defined(REMOVE_TRACEMANAGER)
 void DensityMatrices1B::getRequiredTraces(TraceManager& tm)
 {
   w_trace = tm.get_real_trace("weight");
@@ -514,7 +518,7 @@ void DensityMatrices1B::getRequiredTraces(TraceManager& tm)
   }
   have_required_traces_ = true;
 }
-
+#endif
 
 void DensityMatrices1B::setRandomGenerator(RandomBase<FullPrecRealType>* rng) { uniform_random = rng; }
 
@@ -598,7 +602,11 @@ void DensityMatrices1B::warmup_sampling()
 DensityMatrices1B::Return_t DensityMatrices1B::evaluate(TrialWaveFunction& psi, ParticleSet& P)
 {
   ScopedTimer t(timers[DM_eval]);
+#if !defined(REMOVE_TRACEMANAGER)
   if (have_required_traces_ || !energy_mat)
+#else
+  if (!energy_mat)
+#endif
   {
     if (check_derivatives)
       test_derivatives();
@@ -620,10 +628,14 @@ DensityMatrices1B::Return_t DensityMatrices1B::evaluate_matrix(TrialWaveFunction
     warmup_sampling();
   // get weight and single particle energy trace data
   RealType weight;
+#if !defined(REMOVE_TRACEMANAGER)
   if (energy_mat)
     weight = w_trace->sample[0] * metric;
   else
     weight = t_walker_->Weight * metric;
+#else
+   throw std::runtime_error("Hit code path that is only intended for REMOVE_TRACEMANAGER to compile! Not necessarily correct!");
+#endif
 
   if (energy_mat)
     get_energies(E_N); // energies        : particles x 1
@@ -847,10 +859,14 @@ DensityMatrices1B::Return_t DensityMatrices1B::evaluate_loop(TrialWaveFunction& 
   if (!warmed_up)
     warmup_sampling();
   RealType weight;
+#if !defined(REMOVE_TRACEMANAGER)
   if (energy_mat)
     weight = w_trace->sample[0] * metric;
   else
     weight = t_walker_->Weight * metric;
+#else
+   throw std::runtime_error("Hit code path that is only intended for REMOVE_TRACEMANAGER to compile! Not necessarily correct!");
+#endif
   int nparticles = P.getTotalNum();
   generate_samples(weight);
   int n = 0;
@@ -877,7 +893,12 @@ DensityMatrices1B::Return_t DensityMatrices1B::evaluate_loop(TrialWaveFunction& 
       }
       if (energy_mat)
       {
+#if !defined(REMOVE_TRACEMANAGER)
         RealType e_n = E_trace->sample[n]; //replace this with traces access later
+#else
+        RealType e_n;
+        throw std::runtime_error("Hit code path that is only intended for REMOVE_TRACEMANAGER to compile! Not necessarily correct!");
+#endif
         int ij       = eindex + s * basis_size2;
         for (int i = 0; i < basis_size; ++i)
         {
@@ -931,7 +952,12 @@ inline void DensityMatrices1B::generate_samples(RealType weight, int steps)
 
 
   // temporary check
-  if (write_rstats && omp_get_thread_num() == 0)
+#if _OPENMP >= 202011
+  #pragma omp masked
+#else
+  #pragma omp master
+#endif
+  if (write_rstats)
   {
     PosType rmin  = std::numeric_limits<RealType>::max();
     PosType rmax  = -std::numeric_limits<RealType>::max();
@@ -1036,7 +1062,12 @@ inline void DensityMatrices1B::generate_density_samples(bool save, int steps, Ra
   }
   acceptance_ratio = RealType(naccepted) / nmoves;
 
-  if (write_acceptance_ratio && omp_get_thread_num() == 0)
+#if _OPENMP >= 202011
+  #pragma omp masked
+#else
+  #pragma omp master
+#endif
+  if (write_acceptance_ratio)
     app_log() << "dm1b  acceptance_ratio = " << acceptance_ratio << std::endl;
 
   rpcur  = r;
@@ -1088,6 +1119,7 @@ using RealType = DensityMatrices1B::RealType;
 using Value_t  = DensityMatrices1B::Value_t;
 
 
+#if !defined(REMOVE_TRACEMANAGER)
 inline RealType accum_constant(CombinedTraceSample<TraceReal>* etrace, RealType weight = 1.0)
 {
   RealType E = 0.0;
@@ -1125,9 +1157,11 @@ inline void accum_sample(std::vector<Value_t>& E_samp, TraceSample<T>* etrace, R
 #endif
 }
 
+#endif
 
 void DensityMatrices1B::get_energies(std::vector<Vector_t*>& E_n)
 {
+#if !defined(REMOVE_TRACEMANAGER)
   Value_t Vc = 0;
   Vc += accum_constant(Vc_trace);
   Vc += accum_constant(Vcc_trace);
@@ -1137,7 +1171,6 @@ void DensityMatrices1B::get_energies(std::vector<Vector_t*>& E_n)
   accum_sample(E_samp, Vq_trace);
   accum_sample(E_samp, Vqq_trace);
   accum_sample(E_samp, Vqc_trace, 2.0);
-
   int p = 0;
   for (int s = 0; s < nspecies; ++s)
   {
@@ -1152,6 +1185,7 @@ void DensityMatrices1B::get_energies(std::vector<Vector_t*>& E_n)
   //  E += E_samp[p];
   //app_log()<<"  E = "<<E<<"  "<<E_trace->sample[0]<< std::endl;
   //APP_ABORT("dm1b::get_energies  check sp traces");
+#endif
 }
 
 
@@ -1230,7 +1264,7 @@ inline void DensityMatrices1B::integrate(TrialWaveFunction& psi, ParticleSet& el
 inline void DensityMatrices1B::update_basis(const PosType& r)
 {
   Pq.makeMove(0, r - Pq.R[0]);
-  basis_functions.evaluateValue(Pq, 0, basis_values);
+  basis_functions->evaluateValue(Pq, 0, basis_values);
   Pq.rejectMove(0);
   for (int i = 0; i < basis_size; ++i)
     basis_values[i] *= basis_norms[i];
@@ -1240,7 +1274,7 @@ inline void DensityMatrices1B::update_basis(const PosType& r)
 inline void DensityMatrices1B::update_basis_d012(const PosType& r)
 {
   Pq.makeMove(0, r - Pq.R[0]);
-  basis_functions.evaluateVGL(Pq, 0, basis_values, basis_gradients, basis_laplacians);
+  basis_functions->evaluateVGL(Pq, 0, basis_values, basis_gradients, basis_laplacians);
   Pq.rejectMove(0);
   for (int i = 0; i < basis_size; ++i)
     basis_values[i] *= basis_norms[i];

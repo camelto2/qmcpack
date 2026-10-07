@@ -1,6 +1,8 @@
+import pytest
+from . import NexusTestOrder
+pytestmark = pytest.mark.order(NexusTestOrder.PWSCF_POSTPROCESSOR_INPUT)
 
-from .. import testing
-from ..testing import value_eq,object_eq,text_eq
+from ..testing import object_eq
 
 
 projwfc_in = '''&projwfc
@@ -8,17 +10,6 @@ projwfc_in = '''&projwfc
   outdir = 'pwscf_output'
 /
 '''
-
-
-
-def test_import():
-    from ..pwscf_postprocessors import PPInput,generate_pp_input
-    from ..pwscf_postprocessors import DosInput,generate_dos_input
-    from ..pwscf_postprocessors import BandsInput,generate_bands_input
-    from ..pwscf_postprocessors import ProjwfcInput,generate_projwfc_input
-    from ..pwscf_postprocessors import CpppInput,generate_cppp_input
-    from ..pwscf_postprocessors import PwexportInput,generate_pwexport_input
-#end def test_import
 
 
 
@@ -52,15 +43,12 @@ def test_empty_init():
 
 
 
-def test_read():
-    import os
-    from ..developer import obj
+def test_read(tmp_path):
+    from ..developer import obj, to_obj
     from ..pwscf_postprocessors import ProjwfcInput
 
-    tpath = testing.setup_unit_test_output_directory('pwscf_postprocessor_input','test_read')
-
-    infile_path = os.path.join(tpath,'projwfc.in')
-    open(infile_path,'w').write(projwfc_in)
+    infile_path = tmp_path / 'projwfc.in'
+    infile_path.write_text(projwfc_in)
 
     pi = ProjwfcInput(infile_path)
     
@@ -71,22 +59,19 @@ def test_read():
             ),
         )
 
-    assert(object_eq(pi.to_obj(),pi_ref))
+    assert(object_eq(to_obj(pi),pi_ref))
 #end def test_read
 
 
 
-def test_write():
-    import os
-    from ..developer import obj
+def test_write(tmp_path):
+    from ..developer import obj, to_obj
     from ..pwscf_postprocessors import ProjwfcInput
 
-    tpath = testing.setup_unit_test_output_directory('pwscf_postprocessor_input','test_write')
+    infile_path = tmp_path / 'projwfc.in'
+    infile_path.write_text(projwfc_in)
 
-    infile_path = os.path.join(tpath,'projwfc.in')
-    open(infile_path,'w').write(projwfc_in)
-
-    write_path = os.path.join(tpath,'projwfc_write.in')
+    write_path = tmp_path / 'projwfc_write.in'
     pi_write = ProjwfcInput(infile_path)
     
     pi_write.write(write_path)
@@ -100,13 +85,13 @@ def test_write():
             ),
         )
 
-    assert(object_eq(pi_read.to_obj(),pi_ref))
+    assert(object_eq(to_obj(pi_read),pi_ref))
 #end def test_write
 
 
 
 def test_generate():
-    from ..developer import obj
+    from ..developer import obj, to_obj
     from ..pwscf_postprocessors import generate_projwfc_input
 
     pi = generate_projwfc_input(
@@ -121,5 +106,5 @@ def test_generate():
             ),
         )
 
-    assert(object_eq(pi.to_obj(),pi_ref))
+    assert(object_eq(to_obj(pi),pi_ref))
 #end def test_generate

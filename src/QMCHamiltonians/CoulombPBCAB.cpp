@@ -60,7 +60,7 @@ CoulombPBCAB::CoulombPBCAB(ParticleSet& ions, ParticleSet& elns, bool computeFor
   app_log() << "  Number of k vectors " << AB->Fk.size() << std::endl;
 }
 
-std::unique_ptr<OperatorBase> CoulombPBCAB::makeClone(ParticleSet& qp) { return std::make_unique<CoulombPBCAB>(*this); }
+std::unique_ptr<OperatorBase> CoulombPBCAB::makeClone(ParticleSet& qp) const { return std::make_unique<CoulombPBCAB>(*this); }
 
 CoulombPBCAB::~CoulombPBCAB() = default;
 
@@ -87,14 +87,6 @@ void CoulombPBCAB::checkoutParticleQuantities(TraceManager& tm)
   }
 }
 
-void CoulombPBCAB::informOfPerParticleListener()
-{
-  // This is written so it can be called again and again.
-  pset_ions_.turnOnPerParticleSK();
-  Peln.turnOnPerParticleSK();
-  OperatorBase::informOfPerParticleListener();
-}
-
 void CoulombPBCAB::deleteParticleQuantities()
 {
   if (streaming_particles_)
@@ -105,6 +97,13 @@ void CoulombPBCAB::deleteParticleQuantities()
 }
 #endif
 
+void CoulombPBCAB::informOfPerParticleListener()
+{
+  // This is written so it can be called again and again.
+  pset_ions_.turnOnPerParticleSK();
+  Peln.turnOnPerParticleSK();
+  OperatorBase::informOfPerParticleListener();
+}
 
 CoulombPBCAB::Return_t CoulombPBCAB::evaluate(ParticleSet& P)
 {
@@ -488,11 +487,7 @@ void CoulombPBCAB::initBreakup(ParticleSet& P)
     Zat[iat] = Zspec[pset_ions_.GroupID[iat]];
   for (int iat = 0; iat < NptclB; iat++)
     Qat[iat] = Qspec[P.GroupID[iat]];
-  //    if(totQ>std::numeric_limits<RealType>::epsilon())
-  //    {
-  //      LOGMSG("PBCs not yet finished for non-neutral cells");
-  //      OHMMS::Controller->abort();
-  //    }
+
   ////Test if the box sizes are same (=> kcut same for fixed dimcut)
   kcdifferent =
       (std::abs(pset_ions_.getLattice().LR_kc - P.getLattice().LR_kc) > std::numeric_limits<RealType>::epsilon());

@@ -1,12 +1,11 @@
+import pytest
+from copy import deepcopy
+from . import NexusTestOrder
+pytestmark = pytest.mark.order(NexusTestOrder.PWSCF_ANALYZER)
 
-from .. import testing
-from ..testing import value_eq,object_eq,text_eq
 
-
-def test_import():
-    from ..pwscf_analyzer import PwscfAnalyzer
-#end def test_import
-
+from . import TEST_DIR
+from ..testing import object_eq
 
 
 def test_empty_init():
@@ -16,22 +15,14 @@ def test_empty_init():
 #end def test_empty_init
 
 
-
 def test_analyze():
-    import os
-    from numpy import array,ndarray
-    from ..developer import obj
+    from numpy import array
+    from ..developer import obj, to_obj
     from ..pwscf_analyzer import PwscfAnalyzer
 
-    tpath = testing.setup_unit_test_output_directory(
-        test      = 'pwscf_analyzer',
-        subtest   = 'test_analyze',
-        file_sets = ['scf_output','relax_output','nscf_output'],
-        )
-
-    scf_path = os.path.join(tpath,'scf_output')
-    relax_path = os.path.join(tpath,'relax_output')
-    nscf_path = os.path.join(tpath,'nscf_output')
+    scf_path = TEST_DIR / "test_pwscf_analyzer_files/scf_output"
+    relax_path = TEST_DIR / "test_pwscf_analyzer_files/relax_output"
+    nscf_path = TEST_DIR / "test_pwscf_analyzer_files/nscf_output"
 
     # scf w/o actual analysis
     pa = PwscfAnalyzer(scf_path,'scf.in','scf.out')
@@ -115,9 +106,10 @@ def test_analyze():
             ),
         )
 
-    assert(object_eq(pa.to_obj(),pa_ref))
+    assert(object_eq(to_obj(pa),pa_ref))
 
-    input_read = pa.input.copy()
+    input_read = deepcopy(pa.input)
+
 
     # scf w/ full analysis
     pa = PwscfAnalyzer(scf_path,'scf.in','scf.out',analyze=True)
@@ -194,7 +186,7 @@ def test_analyze():
             ),
         )
 
-    assert(object_eq(pa.to_obj(),pa_ref))
+    assert(object_eq(to_obj(pa),pa_ref))
 
 
     # relax w/ full analysis
@@ -369,7 +361,7 @@ def test_analyze():
             }),
         )
 
-    assert(object_eq(pa.to_obj(),pa_ref))
+    assert(object_eq(to_obj(pa),pa_ref))
 
 
     # nscf w/o actual analysis
@@ -472,10 +464,10 @@ def test_analyze():
                 ),
             ),
         )
-    
-    assert(object_eq(pa.to_obj(),pa_ref))
 
-    input_read = pa.input.copy()
+    assert(object_eq(to_obj(pa),pa_ref))
+
+    input_read = deepcopy(pa.input)
 
     # nscf w/ analysis
     pa = PwscfAnalyzer(nscf_path,'nscf.in','nscf.out',analyze=True)
@@ -683,9 +675,6 @@ def test_analyze():
             ),
         )
 
-    assert(object_eq(pa.to_obj(),pa_ref))
+    assert(object_eq(to_obj(pa),pa_ref))
 
 #end def test_analyze
-
-
-

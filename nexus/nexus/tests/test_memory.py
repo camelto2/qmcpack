@@ -1,8 +1,6 @@
-
-
-def test_import():
-    from ..memory import memory,resident,stacksize
-#end def test_import
+import pytest
+from . import NexusTestOrder
+pytestmark = pytest.mark.order(NexusTestOrder.MEMORY)
 
 
 

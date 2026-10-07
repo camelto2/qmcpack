@@ -9,7 +9,8 @@
 
 #include "SpaceGridTest.hpp"
 #include "GenerateRandomParticleSets.h"
-#include "catch.hpp"
+#include <catch2/catch_test_macros.hpp>
+#include "Utilities/for_testing/Catch2Approx.h"
 
 #include "NESpaceGrid.h"
 #include "SpaceGridInput.h"
@@ -83,9 +84,7 @@ TEST_CASE("SpaceGrid::Construction", "[estimators]")
   // It is a smell.
   NESpaceGrid<Real> space_grid(*(sge.sgi_), sge.ref_points_->get_points(), 1, false);
 
-  using NES         = testing::NESpaceGridTests<double>;
-  auto buffer_start = NES::getBufferStart(space_grid);
-  auto buffer_end   = NES::getBufferEnd(space_grid);
+  using NES = testing::NESpaceGridTests<double>;
   space_grid.write_description(std::cout, std::string(""));
   auto& sgi = *(sge.sgi_);
   auto& agr = sgi.get_axis_grids();
@@ -105,9 +104,7 @@ TEST_CASE("SpaceGrid::CYLINDRICAL", "[estimators]")
   // It is a smell.
   NESpaceGrid<Real> space_grid(*(sge.sgi_), sge.ref_points_->get_points(), 1, false);
 
-  using NES         = testing::NESpaceGridTests<double>;
-  auto buffer_start = NES::getBufferStart(space_grid);
-  auto buffer_end   = NES::getBufferEnd(space_grid);
+  using NES = testing::NESpaceGridTests<double>;
   space_grid.write_description(std::cout, std::string(""));
   auto& sgi = *(sge.sgi_);
   auto& agr = sgi.get_axis_grids();
@@ -127,9 +124,7 @@ TEST_CASE("SpaceGrid::SPHERICAL", "[estimators]")
   // It is a smell.
   NESpaceGrid<Real> space_grid(*(sge.sgi_), sge.ref_points_->get_points(), 1, false);
 
-  using NES         = testing::NESpaceGridTests<double>;
-  auto buffer_start = NES::getBufferStart(space_grid);
-  auto buffer_end   = NES::getBufferEnd(space_grid);
+  using NES = testing::NESpaceGridTests<double>;
   space_grid.write_description(std::cout, std::string(""));
   auto& sgi = *(sge.sgi_);
   auto& agr = sgi.get_axis_grids();
@@ -146,9 +141,7 @@ TEST_CASE("SpaceGrid::Basic", "[estimators]")
   sge.pset_elec_.R = default_start_pos;
   int num_values   = 3;
   NESpaceGrid<Real> space_grid(*(sge.sgi_), sge.ref_points_->get_points(), num_values, true);
-  using NES         = testing::NESpaceGridTests<double>;
-  auto buffer_start = NES::getBufferStart(space_grid);
-  auto buffer_end   = NES::getBufferEnd(space_grid);
+  using NES = testing::NESpaceGridTests<double>;
   space_grid.write_description(std::cout, std::string(""));
   auto& sgi = *(sge.sgi_);
   auto& agr = sgi.get_axis_grids();
@@ -199,6 +192,7 @@ TEST_CASE("SpaceGrid::Basic", "[estimators]")
   CHECK(tensorAccessor(grid_data, 17, 12, 9, 0) == Approx(5.0));
   CHECK(tensorAccessor(grid_data, 17, 12, 9, 1) == Approx(5.1));
   CHECK(tensorAccessor(grid_data, 17, 12, 9, 2) == Approx(5.2));
+
   // new pset R's
   // check again
   auto min_R =
@@ -258,6 +252,13 @@ TEST_CASE("SpaceGrid::Basic", "[estimators]")
   CHECK(tensorAccessor(grid_data, 17, 12, 9, 0) == Approx(5.0));
   CHECK(tensorAccessor(grid_data, 17, 12, 9, 1) == Approx(5.1));
   CHECK(tensorAccessor(grid_data, 17, 12, 9, 2) == Approx(5.2));
+
+  // Test normalization
+  Vector<Real> ohmms_vector(grid_data.size());
+  std::copy(grid_data.begin(), grid_data.end(), ohmms_vector.begin());
+  space_grid.normalize(0.5);
+  ohmms_vector *= 0.5;
+  checkVector(ohmms_vector, grid_data, true);
 }
 
 TEST_CASE("SpaceGrid::Accumulate::outside", "[estimators]")
@@ -268,9 +269,7 @@ TEST_CASE("SpaceGrid::Accumulate::outside", "[estimators]")
   testing::SpaceGridEnv<Input::valid::CYLINDRICAL> sge(comm);
   int num_values = 3;
   NESpaceGrid<Real> space_grid(*(sge.sgi_), sge.ref_points_->get_points(), num_values, false);
-  using NES         = testing::NESpaceGridTests<double>;
-  auto buffer_start = NES::getBufferStart(space_grid);
-  auto buffer_end   = NES::getBufferEnd(space_grid);
+  using NES = testing::NESpaceGridTests<double>;
   space_grid.write_description(std::cout, std::string(""));
   auto& sgi = *(sge.sgi_);
   auto& agr = sgi.get_axis_grids();
@@ -320,9 +319,7 @@ TEST_CASE("SpaceGrid::BadPeriodic", "[estimators]")
   sge.pset_elec_.R = default_start_pos;
   NESpaceGrid<Real> space_grid(*(sge.sgi_), sge.ref_points_->get_points(), num_values, false);
 
-  using NES         = testing::NESpaceGridTests<double>;
-  auto buffer_start = NES::getBufferStart(space_grid);
-  auto buffer_end   = NES::getBufferEnd(space_grid);
+  using NES = testing::NESpaceGridTests<double>;
   space_grid.write_description(std::cout, std::string(""));
   auto& sgi = *(sge.sgi_);
   auto& agr = sgi.get_axis_grids();
@@ -397,9 +394,7 @@ TEST_CASE("SpaceGrid::WeirdCartesian", "[estimators]")
 
   int num_values = 3;
   NESpaceGrid<Real> space_grid(*(sge.sgi_), sge.ref_points_->get_points(), num_values, true);
-  using NES         = testing::NESpaceGridTests<double>;
-  auto buffer_start = NES::getBufferStart(space_grid);
-  auto buffer_end   = NES::getBufferEnd(space_grid);
+  using NES = testing::NESpaceGridTests<double>;
   space_grid.write_description(std::cout, std::string(""));
   auto& sgi = *(sge.sgi_);
   auto& agr = sgi.get_axis_grids();
@@ -488,9 +483,7 @@ TEST_CASE("SpaceGrid::hdf5", "[estimators]")
   sge.pset_elec_.R = default_start_pos;
   int num_values   = 3;
   NESpaceGrid<Real> space_grid(*(sge.sgi_), sge.ref_points_->get_points(), num_values, false);
-  using NES         = testing::NESpaceGridTests<double>;
-  auto buffer_start = NES::getBufferStart(space_grid);
-  auto buffer_end   = NES::getBufferEnd(space_grid);
+  using NES = testing::NESpaceGridTests<double>;
   space_grid.write_description(std::cout, std::string(""));
   auto& sgi = *(sge.sgi_);
   auto& agr = sgi.get_axis_grids();
@@ -525,14 +518,11 @@ TEST_CASE("SpaceGrid::hdf5", "[estimators]")
 
   hd.close();
 
-  hdf_archive hd_read;
-  bool okay_read = hd.open(test_file);
+  REQUIRE(hd.open(test_file));
   hd.push("spacegrid1");
   //hdf5 values always end up as doubles
   Matrix<double> read_values(1, 24000);
   hd.readEntry(read_values, "value");
-
-  auto value = tensorAccessor(read_values, 10, 17, 9, 0);
 
   CHECK(tensorAccessor(read_values, 10, 17, 9, 0) == Approx(2.0));
   CHECK(tensorAccessor(read_values, 10, 17, 9, 1) == Approx(2.1));

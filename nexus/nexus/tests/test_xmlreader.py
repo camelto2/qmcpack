@@ -1,36 +1,21 @@
-
-from .. import testing
-from ..testing import value_eq,object_eq
-
-
-associated_files = dict()
-
-def get_files():
-    return testing.collect_unit_test_file_paths('xmlreader',associated_files)
-#end def get_files
+import pytest
+from . import NexusTestOrder
+pytestmark = pytest.mark.order(NexusTestOrder.XMLREADER)
 
 
-def test_files():
-    filenames = [
-        'vmc.in.xml',
-        ]
-    files = get_files()
-    assert(set(files.keys())==set(filenames))
-#end def test_files
+from . import TEST_DIR
+from ..testing import object_eq
 
+TEST_FILES = {
+    "vmc.in.xml": TEST_DIR / "test_xmlreader_files/vmc.in.xml",
+    }
 
-def test_import():
-    from .. import xmlreader
-    from ..xmlreader import XMLreader,readxml
-    from ..xmlreader import parse_string
-    from ..xmlreader import find_pair
-    from ..xmlreader import remove_pair_sections
-    from ..xmlreader import remove_empty_lines
-#end def test_import
+for file in TEST_FILES.values():
+    assert(file.exists()), f"Test file not found! {file}"
 
 
 def test_read():
-    from ..developer import obj
+    from ..developer import obj, to_obj
     from ..xmlreader import readxml,XMLelement
 
     ref = obj(
@@ -251,11 +236,10 @@ def test_read():
             ),
         )
 
-    files = get_files()
-    x = readxml(files['vmc.in.xml'])
+    x = readxml(TEST_FILES['vmc.in.xml'])
     assert(isinstance(x,XMLelement))
     x.remove_hidden()
-    o = x.to_obj()
+    o = to_obj(x)
 
     assert(object_eq(o,ref))
 #end def test_read
@@ -348,6 +332,11 @@ def test_find_pair():
     assert(s[i1:i2]=='</qmc>')
     i1,i2 = find_pair(s,['</','>'],i2)
     assert(s[i1:i2]=='</simulation>')
+
+    # A right delimiter can remain after the final left delimiter.  In this
+    # case, no pair is present and both locations should report not found.
+    i1,i2 = find_pair('<simulation><project/></simulation>',['<include','/>'])
+    assert((i1,i2)==(-1,-1))
 #end def test_find_pair
 
 

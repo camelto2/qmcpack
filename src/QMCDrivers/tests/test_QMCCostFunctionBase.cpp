@@ -8,8 +8,8 @@
 //
 // File created by: Mark Dewing, mdewing@anl.gov, Argonne National Laboratory
 //////////////////////////////////////////////////////////////////////////////////////
-
-#include "catch.hpp"
+#include <catch2/catch_test_macros.hpp>
+#include "Utilities/for_testing/Catch2Approx.h"
 
 #include "OhmmsData/Libxml2Doc.h"
 #include "QMCDrivers/WFOpt/QMCCostFunctionBase.h"
@@ -75,8 +75,7 @@ TEST_CASE("updateXmlNodes", "[drivers]")
     )";
 
   Libxml2Document doc;
-  bool okay = doc.parseFromString(wf_xml);
-  REQUIRE(okay);
+  REQUIRE(doc.parseFromString(wf_xml));
   cost.setWaveFunctionNode(doc.getRoot());
 
   cost.callUpdateXmlNodes();
@@ -112,8 +111,7 @@ TEST_CASE("updateXmlNodes with existing element", "[drivers]")
     )";
 
   Libxml2Document doc;
-  bool okay = doc.parseFromString(wf_xml);
-  REQUIRE(okay);
+  REQUIRE(doc.parseFromString(wf_xml));
   cost.setWaveFunctionNode(doc.getRoot());
 
   cost.callUpdateXmlNodes();

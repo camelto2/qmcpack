@@ -8,7 +8,8 @@
 //////////////////////////////////////////////////////////////////////////////////////
 
 #include "SpaceGridTest.hpp"
-#include "catch.hpp"
+#include <catch2/catch_test_macros.hpp>
+#include "Utilities/for_testing/Catch2Approx.h"
 #include "ValidSpaceGridInput.h"
 #include <ParticleSetPool.h>
 #include "GenerateRandomParticleSets.h"
@@ -81,15 +82,14 @@ SpaceGridEnv<VALID>::SpaceGridEnv(Communicate* comm)
   setDefaultStartingPos();
 
   Libxml2Document doc;
-  bool okay = doc.parseFromString(Input::xml[VALID]);
-  CHECK(okay);
+  REQUIRE(doc.parseFromString(Input::xml[VALID]));
 
   xmlNodePtr node = doc.getRoot();
   sgi_            = std::make_unique<SpaceGridInput>(node);
 
   using RPInput = ValidReferencePointsInputs;
   Libxml2Document doc2;
-  bool okay2       = doc.parseFromString(RPInput::xml[RPInput::CELL]);
+  REQUIRE(doc.parseFromString(RPInput::xml[RPInput::CELL]));
   xmlNodePtr node2 = doc.getRoot();
   rpi_             = std::make_unique<ReferencePointsInput>(node2);
   ref_psets_.push_back(pset_ions_);
@@ -105,13 +105,13 @@ SpaceGridEnv<ValidSpaceGridInput::valid::CYLINDRICAL>::SpaceGridEnv(Communicate*
   setDefaultStartingPos();
 
   Libxml2Document doc;
-  bool okay       = doc.parseFromString(Input::xml[ValidSpaceGridInput::valid::CYLINDRICAL]);
+  REQUIRE(doc.parseFromString(Input::xml[ValidSpaceGridInput::valid::CYLINDRICAL]));
   xmlNodePtr node = doc.getRoot();
   sgi_            = std::make_unique<SpaceGridInput>(node);
 
   using RPInput = ValidReferencePointsInputs;
   Libxml2Document doc2;
-  bool okay2 = doc.parseFromString(RPInput::xml[RPInput::CELL]);
+  REQUIRE(doc.parseFromString(RPInput::xml[RPInput::CELL]));
 
   xmlNodePtr node2 = doc.getRoot();
   rpi_             = std::make_unique<ReferencePointsInput>(node2);

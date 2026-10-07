@@ -1,8 +1,7 @@
+import pytest
+from . import NexusTestOrder
+pytestmark = pytest.mark.order(NexusTestOrder.QUANTUM_PACKAGE_ANALYZER)
 
-
-def test_import():
-    from ..quantum_package_analyzer import QuantumPackageAnalyzer
-#end def test_import
 
 
 

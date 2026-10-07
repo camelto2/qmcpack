@@ -9,9 +9,8 @@
 //
 // File created by: Ye Luo, yeluo@anl.gov, Argonne National Laboratory
 //////////////////////////////////////////////////////////////////////////////////////
-
-
-#include "catch.hpp"
+#include <catch2/catch_test_macros.hpp>
+#include "Utilities/for_testing/Catch2Approx.h"
 
 #include "OhmmsData/Libxml2Doc.h"
 #include "OhmmsPETE/OhmmsMatrix.h"
@@ -38,9 +37,8 @@ template<PlatformKind PL>
 void test_DiracDeterminantBatched_first()
 {
   using Det      = DiracDeterminantBatched<PL, Value, QMCTraits::QTFull::ValueType>;
-  auto spo_init  = std::make_unique<FakeSPO<Value>>();
   const int norb = 3;
-  spo_init->setOrbitalSetSize(norb);
+  auto spo_init  = std::make_unique<FakeSPO<Value>>(norb);
   Det ddb(*spo_init, 0, norb);
   auto spo = dynamic_cast<FakeSPO<Value>&>(ddb.getPhi());
 
@@ -141,9 +139,8 @@ template<PlatformKind PL>
 void test_DiracDeterminantBatched_second()
 {
   using Det      = DiracDeterminantBatched<PL, Value, QMCTraits::QTFull::ValueType>;
-  auto spo_init  = std::make_unique<FakeSPO<Value>>();
   const int norb = 4;
-  spo_init->setOrbitalSetSize(norb);
+  auto spo_init  = std::make_unique<FakeSPO<Value>>(norb);
   Det ddb(*spo_init, 0, norb);
   auto spo = dynamic_cast<FakeSPO<Value>&>(ddb.getPhi());
 
@@ -276,9 +273,8 @@ template<PlatformKind PL>
 void test_DiracDeterminantBatched_delayed_update(int delay_rank, DetMatInvertor matrix_inverter_kind)
 {
   using Det      = DiracDeterminantBatched<PL, Value, QMCTraits::QTFull::ValueType>;
-  auto spo_init  = std::make_unique<FakeSPO<Value>>();
   const int norb = 4;
-  spo_init->setOrbitalSetSize(norb);
+  auto spo_init  = std::make_unique<FakeSPO<Value>>(norb);
   Det ddc(*spo_init, 0, norb, delay_rank, matrix_inverter_kind);
   auto spo = dynamic_cast<FakeSPO<Value>&>(ddc.getPhi());
 
@@ -558,10 +554,9 @@ void test_DiracDeterminantBatched_spinor_update(const int delay_rank, DetMatInve
   auto spo_up = std::make_unique<FreeOrbital>("free_orb_up", kup);
   auto spo_dn = std::make_unique<FreeOrbital>("free_orb_up", kdn);
 
-  auto spinor_set = std::make_unique<SpinorSet>("free_orb_spinor");
-  spinor_set->set_spos(std::move(spo_up), std::move(spo_dn));
+  auto spinor_set = std::make_unique<SpinorSet>("free_orb_spinor", std::move(spo_up), std::move(spo_dn));
 
-  using Det = DiracDeterminantBatched<PL, Value, QMCTraits::QTFull::ValueType>;
+  using Det   = DiracDeterminantBatched<PL, Value, QMCTraits::QTFull::ValueType>;
   auto dd_ptr = std::make_unique<Det>(*spinor_set, 0, nelec, delay_rank, matrix_inverter_kind);
   app_log() << " nelec=" << nelec << std::endl;
 
