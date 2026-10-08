@@ -22,12 +22,7 @@
 #include "QMCWaveFunctions/TrialWaveFunction.h"
 #include "Message/MPIObjectBase.h"
 #include "libxml/xpath.h"
-#include "type_traits/OptionalRef.hpp"
 
-#ifdef HAVE_LMY_ENGINE
-#include "formic/utils/matrix.h"
-#include "formic/utils/lmyengine/engine.h"
-#endif
 
 #include "EngineHandle.h"
 
@@ -35,8 +30,6 @@
 
 namespace qmcplusplus
 {
-class DescentEngine;
-
 /** @ingroup QMCDrivers
  * @brief Implements wave-function optimization
  *
@@ -152,9 +145,6 @@ public:
 
   virtual void constructDerivativeMatrices(Vector<Return_rt>& ham, Matrix<Return_rt>& derivMat, Matrix<Return_rt>& hamDerivMat); 
 
-#ifdef HAVE_LMY_ENGINE
-  Return_rt LMYEngineCost(const bool needDeriv, cqmc::engine::LMYEngine<Return_t>& EngineObj);
-#endif
 
   virtual void getConfigurations(const std::string& aroot) = 0;
 
@@ -163,14 +153,6 @@ public:
   virtual void checkConfigurations(EngineHandle& handle) = 0;
   //for SR method
   virtual void checkConfigurationsSR(EngineHandle& handle);
-#ifdef HAVE_LMY_ENGINE
-  /** similar to checkConfigurations. With additioal interaction with the LMY engine.
-   * if descentEngineObj is not nullopt, collect results to the descentEngineObj.
-   */
-  virtual void engine_checkConfigurations(cqmc::engine::LMYEngine<Return_t>& EngineObj,
-                                          OptionalRef<DescentEngine> descentEngineObj) = 0;
-
-#endif
 
   void setRng(RefVector<RandomBase<FullPrecRealType>> r);
 
@@ -299,13 +281,6 @@ protected:
 
   void resetOptimizableObjects(TrialWaveFunction& psi, const OptVariables& opt_variables) const;
 
-#ifdef HAVE_LMY_ENGINE
-  virtual Return_rt LMYEngineCost_detail(cqmc::engine::LMYEngine<Return_t>& EngineObj)
-  {
-    APP_ABORT("NOT IMPLEMENTED");
-    return 0;
-  }
-#endif
 };
 } // namespace qmcplusplus
 #endif

@@ -88,18 +88,6 @@ Communicate Communicate::NodeComm() const
   return Communicate{comm.split_shared()};
 }
 
-void Communicate::finalize()
-{
-  static bool has_finalized = false;
-
-  if (!has_finalized)
-  {
-    has_finalized = true;
-  }
-}
-
-void Communicate::cleanupMessage(void*) {}
-
 void Communicate::abort() const { comm.abort(1); }
 
 void Communicate::barrier() const { comm.barrier(); }
@@ -107,16 +95,13 @@ void Communicate::barrier() const { comm.barrier(); }
 
 Communicate Communicate::NodeComm() const { return Communicate{}; }
 
-void Communicate::finalize() {}
-
 void Communicate::abort() const { std::_Exit(EXIT_FAILURE); }
 
 void Communicate::barrier() const {}
 
-void Communicate::cleanupMessage(void*) {}
 
 Communicate::Communicate(const Communicate& in_comm, int nparts, int stripe)
-    : myMPI(MPI_COMM_NULL), d_mycontext(0), d_ncontexts(1), d_groupid(0)
+    : myMPI(MPI_COMM_NULL), d_mycontext(0), d_ncontexts(1), d_groupid(0), d_ngroups(nparts)
 { inter_group_comm_ = std::make_unique<Communicate>(); }
 #endif // !HAVE_MPI
 

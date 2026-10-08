@@ -40,6 +40,12 @@
 #include "formic/utils/random.h"
 #include "formic/utils/lmyengine/var_dependencies.h"
 #endif
+#include <ostream>
+#ifdef HAVE_LMY_ENGINE
+#include "formic/utils/matrix.h"
+#include "formic/utils/random.h"
+#include "formic/utils/lmyengine/var_dependencies.h"
+#endif
 #include <iostream>
 #include <fstream>
 #include <stdexcept>
@@ -123,6 +129,9 @@ QMCFixedSampleLinearOptimizeBatched::QMCFixedSampleLinearOptimizeBatched(
   m_param.add(sr_tau, "sr_tau");
   m_param.add(sr_regularization, "sr_regularization");
   m_param.add(sr_tolerance, "sr_tolerance");
+  m_param.add(pii_regularization, "pii_regularization");
+  m_param.add(pii_spectral_shift, "pii_spectral_shift");
+  m_param.add(pii_tau, "pii_tau");
   m_param.add(pii_regularization, "pii_regularization");
   m_param.add(pii_spectral_shift, "pii_spectral_shift");
   m_param.add(pii_tau, "pii_tau");
@@ -274,6 +283,10 @@ void QMCFixedSampleLinearOptimizeBatched::run()
     one_shift_run();
   else if (options_LMY_.current_optimizer_type == OptimizerType::STOCHASTIC_RECONFIGURATION_CG)
     stochastic_reconfiguration_conjugate_gradient();
+  else if (current_optimizer_type_ == OptimizerType::MIN_STOCHASTIC_RECONFIGURATION)
+    min_stochastic_reconfiguration();
+  else if (current_optimizer_type_ == OptimizerType::PROJECTED_INVERSE_ITERATION)
+    projected_inverse_iteration();
   else if (options_LMY_.current_optimizer_type == OptimizerType::MIN_STOCHASTIC_RECONFIGURATION)
     min_stochastic_reconfiguration();
   else if (options_LMY_.current_optimizer_type == OptimizerType::PROJECTED_INVERSE_ITERATION)
@@ -2267,3 +2280,180 @@ void QMCFixedSampleLinearOptimizeBatched::hybrid_run()
 #endif
 
 } // namespace qmcplusplus
+
+void QMCFixedSampleLinearOptimizeBatched::min_stochastic_reconfiguration()
+{
+  app_log() << std::endl
+            << "*****************************************************************************" << std::endl
+            << "                   Running MinSR                   " << std::endl
+            << "*****************************************************************************" << std::endl;
+  optTarget->setneedGrads(true);
+  start();
+
+  const int numParams  = optTarget->getNumParams();
+  const int numSamples = optTarget->getNumSamples();
+  if (numSamples > numParams)
+    throw std::runtime_error("MinSR works in the limit that Nsamples < Nparameters");
+
+  std::vector<RealType> currentParameters(numParams, 0.0);
+  for (int i = 0; i < numParams; i++)
+    currentParameters.at(i) = std::real(optTarget->Params(i));
+
+  std::vector<RealType> parameterDirections;
+  parameterDirections.assign(numParams, 0.0);
+
+  Vector<RealType> ham(numSamples);
+  Matrix<RealType> derivMat(numSamples, numParams);
+  Matrix<RealType> ovlMat(numSamples, numSamples);
+  Matrix<RealType> invMat(numSamples, numSamples);
+  Matrix<RealType> prod(numParams, numSamples);
+  Vector<RealType> dp(numParams);
+
+  {
+    ScopedTimer local(build_olv_ham_timer_);
+    app_log() << std::endl
+              << "********************************************************" << std::endl
+              << "Building <Psi_i/Psi_0 Psi_j/Psi_0> and <Psi_i/Psi_0 E_L>" << std::endl
+              << "********************************************************" << std::endl;
+    optTarget->getMinSRData(ham, derivMat);
+  }
+
+  if (is_manager())
+  {
+    ScopedTimer local(sr_solver_timer_);
+    MatrixOperators::product_ABt(derivMat, derivMat, ovlMat);
+    invMat.copy(ovlMat);
+    for (int i = 0; i < numSamples; i++)
+      invMat(i,i) += sr_regularization;
+    invert_matrix(invMat, false);
+    MatrixOperators::product_AtB(derivMat, invMat, prod);
+    MatrixOperators::product(prod, ham, dp);
+  }
+  myComm->bcast(dp);
+
+  for (int i = 0; i < numParams; i++)
+    optTarget->Params(i) = currentParameters.at(i) + sr_tau * dp[i];
+
+  app_log() << std::endl << "The new set of parameters is valid. Updating the trial wave function!" << std::endl;
+  accept_history <<= 1;
+  accept_history.set(0, true);
+  finish();
+}
+
+void QMCFixedSampleLinearOptimizeBatched::projected_inverse_iteration()
+{
+  app_log() << std::endl
+            << "*****************************************************************************" << std::endl
+            << "                   Projected Inverse Iteration                               " << std::endl
+            << "*****************************************************************************" << std::endl;
+  optTarget->setneedGrads(true);
+  start();
+
+  const int num_samples = optTarget->getNumSamples();
+  const int num_params  = optTarget->getNumParams();
+
+  std::vector<RealType> currentParams(num_params, 0.0);
+  for (int ip = 0; ip < num_params; ip++)
+    currentParams.at(ip) = std::real(optTarget->Params(ip));
+
+  Vector<RealType> dp(num_params);
+  Vector<RealType> loc_ham;
+  Matrix<RealType> loc_deriv_mat;
+  Matrix<RealType> loc_ham_deriv_mat;
+
+  Vector<RealType> ham;
+  Matrix<RealType> derivMat;
+  Matrix<RealType> hamDerivMat;
+  {
+    ScopedTimer local(build_olv_ham_timer_);
+    app_log() << std::endl
+              << "*****************************************************************************" << std::endl
+              << " calculating r, O, A from https://doi.org/10.48550/arXiv.2507.10835          " << std::endl
+              << "*****************************************************************************" << std::endl;
+    optTarget->constructDerivativeMatrices(loc_ham, loc_deriv_mat, loc_ham_deriv_mat);
+  }
+
+  {
+    if (is_manager())
+    {
+      ham.resize(num_samples);
+      derivMat.resize(num_samples, num_params);
+      hamDerivMat.resize(num_samples, num_params);
+
+      std::copy(loc_ham.begin(), loc_ham.end(), ham.begin());
+      std::copy(loc_deriv_mat.begin(), loc_deriv_mat.end(), derivMat.begin());
+      std::copy(loc_ham_deriv_mat.begin(), loc_ham_deriv_mat.end(), hamDerivMat.begin());
+
+      for (int ir = 1; ir < myComm->size(); ir++)
+      {
+        std::vector<RealType> tmp(loc_ham.size());
+        myComm->recv(ir, ir, tmp);
+        std::copy(tmp.begin(), tmp.end(), ham.begin() + ir * tmp.size());
+
+        tmp.resize(loc_deriv_mat.size());
+        myComm->recv(ir, ir, tmp);
+        std::copy(tmp.begin(), tmp.end(), derivMat.begin() + ir * tmp.size());
+
+        myComm->recv(ir, ir, tmp);
+        std::copy(tmp.begin(), tmp.end(), hamDerivMat.begin() + ir * tmp.size());
+      }
+    }
+    else 
+    {
+      std::vector<RealType> tmp(loc_ham.size());
+      std::copy(loc_ham.begin(), loc_ham.end(), tmp.begin());
+      myComm->send(0, myComm->rank(), tmp);
+
+      tmp.resize(loc_deriv_mat.size());
+      std::copy(loc_deriv_mat.begin(), loc_deriv_mat.end(), tmp.begin());
+      myComm->send(0, myComm->rank(), tmp);
+
+      std::copy(loc_ham_deriv_mat.begin(), loc_ham_deriv_mat.end(), tmp.begin());
+      myComm->send(0, myComm->rank(), tmp);
+    }
+  }
+
+  if (is_manager())
+  {
+    ScopedTimer local(eigenvalue_timer_);
+    if (pii_spectral_shift == 0.0)
+        throw std::runtime_error("Must set spectral shift fraction. Should be something like (1.2-1.5)*E_gs ");
+    
+    if (num_samples >= num_params) {
+      Matrix<RealType> ovlMat(num_params, num_params);
+      MatrixOperators::product_AtB(derivMat, derivMat, ovlMat);
+      Matrix<RealType> hMat(num_params, num_params);
+      MatrixOperators::product_AtB(derivMat, hamDerivMat, hMat);
+      Matrix<RealType> invMat(num_params, num_params);
+      invMat = hMat - pii_spectral_shift * ovlMat;
+      for (int pm = 0; pm < num_params; pm++)
+        invMat(pm, pm) += pii_regularization;
+      invert_matrix(invMat, false);
+      Matrix<RealType> prodMat(num_params, num_samples);
+      MatrixOperators::product_ABt(invMat, derivMat, prodMat);
+      MatrixOperators::product(prodMat, ham, dp);
+    }
+    else {
+      Matrix<RealType> ovlMat(num_samples, num_samples);
+      MatrixOperators::product_ABt(derivMat, derivMat, ovlMat);
+      Matrix<RealType> hMat(num_samples, num_samples);
+      MatrixOperators::product_ABt(hamDerivMat, derivMat, hMat);
+      Matrix<RealType> invMat(num_samples, num_samples);
+      invMat = hMat - pii_spectral_shift * ovlMat;
+      for (int iw = 0; iw < num_samples; iw++)
+        invMat(iw, iw) += pii_regularization;
+      invert_matrix(invMat, false);
+      Matrix<RealType> prodMat(num_params, num_samples);
+      MatrixOperators::product_AtB(derivMat, invMat, prodMat);
+      MatrixOperators::product(prodMat, ham, dp);
+    }
+  }
+  myComm->bcast(dp);
+
+  for (int pm = 0; pm < num_params; pm++)
+    optTarget->Params(pm) = currentParams.at(pm) - pii_tau * dp[pm];
+
+  accept_history <<= 1;
+  accept_history.set(0, true);
+  finish();
+}

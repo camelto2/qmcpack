@@ -18,7 +18,7 @@
 #include "Utilities/PrimeNumberSet.h"
 #include "Utilities/Timer.h"
 #include "random.hpp"
-#include "mpi/collectives.h"
+#include "Message/CommOperators.h"
 #include <getopt.h>
 using namespace std;
 #include "determinant.hpp"
@@ -27,7 +27,7 @@ using namespace qmcplusplus;
 int main(int argc, char** argv)
 {
 #ifdef HAVE_MPI
-  mpi3::environment env(argc, argv);
+  mpi3::environment env(argc, argv, boost::mpi3::thread_level::funneled);
   OHMMS::Controller = new Communicate(env.world());
 #endif
   Communicate* myComm = OHMMS::Controller;
@@ -162,8 +162,6 @@ int main(int argc, char** argv)
   //t_pseudo   *=1.0/static_cast<double>(nsteps*nthreads);
   //cout << "#per MC step steps " << nsteps << " substeps " << nsubsteps << endl;
   //cout << "diffusion_mc " << t_diffusion << " pseudo_mc  " << t_pseudo << endl;
-
-  OHMMS::Controller->finalize();
 
   return 0;
 }

@@ -42,7 +42,7 @@ class VXML(DevBase):
     basic_types = frozenset({'dimension', 'field', 'v', 'time', 'i', 'set'})
 
     data_types = obj(int=int,string=str,float=float)
-    
+
     def __init__(self,tag,attr=None):
         self._tag   = tag
         self._lines = []
@@ -145,7 +145,7 @@ class VXML(DevBase):
         # if sub-objects resolve to a value, replace with that value
         for name in list(self.keys()):
             value = self[name]
-            if isinstance(value,VXML) and value._value is not None: 
+            if isinstance(value,VXML) and value._value is not None:
                 self[name] = value._value
             #end if
         #end for
@@ -158,7 +158,6 @@ class VXML(DevBase):
             self.update(**self._attr)
         #end if
 
-        return
     #end def _parse
 
 
@@ -234,7 +233,7 @@ class VXML(DevBase):
                     fields[len(fields)] = obj(name=fname,dtype=dtype)
                 elif line.startswith('<set'):
                     if not set_dims:
-                        dims = [v for v in dims.values()]
+                        dims = list(dims.values())
                         dims.reverse()
                         dims = tuple(dims)
                         dim_counts = np.zeros((len(dims),),dtype=int)
@@ -282,7 +281,7 @@ class VXML(DevBase):
                     del self[n]
                 #end if
             #end if
-        #end for 
+        #end for
     #end def _remove_empty
 
 
@@ -364,7 +363,7 @@ def readval(val):
     #end if
     return v
 #end def readval
-            
+
 
 
 def read_vxml(filepath):
@@ -398,7 +397,7 @@ def read_vxml(filepath):
                 cur._lines.append(ls)
             #end if
         elif ls.startswith('<?'):
-            None
+            pass
         elif ls.startswith('<'):
             ta,rest = ls[1:].split('>',1)
             tokens = ta.split(' ',1)
@@ -550,7 +549,7 @@ def read_outcar_bands(vlines,odata):
                     kpoint = obj(kpoint=kp,energies=[],occupations=[])
                     spin[nk]=kpoint
                 elif line[2]=='b':
-                    None
+                    pass
                 else:
                     bnum,energy,occ = line.split()
                     kpoint.energies.append(float(energy))
@@ -842,7 +841,7 @@ class VaspAnalyzer(SimulationAnalyzer):
             #end for
             return
         #end if
-            
+
         if outcar is None and self.info.outcar_file is not None:
             outcar = os.path.join(self.info.path,self.info.outcar_file)
         #ned if

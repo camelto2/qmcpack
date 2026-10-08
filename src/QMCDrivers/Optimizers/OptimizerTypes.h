@@ -21,9 +21,7 @@ enum class OptimizerType
   RESCALE,
   LINEMIN,
   ONESHIFTONLY,
-  ADAPTIVE,
   DESCENT,
-  HYBRID,
   GRADIENT_TEST,
   STOCHASTIC_RECONFIGURATION_CG,
   PROJECTED_INVERSE_ITERATION,
@@ -32,8 +30,7 @@ enum class OptimizerType
 
 const std::map<std::string, OptimizerType> OptimizerNames =
     {{"quartic", OptimizerType::QUARTIC}, {"rescale", OptimizerType::RESCALE}, {"linemin", OptimizerType::LINEMIN},
-     {"OneShiftOnly", OptimizerType::ONESHIFTONLY}, {"adaptive", OptimizerType::ADAPTIVE},
-     {"descent", OptimizerType::DESCENT}, {"hybrid", OptimizerType::HYBRID},
+  {"OneShiftOnly", OptimizerType::ONESHIFTONLY}, {"descent", OptimizerType::DESCENT},
      {"gradient_test", OptimizerType::GRADIENT_TEST},
      {"sr_cg", OptimizerType::STOCHASTIC_RECONFIGURATION_CG},
      {"pii", OptimizerType::PROJECTED_INVERSE_ITERATION},
