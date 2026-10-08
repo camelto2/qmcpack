@@ -11,7 +11,7 @@
 // Laboratories
 //////////////////////////////////////////////////////////////////////////////////////
 
-#include "catch.hpp"
+#include <catch2/catch_test_macros.hpp>
 #include "QMCWaveFunctions/Fermion/PfaffianSTU.h"
 #include "checkMatrix.hpp"
 #include "ConstantSPOSet.h"

@@ -50,12 +50,6 @@ void ConstantSPOSet<T>::checkOutVariables(const OptVariables& active)
 }
 
 template<typename T>
-void ConstantSPOSet<T>::setOrbitalSetSize(int norbs)
-{
-  APP_ABORT("ConstantSPOSet should not call setOrbitalSetSize()");
-}
-
-template<typename T>
 void ConstantSPOSet<T>::setRefVals(const ValueMatrix& vals)
 {
   assert(vals.cols() == SPOSet::OrbitalSetSize);
