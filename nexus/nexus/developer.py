@@ -22,16 +22,15 @@
 from typing import NoReturn
 
 from .developer_tools import save,load,_pp_repr,_pp_str,dotdict,obj,DevBase  # noqa: F401
-from .developer_tools import sorted_py2 as sorted_generic
+from .developer_tools import sorted_py2 as sorted_generic  # noqa: F401
 from .debug import ci, interact  # noqa: F401
 
 
 from .generic import NexusError, FileFormatError, NotAnElementError  # noqa: F401
-from .generic import error, log, warn, message  # noqa: F401
+from .generic import error, nxs_print, warn, message  # noqa: F401
 
 
 import traceback
-from .generic import generic_settings
 
 
 def deprecation_error():
@@ -58,15 +57,9 @@ class DevBaseNexus(DevBase):
     # change from deepcopy to shallow copy, blow up
     def copy(self): deprecation_error()
 
-    # logging - unique to Nexus-style DevBase (future refactor)
-    @property
-    def _logfile(self):
-        return generic_settings.devlog
 
-
-    def log(self,*a,**kw):
-        kw.setdefault('logfile',self._logfile)
-        log(*a,**kw)
+    def nxs_print(self,*a,**kw):
+        nxs_print(*a,**kw)
 
     def warn(self,msg,indent='    '):
         warn(

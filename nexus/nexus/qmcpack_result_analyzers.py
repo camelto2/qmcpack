@@ -34,7 +34,7 @@ from .qmcpack_analyzer_base import QAobject,QAanalyzer
 
 
 class ResultAnalyzer(QAanalyzer):
-    None
+    pass
 #end class ResultAnalyzer
 
 
@@ -49,7 +49,7 @@ class OptimizationAnalyzer(ResultAnalyzer):
 
         ew,vw = energy_weight,variance_weight
         if ew is None or vw is None:
-            opts_in = []            
+            opts_in = []
             for qmc in input.simulation.calculations:
                 if qmc.method in self.opt_methods:
                     opts_in.append(qmc)
@@ -91,7 +91,7 @@ class OptimizationAnalyzer(ResultAnalyzer):
 
 
     def init_sub_analyzers(self):
-        None
+        pass
     #end def init_sub_analyzers
 
     def analyze_local(self):
@@ -105,7 +105,7 @@ class OptimizationAnalyzer(ResultAnalyzer):
         Vfail        = 1e3
         EVratio_fail = 0.30
         EVratio_soft_fail = 0.15
-        
+
         #save the energies and variances of opt iterations
         res = obj()
         variance_present = False
@@ -167,7 +167,7 @@ class OptimizationAnalyzer(ResultAnalyzer):
             #end if
             i+=1
         #end for
-                
+
 
         self.update(
             any_complete   = any_complete,
@@ -190,9 +190,9 @@ class OptimizationAnalyzer(ResultAnalyzer):
             ew = 1.0
             vw = 0.0
         elif optimize=='energy_within_variance_tol' or optimize=='ewvt':
-            None
+            pass
         elif optimize=='last':
-            None
+            pass
         elif isinstance(optimize,(tuple,list)) and len(optimize)==2:
             ew,vw = optimize
         else:
@@ -224,7 +224,7 @@ class OptimizationAnalyzer(ResultAnalyzer):
                 index = cost.argmin()
                 opt_series = series[index]
             #end if
-            failed = abs(en[index])>Efail or abs(va[index])>Vfail or abs(va[index]/en[index])>EVratio_soft_fail 
+            failed = abs(en[index])>Efail or abs(va[index])>Vfail or abs(va[index]/en[index])>EVratio_soft_fail
 
             self.failed = failed
             # In QMCPACK series the optimal parameters are off by 1 index
@@ -320,7 +320,7 @@ class OptimizationAnalyzer(ResultAnalyzer):
         xticks(r)
         xlim([r[0]-.5,r[-1]+.5])
     #end def plot_opt_convergence
-    
+
 
     def plot_jastrow_convergence(self,title=None,*,saveonly=False,optconv=True):
         if title is None:
@@ -401,7 +401,7 @@ class TimestepStudyAnalyzer(ResultAnalyzer):
     #end def __init__
 
     def init_sub_analyzers(self):
-        None
+        pass
     #end def init_sub_analyzers
 
     def analyze_local(self):
@@ -442,7 +442,7 @@ class TimestepStudyAnalyzer(ResultAnalyzer):
 
         params = {'legend.fontsize':14,'figure.facecolor':'white','figure.subplot.hspace':0.,
           'axes.labelsize':16,'xtick.labelsize':14,'ytick.labelsize':14}
-        rcParams.update(params) 
+        rcParams.update(params)
 
 
         timesteps = self.timesteps

@@ -17,7 +17,7 @@
 #include "Particle/ParticleSet.h"
 #include "ParticleBase/RandomSeqGenerator.h"
 #include "random.hpp"
-#include "mpi/collectives.h"
+#include "Message/CommOperators.h"
 #include "Sandbox/input.hpp"
 #include "Sandbox/pseudo.hpp"
 #include "Utilities/Timer.h"
@@ -32,7 +32,7 @@ using namespace qmcplusplus;
 int main(int argc, char** argv)
 {
 #ifdef HAVE_MPI
-  mpi3::environment env(argc, argv);
+  mpi3::environment env(argc, argv, boost::mpi3::thread_level::funneled);
   OHMMS::Controller = new Communicate(env.world());
 #endif
   Communicate* myComm = OHMMS::Controller;
@@ -268,7 +268,7 @@ int main(int argc, char** argv)
             v_t_loc += clock.elapsed();
           }
         } // els
-      }   //ions
+      } //ions
 
       for (int p = 0; p < time_array_size; p++)
       {
@@ -320,8 +320,8 @@ int main(int argc, char** argv)
   timer_type global_t(t0, vgh_t, val_t, 0.0);
   timer_type global_t_1(tInit, tBigClock, 0.0, 0.0);
 
-  mpi::reduce(*myComm, global_t);
-  mpi::reduce(*myComm, global_t_1);
+  myComm->reduce(global_t);
+  myComm->reduce(global_t_1);
 
   const int nmpi = myComm->size();
   t0             = global_t[0] / nmpi;
@@ -387,9 +387,6 @@ int main(int argc, char** argv)
       cout << timeIterArray[p] << " " << numerator_th / val_t_iter[p] << " " << numerator_th / vgh_t_iter[p] << endl;
     }
   }
-
-
-  OHMMS::Controller->finalize();
 
   return 0;
 }
