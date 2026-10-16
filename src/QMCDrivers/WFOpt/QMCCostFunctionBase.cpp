@@ -112,7 +112,7 @@ QMCCostFunctionBase::Return_rt QMCCostFunctionBase::fillHamVec(std::vector<Retur
 void QMCCostFunctionBase::calcOvlParmVec(const std::vector<Return_rt>& param, std::vector<Return_rt>& ovlParmVec)
 { throw std::runtime_error("Need to implement calcOvlParmVec"); }
 
-void QMCCostFunctionBase::getMinSRData(Vector<Return_rt>& ham, Matrix<Return_rt>& derivMat) 
+void QMCCostFunctionBase::getMinSRData(Vector<Return_rt>& ham, Matrix<Return_rt>& derivMat)
 {
   throw std::runtime_error("Need to implement getMinSRData");
 }

@@ -1148,7 +1148,7 @@ void QMCCostFunctionBatched::constructDerivativeMatrices(Vector<Return_rt>& ham,
     FairDivide(getNumParams(), opt_num_crowds, params_per_crowd);
 
     auto build = [](int crowd_id, std::vector<int>& crowd_ranges, int num_params, int iw, const Return_t* Dsaved,
-                    const Return_rt* HDsaved, Return_rt weight, Return_rt eloc, 
+                    const Return_rt* HDsaved, Return_rt weight, Return_rt eloc,
                     std::vector<Return_t>& derivAvg, Matrix<Return_rt>& derivMat, Matrix<Return_rt>& hamDerivMat)
     {
       int local_pm_start = crowd_ranges[crowd_id];
