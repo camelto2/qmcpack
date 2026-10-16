@@ -19,7 +19,7 @@
 #include "Particle/DistanceTable.h"
 #include "OhmmsSoA/VectorSoaContainer.h"
 #include "random.hpp"
-#include "mpi/collectives.h"
+#include "Message/CommOperators.h"
 #include "Sandbox/input.hpp"
 #include "Sandbox/pseudo.hpp"
 #include "Utilities/Timer.h"
@@ -32,7 +32,7 @@ using namespace qmcplusplus;
 int main(int argc, char** argv)
 {
 #ifdef HAVE_MPI
-  mpi3::environment env(argc, argv);
+  mpi3::environment env(argc, argv, boost::mpi3::thread_level::funneled);
   OHMMS::Controller = new Communicate(env.world());
 #endif
   Communicate* myComm = OHMMS::Controller;
@@ -88,7 +88,8 @@ int main(int argc, char** argv)
 
   auto super_lattice(createSuperLattice(create_prim_lattice(), tmat));
   super_lattice.LR_rc = 5;
-  ParticleSet ions(super_lattice), els(super_lattice);
+  SimulationCell supercell(super_lattice);
+  ParticleSet ions(supercell), els(supercell);
 
   ions.setName("ion0");
   els.setName("e");
@@ -103,7 +104,7 @@ int main(int argc, char** argv)
     els.create({nels / 2, nels - nels / 2});
     els.R.InUnit = PosUnit::Lattice;
     std::generate(&els.R[0][0], &els.R[0][0] + nels3, random_th);
-    els.convert2Cart(els.R);   // convert to Cartiesian
+    els.convert2Cart(els.R); // convert to Cartiesian
     els.update();
   }
 
@@ -164,8 +165,6 @@ int main(int argc, char** argv)
     }
     cout << "Done with the sweep. Diffusion |els.R-R0|^2/nels = " << r_err / nels << endl;
   }
-
-  OHMMS::Controller->finalize();
 
   return 0;
 }

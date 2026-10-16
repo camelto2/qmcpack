@@ -1,7 +1,7 @@
 ######################################################################
 # CMake version and policies
 ######################################################################
-cmake_minimum_required(VERSION 3.21.0)
+cmake_minimum_required(VERSION 3.28.0)
 # Note that cmake_minimum_required affects policy defaults.
 # All policies known to the running version of CMake and introduced in
 # cmake_minimum_required version or earlier will be set to use NEW behavior
@@ -18,7 +18,7 @@ endif()
 ######################################################################
 project(
   qmcpack
-  VERSION 4.1.9 
+  VERSION 4.4.9
   LANGUAGES C CXX)
 
 #--------------------------------------------------------------------
@@ -38,15 +38,26 @@ include(AddRPATH)
 ######################################################################
 
 #--------------------------------------------------------------------
-# Set C++ standard
+# Set C++ standard and run basic checks
 #--------------------------------------------------------------------
+include(InspectCompilerCXXDefaultSTD)
 set(QMC_CXX_STANDARD
-    17
+    ${COMPILER_CXX_STANDARD_DEFAULT}
     CACHE STRING "QMCPACK C++ language standard")
-if(NOT QMC_CXX_STANDARD EQUAL 17)
-  message(WARNING "C++17 is the only language standard officially supported by this QMCPACK version. "
+message(STATUS "Compiling with C++${QMC_CXX_STANDARD} language standard")
+if(NOT (QMC_CXX_STANDARD EQUAL 17 OR QMC_CXX_STANDARD EQUAL 20))
+  message(WARNING "C++17 and C++20 are the only versions of language standard officially supported by this QMCPACK version. "
                   "Using other versions of the C++ standard is unsupported and done entirely at user's own risk.")
 endif()
+
+set(CMAKE_CXX_STANDARD ${QMC_CXX_STANDARD})
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
+
+# Check that a C++ compiler is compatible with the underlying libstdc++
+include(Testlibstdc++)
+# Check that a C++ standard library is configured properly
+include(TestCxx17Library)
 
 #--------------------------------------------------------------------
 # Programmind model related build options
@@ -69,6 +80,7 @@ include(DetermineGPUFeatures)
 # CMake does not propagate indirect object files by design.
 # So the dependency must be explicitly specified with USE_OBJECT_TARGET.
 cmake_dependent_option(USE_OBJECT_TARGET "Use CMake object library target" OFF "ENABLE_OFFLOAD" OFF)
+cmake_dependent_option(QMC_OFFLOAD_USM "Require OpenMP unified shared memory" OFF "ENABLE_OFFLOAD" OFF)
 
 include(DetermineDeviceArchitectures)
 
@@ -129,18 +141,17 @@ endif()
 string(TOUPPER "${CMAKE_BUILD_TYPE}" CMAKE_BUILD_TYPE)
 message(STATUS "CMAKE_BUILD_TYPE is ${CMAKE_BUILD_TYPE}")
 
+option(VPL_OMP "Use OpenMP threading for Vendor Performance Libraries" ${QMC_OMP})
 option(QMC_BUILD_SANDBOX_ONLY "Build only applications in Sandbox directory" OFF)
 option(ENABLE_GCOV "Enable code coverage" OFF)
+option(ENABLE_PYCOV "Enable python code coverage" OFF)
 option(BUILD_UNIT_TESTS "Build unit tests" ON)
 option(BUILD_MICRO_BENCHMARKS "Build micro benchmarks" ON)
-option(BUILD_LMYENGINE_INTERFACE "Build LMY engine" ON)
-if(MIXED_PRECISION AND BUILD_LMYENGINE_INTERFACE)
-  message(STATUS "LMY engine is not compatible with mixed precision build! Disabling LMY engine. Some optimizers will not be available.")
-  set(BUILD_LMYENGINE_INTERFACE OFF)
-else()
-  message(STATUS "LMY engine enabled for widest range of wavefunction optimization methods.")
-endif()
 option(BUILD_AFQMC "Build with AFQMC" OFF)
+option(ENABLE_DEEPQMC_INFERENCE "Enable experimental DeepQMC wavefunction inference support" OFF)
+if(ENABLE_DEEPQMC_INFERENCE)
+  find_package(Python3 REQUIRED COMPONENTS Interpreter Development)
+endif()
 # explicit HIP source codes only exist in AFQMC.
 cmake_dependent_option(BUILD_AFQMC_HIP "Build with with GPU support in AFQMC through explicit HIP source code" OFF "BUILD_AFQMC" OFF)
 if(BUILD_AFQMC_HIP)
@@ -154,42 +165,16 @@ endif()
 option(QMC_BUILD_STATIC "Link to static libraries" OFF)
 option(ENABLE_TIMERS "Enable internal timers" ON)
 option(ENABLE_STACKTRACE "Enable use of boost::stacktrace" OFF)
-option(USE_VTUNE_API "Enable use of VTune ittnotify APIs" OFF)
-option(USE_HPCTOOLKIT_API "Enable use of HPCToolkit start/stop APIs" OFF)
-cmake_dependent_option(USE_VTUNE_TASKS "USE VTune ittnotify task annotation" OFF "ENABLE_TIMERS AND USE_VTUNE_API" OFF)
-# CMake note - complex conditionals in cmake_dependent_option must have spaces around parentheses
-cmake_dependent_option(USE_NVTX_API "Enable/disable NVTX regions in CUDA code." OFF "ENABLE_TIMERS AND ENABLE_CUDA" OFF)
 set(HAVE_EINSPLINE 1) # to be removed
 option(QMC_EXP_THREADING "Experimental non openmp threading models" OFF)
 mark_as_advanced(QMC_EXP_THREADING)
 
-#--------------------------------------------------------------------
-# Sanitizer options
-#--------------------------------------------------------------------
-
 # Add optional sanitizers ASAN, UBSAN, MSAN, TYPESAN
 set(VALID_SANITIZERS "asan" "ubsan" "tsan" "msan" "typesan")
-set(ENABLE_SANITIZER "" CACHE STRING "asan,ubsan,tsan,msan,typesan")
-set_property(CACHE ENABLE_SANITIZER PROPERTY STRINGS ${VALID_SANITIZERS})
+set(ENABLE_SANITIZER "" CACHE STRING "Valid input: ${VALID_SANITIZERS} or left empty")
 
-if(ENABLE_SANITIZER)
-  # Perform sanitizer option check, only works in debug mode
-  if(NOT ENABLE_SANITIZER IN_LIST VALID_SANITIZERS)
-    message(FATAL_ERROR "Invalid -DENABLE_SANITIZER=${ENABLE_SANITIZER}, value must be one of ${VALID_SANITIZERS}")
-  else()
-    message(STATUS "Enable sanitizer ENABLE_SANITIZER=${ENABLE_SANITIZER}")
-  endif()
-endif()
-
-#--------------------------------------------------------------------
-# INSTALL_NEXUS install Nexus alongside QMCPACK
-#--------------------------------------------------------------------
-option(INSTALL_NEXUS "Install Nexus alongside QMCPACK" ON)
-if(INSTALL_NEXUS)
-  install(
-    CODE "EXECUTE_PROCESS(COMMAND ${qmcpack_SOURCE_DIR}/nexus/install --leave_paths \$ENV{DESTDIR}\${CMAKE_INSTALL_PREFIX}/bin)"
-  )
-endif()
+option(QMC_INSTALL_NEXUS "Install Nexus alongside QMCPACK" ON)
+option(QMC_DOXYGEN "Enable use of Doxygen documentation generator tool" ON)
 
 ######################################################################
 # Set compiler specific options/flags
@@ -243,22 +228,15 @@ if(NOT CMAKE_CXX_COMPILER_ID STREQUAL CMAKE_C_COMPILER_ID)
 endif()
 
 #-----------------------------------------------------------------------
-# Set C++ minimum standard and run basic checks
-#-----------------------------------------------------------------------
-set(CMAKE_CXX_STANDARD ${QMC_CXX_STANDARD})
-set(CMAKE_CXX_STANDARD_REQUIRED ON)
-set(CMAKE_CXX_EXTENSIONS OFF)
-
-# Check that a C++ compiler is compatible with the underlying libstdc++
-include(Testlibstdc++)
-
-# Check that a C++ standard library is configured properly
-include(TestCxx17Library)
-
-#-----------------------------------------------------------------------
 # SETUP SANITIZERS FLAGS
 #-----------------------------------------------------------------------
 if(ENABLE_SANITIZER)
+  message(STATUS "Enable sanitizer ENABLE_SANITIZER=${ENABLE_SANITIZER}")
+  # Perform sanitizer option check
+  if(NOT ENABLE_SANITIZER IN_LIST VALID_SANITIZERS)
+    message(FATAL_ERROR "Invalid ENABLE_SANITIZER input, value must be one of ${VALID_SANITIZERS}")
+  endif()
+
   if(NOT ${COMPILER} MATCHES "GNU" AND NOT ${COMPILER} MATCHES "Clang")
     message(FATAL_ERROR "-DENABLE_SANITIZER=${ENABLE_SANITIZER} only works with GNU or Clang compilers")
   endif()
@@ -267,6 +245,16 @@ if(ENABLE_SANITIZER)
     set(CMAKE_CXX_FLAGS_SAN
         "-fsanitize=address -fno-optimize-sibling-calls -fsanitize-address-use-after-scope -fno-omit-frame-pointer"
         CACHE STRING "AddressSanitizer C++ compiler builds." FORCE)
+    if(NOT DEFINED LSAN_OPTIONS)
+      if(QMC_MPI)
+        set(LSAN_OPTIONS "suppressions=${PROJECT_SOURCE_DIR}/config/sanitizers/lsan_mpi.supp")
+      else()
+        set(LSAN_OPTIONS "")
+      endif()
+    endif()
+    if(LSAN_OPTIONS)
+      message(STATUS "Set environment variable LSAN_OPTIONS for CTest: ${LSAN_OPTIONS}")
+    endif()
   elseif("${ENABLE_SANITIZER}" STREQUAL "ubsan")
     set(CMAKE_CXX_FLAGS_SAN
         "-fsanitize=undefined"
@@ -299,6 +287,11 @@ if(ENABLE_GCOV)
     message(FATAL_ERROR "ENABLE_GCOV was specified but compiler does not support GCC coverage flag")
   endif()
 endif(ENABLE_GCOV)
+
+if(ENABLE_PYCOV)
+  find_program(PYTHON_COVERAGE_EXECUTABLE NAMES python3-coverage coverage.py coverage3 coverage REQUIRED)
+  message(STATUS "Python coverage is enabled. Using ${PYTHON_COVERAGE_EXECUTABLE}")
+endif(ENABLE_PYCOV)
 
 #-------------------------------------------------------------------------------
 # Check SIMD alignment for CPU only
@@ -402,7 +395,13 @@ if(QMC_MPI)
     endif()
   endif()
 
-  if(${MPI_CXX_LIBRARY_VERSION_STRING} MATCHES "Open MPI")
+  set(MPI_IS_OPENMPI FALSE)
+  if("${MPI_CXX_LIBRARY_VERSION_STRING}" MATCHES "Open MPI"
+     OR "${MPI_CXX_COMPILER}" MATCHES "openmpi"
+     OR "${MPI_CXX_LIBRARIES}" MATCHES "openmpi")
+    set(MPI_IS_OPENMPI TRUE)
+  endif()
+  if(MPI_IS_OPENMPI)
     if(NOT MPIEXEC_PREFLAGS)
       set(MPIEXEC_PREFLAGS "--bind-to;none")
       message(STATUS "Detected Open MPI. Setting bind-to options for thread affinity in MPIEXEC_PREFLAGS.")
@@ -453,101 +452,36 @@ check_function_exists(posix_memalign HAVE_POSIX_MEMALIGN)
 # Add Math::BLAS_LAPACK target
 add_library(Math::BLAS_LAPACK INTERFACE IMPORTED)
 
-foreach(MKL_LIB_PATH IN ITEMS ${MKL_ROOT} $ENV{MKL_ROOT} $ENV{MKLROOT} $ENV{MKL_HOME})
-  set(CMAKE_LIBRARY_PATH ${CMAKE_LIBRARY_PATH} ${MKL_LIB_PATH}/lib/intel64)
-endforeach()
-if(NOT BLA_VENDOR)
-  message(STATUS "Trying to find LAPACK from Intel MKL")
-  if(QMC_OMP AND COMPILER STREQUAL "Intel")
-    set(BLA_VENDOR Intel10_64lp)
-  else()
-    set(BLA_VENDOR Intel10_64lp_seq)
-  endif()
-  find_package(LAPACK)
-  if(NOT LAPACK_FOUND)
-    message(STATUS "Intel MKL library files not found via FindLAPACK.")
-    message(STATUS "Trying to find alternative LAPACK libraries")
-    set(BLA_VENDOR All)
-    find_package(LAPACK REQUIRED)
-  endif()
-else()
-  message(STATUS "Trying to find LAPACK library as requested BLA_VENDOR=${BLA_VENDOR}")
-  find_package(LAPACK REQUIRED)
-endif()
-
-message(STATUS "LAPACK linker flags: ${LAPACK_LINKER_FLAGS}")
-message(STATUS "LAPACK libraries: ${LAPACK_LIBRARIES}")
-target_link_libraries(Math::BLAS_LAPACK INTERFACE "${LAPACK_LINKER_FLAGS};${LAPACK_LIBRARIES}")
-
-# Detects MKL header files and other components.
-if(LAPACK_LIBRARIES MATCHES "mkl_core")
-  include(FindMKL)
-endif()
-
-if(MKL_FOUND)
-  target_link_libraries(Math::BLAS_LAPACK INTERFACE MKL::BLAS_LAPACK)
-  set(MATH_VENDOR_GUESS "INTEL_VML")
-endif()
-
-# AFQMC requires MKL sparse for good performance (roughly a factor of 2x)
-if(BUILD_AFQMC AND NOT MKL_FOUND)
-  message(
-    WARNING
-      "AFQMC - MKL not found, using simple sparse matrix routines.  Link with MKL sparse libraries for better performance."
-  )
+find_package(VendorPerfLibs REQUIRED COMPONENTS lapack)
+target_link_libraries(Math::BLAS_LAPACK INTERFACE VPL::lapack)
+if(VPL_lapack_ID STREQUAL "IntelMKL")
+  target_compile_definitions(Math::BLAS_LAPACK INTERFACE "HAVE_MKL")
 endif()
 
 #-------------------------------------------------------------------
 #  set up scalar/vector math libraries
 #-------------------------------------------------------------------
 add_library(Math::scalar_vector_functions INTERFACE IMPORTED)
-
-set(VALID_MATH_VENDORS "GENERIC" "INTEL_VML" "IBM_MASS" "AMD_LIBM")
-if(NOT DEFINED MATH_VENDOR_GUESS)
-  set(MATH_VENDOR_GUESS "GENERIC")
-endif()
-set(QMC_MATH_VENDOR
-    ${MATH_VENDOR_GUESS}
-    CACHE STRING "Vendor optimized libraries for scalar and vector math functions")
-
-# Perform math vendor option check
-if(NOT QMC_MATH_VENDOR IN_LIST VALID_MATH_VENDORS)
-  message(FATAL_ERROR "Invalid vendor math library ${QMC_MATH_VENDOR}, value must be one of ${VALID_MATH_VENDORS}")
-else()
-  message(STATUS "Selected vendor math library ${QMC_MATH_VENDOR}")
+find_package(VendorPerfLibs COMPONENTS vml)
+if(VendorPerfLibs_FOUND)
+  if(VPL_vml_ID STREQUAL "IntelMKL")
+    target_compile_definitions(Math::scalar_vector_functions INTERFACE "HAVE_MKL;HAVE_MKL_VML")
+  elseif(VPL_vml_ID STREQUAL "AOCL")
+    target_compile_definitions(Math::scalar_vector_functions INTERFACE "HAVE_AMD_LIBM")
+  endif()
+  target_link_libraries(Math::scalar_vector_functions INTERFACE VPL::vml)
 endif()
 
-# This needs to go before HAVE_SINCOS
-if(QMC_MATH_VENDOR STREQUAL "INTEL_VML")
-  include(FindMKLVML)
-elseif(QMC_MATH_VENDOR STREQUAL "IBM_MASS")
-  include(FindIBMMASS)
-elseif(QMC_MATH_VENDOR STREQUAL "AMD_LIBM")
-  include(FindAMDLibM)
-endif()
-
-# CheckSincos relies on SINCOS_INCLUDE which may be modified based on vendor libraries
-if(NOT SINCOS_INCLUDE)
-  set(SINCOS_INCLUDE cmath)
-endif(NOT SINCOS_INCLUDE)
-message(STATUS "SINCOS_INCLUDE : ${SINCOS_INCLUDE}")
-include(CheckSincos)
+# check the existence of sincos function.
+include(CheckCXXSymbolExists)
+check_cxx_symbol_exists(sincos "cmath" HAVE_SINCOS)
 
 #-------------------------------------------------------------------
 #  set up FFTW3 library
 #-------------------------------------------------------------------
 add_library(Math::FFTW3 INTERFACE IMPORTED)
-set(FFTW_FOUND 0)
-if(HAVE_MKL)
-  if(HAVE_MKL_FFTW3)
-    set(FFTW_FOUND 1)
-    target_link_libraries(Math::FFTW3 INTERFACE MKL::FFTW3)
-  endif()
-endif()
-if(NOT FFTW_FOUND)
-  find_package(FFTW REQUIRED)
-  target_link_libraries(Math::FFTW3 INTERFACE FFTW::FFTW3)
-endif()
+find_package(VendorPerfLibs REQUIRED COMPONENTS fft)
+target_link_libraries(Math::FFTW3 INTERFACE VPL::fft)
 
 set(HAVE_LIBFFTW 1)
 target_compile_definitions(Math::FFTW3 INTERFACE "HAVE_LIBFFTW")
@@ -591,31 +525,57 @@ if(HDF5_FOUND)
     endif()
   endif(HDF5_VERSION)
   if(HDF5_IS_PARALLEL)
-    if(HAVE_MPI)
-      message(STATUS "Parallel HDF5 library found")
-      option(ENABLE_PHDF5 "Enable code paths using parallel HDF5" ON)
-    else(HAVE_MPI)
+    if(NOT HAVE_MPI)
       message(FATAL_ERROR "Parallel HDF5 library found but cannot be used with QMCPACK non-MPI build. "
                           "Please provide a serial HDF5 library or switch to building QMCPACK with MPI.")
-    endif(HAVE_MPI)
+    endif(NOT HAVE_MPI)
+    message(STATUS "Parallel HDF5 library found")
   else(HDF5_IS_PARALLEL)
     message(STATUS "Serial HDF5 library found")
-    option(ENABLE_PHDF5 "Enable code paths using parallel HDF5" OFF)
-    if(ENABLE_PHDF5)
-      if(HAVE_MPI)
-        message(FATAL_ERROR "Parallel HDF5 code paths requested but serial HDF5 library found! "
-                            "Please either provide parallel HDF5 library or set ENABLE_PHDF5=0.")
-      else(HAVE_MPI)
-        message(FATAL_ERROR "Parallel HDF5 code paths cannot be enabled on non-MPI builds! Please set ENABLE_PHDF5=0.")
-      endif(HAVE_MPI)
-    endif(ENABLE_PHDF5)
   endif(HDF5_IS_PARALLEL)
 
+  option(ENABLE_PHDF5 "Enable code paths using parallel HDF5" ${HDF5_IS_PARALLEL})
+
   if(ENABLE_PHDF5)
+    if(NOT HDF5_IS_PARALLEL)
+        message(FATAL_ERROR "Parallel HDF5 code paths requested but serial HDF5 library in use! "
+                            "Please either provide parallel HDF5 library or set ENABLE_PHDF5=OFF.")
+    endif()
     message(STATUS "Using HDF5 parallel collective I/O code paths")
   else(ENABLE_PHDF5)
     message(STATUS "Using HDF5 non-scalable serial I/O code paths")
   endif(ENABLE_PHDF5)
+
+  # best effort to check if parallel hdf5 library is built with the same flavor of MPI
+  if(HDF5_IS_PARALLEL AND HDF5_C_LIBRARIES)
+    list(GET HDF5_C_LIBRARIES 0 _hdf5_main_lib)
+    if(EXISTS "${_hdf5_main_lib}")
+      get_filename_component(_hdf5_lib_dir "${_hdf5_main_lib}" DIRECTORY)
+      set(HDF5_SETTINGS_FILE "${_hdf5_lib_dir}/libhdf5.settings")
+      if(EXISTS "${HDF5_SETTINGS_FILE}")
+        file(STRINGS "${HDF5_SETTINGS_FILE}" _hdf5_flavor_line REGEX "Flavor name:")
+        if(_hdf5_flavor_line)
+          list(GET _hdf5_flavor_line 0 _hdf5_flavor_first_line)
+          if(_hdf5_flavor_first_line MATCHES "Flavor name:[ \t]*([a-zA-Z0-9_-]+)")
+            string(TOLOWER "${CMAKE_MATCH_1}" _hdf5_flavor)
+            if(_hdf5_flavor STREQUAL "openmpi" AND NOT MPI_IS_OPENMPI)
+              message(
+                FATAL_ERROR
+                  "Parallel HDF5 was built with Open MPI (Flavor name: openmpi), but MPI is not Open MPI! "
+                  "Please use Open MPI or an HDF5 library consistent with the MPI vendor. "
+                  "Alternatively, search for serial HDF5 library by setting HDF5_PREFER_PARALLEL=OFF. ")
+            elseif(_hdf5_flavor STREQUAL "mpich" AND MPI_IS_OPENMPI)
+              message(
+                FATAL_ERROR
+                  "Parallel HDF5 was built with MPICH (Flavor name: mpich), but MPI is Open MPI! "
+                  "Please use Open MPI or an HDF5 library consistent with the MPI vendor. "
+                  "Alternatively, search for serial HDF5 library by setting HDF5_PREFER_PARALLEL=OFF. ")
+            endif()
+          endif()
+        endif()
+      endif()
+    endif()
+  endif()
 
   if(HAVE_MPI AND NOT ENABLE_PHDF5)
     message(
@@ -645,12 +605,7 @@ endif(HDF5_FOUND)
 #-------------------------------------------------------------------
 #  set up libboost library, header only
 #-------------------------------------------------------------------
-if(CMAKE_VERSION VERSION_LESS 3.30.0)
-  set(Boost_NO_BOOST_CMAKE on)
-  find_package(Boost 1.61.0 REQUIRED)
-else()
-  find_package(Boost 1.70.0 CONFIG REQUIRED headers)
-endif()
+find_package(Boost 1.70.0 CONFIG REQUIRED headers)
 if(Boost_FOUND)
   target_compile_definitions(Boost::boost INTERFACE "HAVE_LIBBOOST")
   message(STATUS "Setting Boost_INCLUDE_DIRS=${Boost_INCLUDE_DIRS}")
@@ -680,16 +635,11 @@ if(ENABLE_CUDA AND NOT QMC_CUDA2HIP)
     set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} --allow-unsupported-compiler")
   endif()
 
-  if(NOT DEFINED CMAKE_CUDA_ARCHITECTURES)
-    string(REPLACE "sm_" "" CUDA_ARCH_NUMBERS "${QMC_GPU_ARCHS}")
-    set(CMAKE_CUDA_ARCHITECTURES ${CUDA_ARCH_NUMBERS})
-  endif()
-
   enable_language(CUDA)
   if(ENABLE_CUDA)
     include(TestCUDAHostCompatibility)
   endif()
-  find_package(CUDAToolkit 11.0 REQUIRED)
+  find_package(CUDAToolkit 12.3 REQUIRED)
   if(NOT TARGET CUDA::cublas)
     message(
       FATAL_ERROR
@@ -705,21 +655,6 @@ if(ENABLE_CUDA AND NOT QMC_CUDA2HIP)
   set(HAVE_CUDA 1)
   message("Project CUDA_FLAGS: ${CMAKE_CUDA_FLAGS}")
 endif()
-
-if(USE_NVTX_API AND NOT QMC_CUDA2HIP)
-  message(STATUS "Enabling use of CUDA NVTX APIs")
-  find_library(
-    NVTX_API_LIB NAME nvToolsExt
-    HINTS ${CUDA_TOOLKIT_ROOT_DIR}
-    PATH_SUFFIXES lib lib64)
-  if(NOT NVTX_API_LIB)
-    message(FATAL_ERROR "USE_NVTX_API set but NVTX_API_LIB not found")
-  endif(NOT NVTX_API_LIB)
-  message("CUDA nvToolsExt library: ${NVTX_API_LIB}")
-  link_libraries(${NVTX_API_LIB})
-else()
-  message(STATUS "CUDA NVTX APIs disabled")
-endif(USE_NVTX_API AND NOT QMC_CUDA2HIP)
 
 #-------------------------------------------------------------------
 #  set up ROCM compiler options and libraries
@@ -749,6 +684,33 @@ if(ENABLE_ROCM)
   # Check for minimum required rocBLAS version
   if(hipblas_VERSION VERSION_LESS "2.0.0")
     message(FATAL_ERROR "QMCPACK requires hipBLAS minimum version 2.0.0 from ROCm 6.0. Detected ${hipblas_VERSION}.")
+  endif()
+
+  # rocBLAS is used directly, not through hipBLAS, for the batched BLAS1/2 calls in
+  # Platforms/ROCm/rocBLAS.cpp that hipBLAS does not re-export. rocSOLVER pulls rocBLAS
+  # in as a PUBLIC dependency, which links the library but leaves rocblas_VERSION unset,
+  # so this call is what makes the version check below possible.
+  find_package(rocblas CONFIG REQUIRED)
+
+  # Opt-in. QMCPACK's own batched gemv and ger kernels remain the default.
+  # (copy_batched needs no alpha and is used unconditionally.)
+  option(QMC_ROCBLAS_ALPHA_BETA_ARRAYS "Use rocBLAS batched gemv/ger with alpha/beta arrays" OFF)
+
+  if(QMC_ROCBLAS_ALPHA_BETA_ARRAYS)
+    # rocBLAS 5.5.0 added alpha/beta arrays via rocblas_set_batch_alpha_stride and
+    # rocblas_set_batch_beta_stride, absent from rocBLAS 5.2 (ROCm 7.2) and earlier.
+    # 5.3 and 5.4 were never publicly released.
+    if(rocblas_VERSION VERSION_LESS "5.5.0")
+      message(FATAL_ERROR "QMC_ROCBLAS_ALPHA_BETA_ARRAYS=ON requires rocBLAS 5.5.0 or newer, "
+                          "found ${rocblas_VERSION}. rocblas_set_batch_alpha_stride is absent, "
+                          "so the build would fail to link.")
+    endif()
+    message(STATUS "Using rocBLAS batched gemv and ger with alpha/beta arrays "
+                   "(rocBLAS ${rocblas_VERSION})")
+  else()
+    message(STATUS "Using QMCPACK's own batched gemv and ger kernels. Set "
+                   "QMC_ROCBLAS_ALPHA_BETA_ARRAYS=ON for the rocBLAS implementations "
+                   "(requires rocBLAS 5.5.0 or newer, found ${rocblas_VERSION}).")
   endif()
 
   find_package(rocsolver CONFIG REQUIRED)
@@ -786,20 +748,6 @@ if(ENABLE_ROCM)
     message(STATUS "Use of hipHostRegister disabled")
   endif()
 endif(ENABLE_ROCM)
-
-if(USE_NVTX_API AND QMC_CUDA2HIP)
-  message(STATUS "Enabling use of ROCm rocTX APIs")
-  find_library(
-    ROCTX_API_LIB NAME libroctx64.so
-    PATH_SUFFIXES lib lib64)
-  if(NOT ROCTX_API_LIB)
-    message(FATAL_ERROR "USE_ROCTX_API set but ROCTX_API_LIB not found")
-  endif(NOT ROCTX_API_LIB)
-  message("ROCm rocTX library: ${ROCTX_API_LIB}")
-  link_libraries(${ROCTX_API_LIB})
-  else()
-    message(STATUS "ROCm rocTX APIs disabled")
-endif(USE_NVTX_API AND QMC_CUDA2HIP)
 
 #-------------------------------------------------------------------
 #  set up AFQMC-specific HIP compiler options
@@ -848,6 +796,9 @@ if(ENABLE_SYCL)
     NO_DEFAULT_PATH)
   target_link_libraries(SYCL::host INTERFACE OneAPI::DPCPP-host)
   target_link_libraries(SYCL::device INTERFACE OneAPI::DPCPP-device)
+
+  find_package(MKLsycl REQUIRED)
+
   if(TARGET MKL::sycl)
     target_link_libraries(MKL::sycl INTERFACE OneAPI::DPCPP-host)
   endif()
@@ -873,53 +824,9 @@ if(QMC_OFFLOAD_MEM_ASSOCIATED)
 endif()
 
 #-------------------------------------------------------------------
-# set up VTune ittnotify library
+# Link profiler runtime libraries (NVTX, Ittnotify, HPCToolkit)
 #-------------------------------------------------------------------
-
-if(USE_VTUNE_API)
-  message(STATUS "Enabling use of VTune ittnotify APIs")
-  find_path(
-    VTUNE_ITTNOTIFY_INCLUDE_DIR ittnotify.h
-    HINTS ${VTUNE_ROOT} $ENV{VTUNE_ROOT}
-    PATH_SUFFIXES include REQUIRED)
-  message(STATUS "Found VTUNE_ITTNOTIFY_INCLUDE_DIR ${VTUNE_ITTNOTIFY_INCLUDE_DIR}")
-  find_library(
-    VTUNE_ITTNOTIFY_LIBRARY ittnotify
-    HINTS ${VTUNE_ROOT} $ENV{VTUNE_ROOT}
-    PATH_SUFFIXES lib64 lib REQUIRED)
-  message(STATUS "Found VTUNE_ITTNOTIFY_LIBRARY ${VTUNE_ITTNOTIFY_LIBRARY}")
-
-  include_directories(${VTUNE_ITTNOTIFY_INCLUDE_DIR})
-  link_libraries(${VTUNE_ITTNOTIFY_LIBRARY})
-  if(USE_VTUNE_TASKS)
-    message(STATUS "VTune ittnotify tasks enabled")
-  endif()
-else()
-  message(STATUS "VTune ittnotify APIs disabled")
-endif()
-
-#-------------------------------------------------------------------
-# set up HPCToolkit library
-#-------------------------------------------------------------------
-
-if(USE_HPCTOOLKIT_API)
-  message(STATUS "Enabling use of HPCToolkit start/stop APIs")
-  find_path(
-    HPCTOOLKIT_INCLUDE_DIR hpctoolkit.h
-    HINTS ${HPCTOOLKIT_ROOT} $ENV{HPCTOOLKIT_ROOT}
-    PATH_SUFFIXES include REQUIRED)
-  message(STATUS "Found HPCTOOLKIT_INCLUDE_DIR ${HPCTOOLKIT_INCLUDE_DIR}")
-  find_library(
-    HPCTOOLKIT_LIBRARY hpctoolkit
-    HINTS ${HPCTOOLKIT_ROOT} $ENV{HPCTOOLKIT_ROOT}
-    PATH_SUFFIXES lib64 lib REQUIRED)
-  message(STATUS "Found HPCTOOLKIT_LIBRARY ${HPCTOOLKIT_LIBRARY}")
-
-  include_directories(${HPCTOOLKIT_INCLUDE_DIR})
-  link_libraries(${HPCTOOLKIT_LIBRARY})
-else()
-  message(STATUS "HPCToolkit start/stop APIs disabled")
-endif()
+include("CMake/FindProfilerLibs.cmake")
 
 #-------------------------------------------------------------------
 # Add user extra flags
@@ -1038,6 +945,16 @@ if(QMC_DATA)
 endif()
 
 #-------------------------------------------------------------------
+# Verify Python3 available
+#-------------------------------------------------------------------
+find_package(Python3)
+if(NOT Python3_FOUND)
+  message(FATAL_ERROR "Could not find required python3")
+endif(NOT Python3_FOUND)
+
+include(python)
+
+#-------------------------------------------------------------------
 # CTest
 #-------------------------------------------------------------------
 set(DROP_METHOD "http")
@@ -1050,16 +967,45 @@ set(DART_TESTING_TIMEOUT
     3600
     CACHE STRING "Maximum time for one test")
 enable_testing()
-include(CTest)
 
-#-------------------------------------------------------------------
-# Verify Python3 available
-#-------------------------------------------------------------------
-find_package(Python3)
-if(NOT Python3_FOUND)
-  message(FATAL_ERROR "Could not find required python3")
-endif(NOT Python3_FOUND)
-include(python)
+set(QMC_CTEST_NUM_GPUS 1 CACHE STRING "Number of GPUs available to CTest on the local node")
+if(NOT QMC_CTEST_NUM_GPUS MATCHES "^[1-9][0-9]*$")
+  message(FATAL_ERROR "QMC_CTEST_NUM_GPUS must be a positive integer, but is \"${QMC_CTEST_NUM_GPUS}\"")
+endif()
+
+set(VALID_GPU_VISIBILITY_VARIABLES "CUDA_VISIBLE_DEVICES" "ROCR_VISIBLE_DEVICES" "ZE_AFFINITY_MASK")
+set(QMC_GPU_VISIBILITY_VARIABLE ${QMC_GPU_VISIBILITY_VARIABLE_DEFAULT} CACHE STRING "GPU visibility environment variable name. Valid input ${VALID_GPU_VISIBILITY_VARIABLES}")
+if(QMC_GPU_VISIBILITY_VARIABLE)
+  if(NOT QMC_GPU_VISIBILITY_VARIABLE IN_LIST VALID_GPU_VISIBILITY_VARIABLES)
+    message(FATAL_ERROR "Invalid QMC_GPU_VISIBILITY_VARIABLE input, value must be one of ${VALID_GPU_VISIBILITY_VARIABLES}")
+  endif()
+  math(EXPR QMC_LAST_GPU_ID "${QMC_CTEST_NUM_GPUS} - 1")
+  set(QMC_CTEST_GPU_RESOURCES "")
+  foreach(QMC_GPU_ID RANGE 0 ${QMC_LAST_GPU_ID})
+    if(QMC_CTEST_GPU_RESOURCES)
+      string(APPEND QMC_CTEST_GPU_RESOURCES ",\n")
+    endif()
+    string(APPEND QMC_CTEST_GPU_RESOURCES "        { \"id\": \"${QMC_GPU_ID}\", \"slots\": 1 }")
+  endforeach()
+
+  set(CTEST_RESOURCE_SPEC_FILE "${qmcpack_BINARY_DIR}/CTestGPUResourceSpec.json")
+  file(
+    GENERATE
+    OUTPUT "${CTEST_RESOURCE_SPEC_FILE}"
+    CONTENT
+      "{\n  \"version\": { \"major\": 1, \"minor\": 0 },\n  \"local\": [\n    {\n      \"gpus\": [\n${QMC_CTEST_GPU_RESOURCES}\n      ]\n    }\n  ]\n}\n"
+  )
+  message(STATUS "CTest GPU resources: ${QMC_CTEST_NUM_GPUS}")
+  message(STATUS "CTest GPU visibility environment variable: ${QMC_GPU_VISIBILITY_VARIABLE}")
+  set(QMC_GPU_TEST_LAUNCHER ${Python3_EXECUTABLE} ${qmcpack_SOURCE_DIR}/tests/scripts/gpu_test_resource_launcher.py
+                            ${QMC_GPU_VISIBILITY_VARIABLE})
+elseif(QMC_GPU)
+  message(WARNING "QMC_GPU_VISIBILITY_VARIABLE is empty. CTest GPU resource management feature cannot be used. "
+                  "CTest may show slow or failing tests due to GPU oversubscription when running concurrent tests. "
+                  "Set QMC_GPU_VISIBILITY_VARIABLE to the GPU visibility environment variable name based on your GPU. "
+                  "Candidates are ${VALID_GPU_VISIBILITY_VARIABLES}.")
+endif()
+include(CTest)
 
 #-------------------------------------------------------------------
 # Check if PySCF is available
@@ -1137,14 +1083,25 @@ message(STATUS "Ready to parse QMCPACK source tree")
 
 add_subdirectory(external_codes)
 add_subdirectory(src)
-add_subdirectory(doxygen)
+if(QMC_DOXYGEN)
+  add_subdirectory(doxygen)
+endif(QMC_DOXYGEN)
 
 if(NOT QMC_BUILD_SANDBOX_ONLY)
   if(NOT QMC_NO_SLOW_CUSTOM_TESTING_COMMANDS)
     add_subdirectory(tests)
     add_subdirectory(examples)
   endif()
-  if(IS_DIRECTORY "${PROJECT_SOURCE_DIR}/nexus" AND INSTALL_NEXUS)
-    add_subdirectory(nexus/tests)
+  #--------------------------------------------------------------------
+  # INSTALL_NEXUS install Nexus alongside QMCPACK
+  #--------------------------------------------------------------------
+  if(QMC_INSTALL_NEXUS)
+    add_subdirectory(nexus/nexus/tests)
+    install(DIRECTORY ${qmcpack_SOURCE_DIR}/nexus/nexus DESTINATION ${CMAKE_INSTALL_PREFIX}/lib USE_SOURCE_PERMISSIONS PATTERN "__pycache__" EXCLUDE)
+    set(QMCPACK_NEXUS_SCRIPTS qmca qmc-fit qdens qdens-radial)
+    foreach(NEXUS_SCRIPT IN LISTS QMCPACK_NEXUS_SCRIPTS)
+      install(CODE "execute_process(COMMAND ${CMAKE_COMMAND} -E create_symlink ../lib/nexus/bin/${NEXUS_SCRIPT} ${CMAKE_INSTALL_PREFIX}/bin/${NEXUS_SCRIPT})")
+    endforeach()
+    install(PROGRAMS ${qmcpack_SOURCE_DIR}/nexus/manual_install DESTINATION ${CMAKE_INSTALL_PREFIX}/lib RENAME nexus-setup-env)
   endif()
 endif()

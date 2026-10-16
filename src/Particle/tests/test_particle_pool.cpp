@@ -8,9 +8,8 @@
 //
 // File created by: Mark Dewing, mdewing@anl.gov Argonne National Laboratory
 //////////////////////////////////////////////////////////////////////////////////////
-
-
-#include "catch.hpp"
+#include <catch2/catch_test_macros.hpp>
+#include "Utilities/for_testing/Catch2Approx.h"
 
 
 #include "Message/Communicate.h"
@@ -45,8 +44,7 @@ TEST_CASE("ParticleSetPool", "[qmcapp]")
 </particleset>
 )";
   Libxml2Document doc;
-  bool okay = doc.parseFromString(particles);
-  REQUIRE(okay);
+  REQUIRE(doc.parseFromString(particles));
 
   xmlNodePtr root = doc.getRoot();
 
@@ -72,8 +70,8 @@ TEST_CASE("ParticleSetPool", "[qmcapp]")
 
   std::stringstream out;
   pp.get(out);
-  //std::cout << "ParticleSetPool::get returns  " << std::endl;
-  //std::cout << out.str() << std::endl;
+  //app_log() << "ParticleSetPool::get returns  " << std::endl;
+  //app_log() << out.str() << std::endl;
 }
 
 TEST_CASE("ParticleSetPool random", "[qmcapp]")
@@ -102,8 +100,7 @@ TEST_CASE("ParticleSetPool random", "[qmcapp]")
 </tmp>
 )";
   Libxml2Document doc;
-  bool okay = doc.parseFromString(particles);
-  REQUIRE(okay);
+  REQUIRE(doc.parseFromString(particles));
 
   xmlNodePtr root = doc.getRoot();
 
@@ -139,8 +136,7 @@ TEST_CASE("ParticleSetPool putLattice", "[qmcapp]")
   const char* lattice = R"(<parameter name="lattice"> </parameter>)";
 
   Libxml2Document doc;
-  bool okay = doc.parseFromString(lattice);
-  REQUIRE(okay);
+  REQUIRE(doc.parseFromString(lattice));
 
   xmlNodePtr root = doc.getRoot();
   pp.readSimulationCellXML(root);

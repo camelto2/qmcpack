@@ -10,8 +10,7 @@
 //////////////////////////////////////////////////////////////////////////////////////
 
 
-#define CATCH_CONFIG_RUNNER
-#include "catch.hpp"
+#include <catch2/catch_session.hpp>
 #include "DeviceManager.h"
 
 #ifdef CATCH_MAIN_HAVE_MPI
@@ -32,7 +31,9 @@ std::string UTEST_HAMIL, UTEST_WFN;
 int main(int argc, char* argv[])
 {
   Catch::Session session;
-  using namespace Catch::clara;
+  // Run tests in the order they are declared and not default randomized order
+  session.configData().runOrder = Catch::TestRunOrder::Declared;
+  using namespace Catch::Clara;
   // Build command line parser.
   auto cli = session.cli() |
       Opt(UTEST_HAMIL, "UTEST_HAMIL")["--hamil"]("Hamiltonian file to be used by unit test if applicable.") |
@@ -42,7 +43,7 @@ int main(int argc, char* argv[])
   // Parse arguments.
   int parser_err = session.applyCommandLine(argc, argv);
 #ifdef CATCH_MAIN_HAVE_MPI
-  mpi3::environment env(argc, argv);
+  mpi3::environment env(argc, argv, boost::mpi3::thread_level::funneled);
   OHMMS::Controller = new Communicate(env.world());
   if (OHMMS::Controller->rank())
     outputManager.shutOff();
@@ -60,10 +61,7 @@ int main(int argc, char* argv[])
   }
   qmcplusplus::print_mem("Before running tests", qmcplusplus::app_log());
   // Run the tests.
-  int result = session.run(argc, argv);
-#ifdef CATCH_MAIN_HAVE_MPI
-  OHMMS::Controller->finalize();
-#endif
+  int result = session.run();
   if (parser_err != 0)
   {
     return parser_err;

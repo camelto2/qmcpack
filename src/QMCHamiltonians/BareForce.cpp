@@ -29,9 +29,7 @@ BareForce::BareForce(ParticleSet& ions, ParticleSet& elns) : ForceBase(ions, eln
 
 std::string BareForce::getClassName() const { return "BareForce"; }
 
-void BareForce::resetTargetParticleSet(ParticleSet& P) {}
-
-std::unique_ptr<OperatorBase> BareForce::makeClone(ParticleSet& qp, TrialWaveFunction& psi)
+std::unique_ptr<OperatorBase> BareForce::makeClone(ParticleSet& qp) const
 {
   return std::make_unique<BareForce>(*this);
 }
@@ -75,12 +73,9 @@ BareForce::Return_t BareForce::evaluate(ParticleSet& P)
 
 bool BareForce::put(xmlNodePtr cur)
 {
-  std::string ionionforce("yes");
   OhmmsAttributeSet attr;
   attr.add(prefix_, "name");
-  attr.add(ionionforce, "add_ion_ion_");
   attr.put(cur);
-  add_ion_ion_ = (ionionforce == "yes" || ionionforce == "true");
   return true;
 }
 

@@ -9,9 +9,10 @@
 //
 // File created by: Mark Dewing, markdewing@gmail.com, University of Illinois at Urbana-Champaign
 //////////////////////////////////////////////////////////////////////////////////////
+#include <catch2/catch_test_macros.hpp>
+#include "Utilities/for_testing/Catch2Approx.h"
 
-
-#include "catch.hpp"
+#include <cmath>
 
 #include "Configuration.h"
 #include "Numerics/Quadrature.h"
@@ -89,6 +90,111 @@ TEST_CASE("ReadFileBuffer_ecp", "[hamiltonian]")
   REQUIRE(ecp.Zeff == 4);
 
   // TODO: add more checks that pseudopotential file was read correctly
+}
+
+TEST_CASE("ECPComponentBuilder grid input controls", "[hamiltonian]")
+{
+  Communicate* c = OHMMS::Controller;
+  ECPComponentBuilder ecp("test_ecp_grid_input", c);
+  Libxml2Document doc;
+
+  SECTION("omitted-input defaults")
+  {
+    REQUIRE(doc.parseFromString(R"(<grid/>)"));
+    auto grid = ecp.createGrid(doc.getRoot());
+
+    REQUIRE(grid != nullptr);
+    CHECK(grid->getGridTag() == LOG_1DGRID);
+    CHECK(grid->size() == 1001);
+    CHECK(grid->rmin() == Approx(1.0e-6));
+    CHECK(grid->rmax() == Approx(100.0));
+  }
+
+  SECTION("bounded logarithmic grid")
+  {
+    REQUIRE(doc.parseFromString(R"(<grid type="log" ri="0.25" rf="4.0" npts="5"/>)"));
+    auto grid = ecp.createGrid(doc.getRoot());
+
+    REQUIRE(grid != nullptr);
+    CHECK(grid->getGridTag() == LOG_1DGRID);
+    CHECK(grid->size() == 5);
+    CHECK(grid->rmin() == Approx(0.25));
+    CHECK(grid->rmax() == Approx(4.0));
+    CHECK(grid->r(2) == Approx(1.0));
+  }
+
+  SECTION("origin logarithmic grid with ascale and astep")
+  {
+    REQUIRE(doc.parseFromString(R"(<grid type="log" ascale="2.0" astep="0.25" npts="4"/>)"));
+    auto grid = ecp.createGrid(doc.getRoot());
+
+    REQUIRE(grid != nullptr);
+    CHECK(grid->getGridTag() == LOGZERO_1DGRID);
+    CHECK(grid->size() == 4);
+    CHECK(grid->r(0) == Approx(0.0));
+    CHECK(grid->r(1) == Approx(2.0 * (std::exp(0.25) - 1.0)));
+  }
+
+  SECTION("origin logarithmic grid with scale and step aliases")
+  {
+    REQUIRE(doc.parseFromString(R"(<grid type="log" scale="3.0" step="0.5" npts="3"/>)"));
+    auto grid = ecp.createGrid(doc.getRoot());
+
+    REQUIRE(grid != nullptr);
+    CHECK(grid->getGridTag() == LOGZERO_1DGRID);
+    CHECK(grid->size() == 3);
+    CHECK(grid->r(1) == Approx(3.0 * (std::exp(0.5) - 1.0)));
+  }
+
+  SECTION("linear grid with explicit point count")
+  {
+    REQUIRE(doc.parseFromString(R"(<grid type="linear" ri="0.5" rf="2.5" npts="5"/>)"));
+    auto grid = ecp.createGrid(doc.getRoot());
+
+    REQUIRE(grid != nullptr);
+    CHECK(grid->getGridTag() == LINEAR_1DGRID);
+    CHECK(grid->size() == 5);
+    CHECK(grid->rmin() == Approx(0.5));
+    CHECK(grid->rmax() == Approx(2.5));
+    CHECK(grid->r(2) == Approx(1.5));
+  }
+
+  SECTION("linear grid with explicit spacing")
+  {
+    REQUIRE(doc.parseFromString(R"(<grid type="linear" ri="1.0" rf="2.0" step="0.25" npts="99"/>)"));
+    auto grid = ecp.createGrid(doc.getRoot());
+
+    REQUIRE(grid != nullptr);
+    CHECK(grid->getGridTag() == LINEAR_1DGRID);
+    CHECK(grid->size() == 5);
+    CHECK(grid->r(1) == Approx(1.25));
+  }
+
+  SECTION("forced linear local-potential grid")
+  {
+    REQUIRE(doc.parseFromString(R"(<grid type="log" ri="0.5" rf="1.0" astep="0.25" npts="99"/>)"));
+    auto grid = ecp.createGrid(doc.getRoot(), true);
+
+    REQUIRE(grid != nullptr);
+    CHECK(grid->getGridTag() == LINEAR_1DGRID);
+    CHECK(grid->size() == 5);
+    CHECK(grid->rmin() == Approx(0.0));
+    CHECK(grid->rmax() == Approx(1.0));
+  }
+
+  SECTION("tabulated numerical grid")
+  {
+    REQUIRE(doc.parseFromString(
+        R"(<grid type="numerical" npts="4"><data>0.0 0.25 1.0 2.0</data></grid>)"));
+    auto grid = ecp.createGrid(doc.getRoot());
+
+    REQUIRE(grid != nullptr);
+    CHECK(grid->getGridTag() == CUSTOM_1DGRID);
+    CHECK(grid->size() == 4);
+    CHECK(grid->rmin() == Approx(0.0));
+    CHECK(grid->rmax() == Approx(2.0));
+    CHECK(grid->r(1) == Approx(0.25));
+  }
 }
 
 TEST_CASE("ReadFileBuffer_sorep", "[hamiltonian]")
@@ -220,8 +326,7 @@ TEST_CASE("Evaluate_ecp", "[hamiltonian]")
   </tmp>
   )";
   Libxml2Document doc;
-  bool okay = doc.parseFromString(particles);
-  REQUIRE(okay);
+  REQUIRE(doc.parseFromString(particles));
 
   xmlNodePtr root = doc.getRoot();
 
@@ -240,8 +345,7 @@ TEST_CASE("Evaluate_ecp", "[hamiltonian]")
       </jastrow>
   </tmp>
   )";
-  bool okay3             = doc.parseFromString(particles2);
-  REQUIRE(okay3);
+  REQUIRE(doc.parseFromString(particles2));
 
   root = doc.getRoot();
 
@@ -253,7 +357,7 @@ TEST_CASE("Evaluate_ecp", "[hamiltonian]")
   //Now we set up the nonlocal ECP component.
   ECPComponentBuilder ecp("test_read_ecp", c);
 
-  bool okay2 = ecp.read_pp_file("Na.BFD.xml");
+  REQUIRE(ecp.read_pp_file("Na.BFD.xml"));
 
   NonLocalECPComponent* nlpp = ecp.pp_nonloc.get();
 
@@ -276,7 +380,7 @@ TEST_CASE("Evaluate_ecp", "[hamiltonian]")
   double logpsi = psi.evaluateLog(elec);
   CHECK(logpsi == Approx(5.1497823982));
 
-  auto test_evaluateOne = [&]() {
+  auto test_evaluateOne = [&](const OptionalRef<VirtualParticleSet> vp) {
     double Value1(0.0);
     //Using SoA distance tables, hence the guard.
     for (int jel = 0; jel < elec.getTotalNum(); jel++)
@@ -285,30 +389,29 @@ TEST_CASE("Evaluate_ecp", "[hamiltonian]")
       const auto& displ = myTable.getDisplRow(jel);
       for (int iat = 0; iat < ions.getTotalNum(); iat++)
         if (nlpp != nullptr && dist[iat] < nlpp->getRmax())
-          Value1 += nlpp->evaluateOne(elec, iat, psi, jel, dist[iat], -displ[iat], std::nullopt, false);
+          Value1 += nlpp->evaluateOne(elec, vp, iat, psi, jel, dist[iat], -displ[iat], std::nullopt, false);
     }
     //These numbers are validated against an alternate code path via wavefunction tester.
     CHECK(Value1 == Approx(6.9015710211e-02));
   };
 
   {
-    nlpp->initVirtualParticle(elec);
-    test_evaluateOne();
-    nlpp->deleteVirtualParticle();
-    test_evaluateOne();
+    VirtualParticleSet vp(elec);
+    test_evaluateOne(makeOptionalRef<VirtualParticleSet>(vp));
+    test_evaluateOne(std::nullopt);
   }
 
-  opt_variables_type optvars;
+  OptVariables optvars;
   Vector<ValueType> dlogpsi;
   Vector<ValueType> dhpsioverpsi;
 
   psi.checkInVariables(optvars);
   optvars.resetIndex();
-  const int NumOptimizables(optvars.size());
+  const int num_opt_vars(optvars.size());
   psi.checkOutVariables(optvars);
-  auto test_evaluateValueAndDerivatives = [&]() {
-    dlogpsi.resize(NumOptimizables, ValueType(0));
-    dhpsioverpsi.resize(NumOptimizables, ValueType(0));
+  auto test_evaluateValueAndDerivatives = [&](const OptionalRef<VirtualParticleSet> vp) {
+    dlogpsi.resize(num_opt_vars, ValueType(0));
+    dhpsioverpsi.resize(num_opt_vars, ValueType(0));
     psi.evaluateDerivatives(elec, optvars, dlogpsi, dhpsioverpsi);
     CHECK(std::real(dlogpsi[0]) == Approx(-0.2211666667));
     CHECK(std::real(dlogpsi[2]) == Approx(-0.1215));
@@ -330,7 +433,7 @@ TEST_CASE("Evaluate_ecp", "[hamiltonian]")
       const auto& displ = myTable.getDisplRow(jel);
       for (int iat = 0; iat < ions.getTotalNum(); iat++)
         if (nlpp != nullptr && dist[iat] < nlpp->getRmax())
-          Value1 += nlpp->evaluateValueAndDerivatives(elec, iat, psi, jel, dist[iat], -displ[iat], optvars, dlogpsi,
+          Value1 += nlpp->evaluateValueAndDerivatives(elec, vp, iat, psi, jel, dist[iat], -displ[iat], optvars, dlogpsi,
                                                       dhpsioverpsi);
     }
     CHECK(Value1 == Approx(6.9015710211e-02));
@@ -343,10 +446,9 @@ TEST_CASE("Evaluate_ecp", "[hamiltonian]")
   };
 
   {
-    nlpp->initVirtualParticle(elec);
-    test_evaluateValueAndDerivatives();
-    nlpp->deleteVirtualParticle();
-    test_evaluateValueAndDerivatives();
+    VirtualParticleSet vp(elec);
+    test_evaluateValueAndDerivatives(vp);
+    test_evaluateValueAndDerivatives(std::nullopt);
   }
 
   double Value2(0.0);
@@ -366,9 +468,9 @@ TEST_CASE("Evaluate_ecp", "[hamiltonian]")
     for (int iat = 0; iat < ions.getTotalNum(); iat++)
       if (nlpp != nullptr && dist[iat] < nlpp->getRmax())
       {
-        Value2 += nlpp->evaluateOneWithForces(elec, iat, psi, jel, dist[iat], -displ[iat], HFTerm[iat]);
-        Value3 +=
-            nlpp->evaluateOneWithForces(elec, ions, iat, psi, jel, dist[iat], -displ[iat], HFTerm2[iat], PulayTerm);
+        Value2 += nlpp->evaluateOneWithForces(elec, std::nullopt, iat, psi, jel, dist[iat], -displ[iat], HFTerm[iat]);
+        Value3 += nlpp->evaluateOneWithForces(elec, std::nullopt, ions, iat, psi, jel, dist[iat], -displ[iat],
+                                              HFTerm2[iat], PulayTerm);
       }
   }
   //These values are validated against print statements.
@@ -496,8 +598,7 @@ TEST_CASE("Evaluate_soecp", "[hamiltonian]")
   auto spo_up = std::make_unique<FreeOrbital>("free_orb_up", kup);
   auto spo_dn = std::make_unique<FreeOrbital>("free_orb_dn", kdn);
 
-  auto spinor_set = std::make_unique<SpinorSet>("free_orb_spinor");
-  spinor_set->set_spos(std::move(spo_up), std::move(spo_dn));
+  auto spinor_set           = std::make_unique<SpinorSet>("free_orb_spinor", std::move(spo_up), std::move(spo_dn));
   QMCTraits::IndexType norb = spinor_set->getOrbitalSetSize();
   REQUIRE(norb == 2);
 
@@ -517,8 +618,7 @@ TEST_CASE("Evaluate_soecp", "[hamiltonian]")
   </tmp>
   )";
   Libxml2Document doc;
-  bool okay = doc.parseFromString(particles);
-  REQUIRE(okay);
+  REQUIRE(doc.parseFromString(particles));
   xmlNodePtr root = doc.getRoot();
   xmlNodePtr jas2 = xmlFirstElementChild(root);
   RadialJastrowBuilder jastrow(c, elec);
@@ -546,7 +646,7 @@ TEST_CASE("Evaluate_soecp", "[hamiltonian]")
   //Need to set up temporary data for this configuration in trial wavefunction.  Needed for ratios.
   auto logpsi = psi.evaluateLog(elec);
 
-  auto test_evaluateOne = [&](bool exact) {
+  auto test_evaluateOne = [&](bool exact, const OptionalRef<VirtualParticleSet> vp) {
     RealType Value1(0.0);
     for (int jel = 0; jel < elec.getTotalNum(); jel++)
     {
@@ -556,9 +656,10 @@ TEST_CASE("Evaluate_soecp", "[hamiltonian]")
         if (sopp != nullptr && dist[iat] < sopp->getRmax())
         {
           if (exact)
-            Value1 += sopp->evaluateOneExactSpinIntegration(elec, iat, psi, jel, dist[iat], RealType(-1) * displ[iat]);
+            Value1 +=
+                sopp->evaluateOneExactSpinIntegration(elec, *vp, iat, psi, jel, dist[iat], RealType(-1) * displ[iat]);
           else
-            Value1 += sopp->evaluateOne(elec, iat, psi, jel, dist[iat], RealType(-1) * displ[iat]);
+            Value1 += sopp->evaluateOne(elec, vp, iat, psi, jel, dist[iat], RealType(-1) * displ[iat]);
         }
     }
     REQUIRE(Value1 == Approx(-3.530511241));
@@ -566,22 +667,21 @@ TEST_CASE("Evaluate_soecp", "[hamiltonian]")
 
   {
     //test with VPs
-    sopp->initVirtualParticle(elec);
-    test_evaluateOne(false);
-    test_evaluateOne(true);
-    sopp->deleteVirtualParticle();
+    VirtualParticleSet vp(elec);
+    test_evaluateOne(false, vp);
+    test_evaluateOne(true, vp);
     //test without VPs
-    test_evaluateOne(false);
+    test_evaluateOne(false, std::nullopt);
   }
 
   //Check evaluateValueAndDerivatives
-  opt_variables_type optvars;
+  OptVariables optvars;
   Vector<ValueType> dlogpsi;
   Vector<ValueType> dhpsioverpsi;
 
   psi.checkInVariables(optvars);
   optvars.resetIndex();
-  const int NumOptimizables(optvars.size());
+  const int num_opt_vars(optvars.size());
   psi.checkOutVariables(optvars);
 
 
@@ -597,11 +697,11 @@ TEST_CASE("Evaluate_soecp", "[hamiltonian]")
                                              -8.169955304e-14};
 
 
-  auto test_evaluateValueAndDerivatives = [&](bool exact) {
-    dlogpsi.resize(NumOptimizables, ValueType(0));
-    dhpsioverpsi.resize(NumOptimizables, ValueType(0));
+  auto test_evaluateValueAndDerivatives = [&](bool exact, const OptionalRef<VirtualParticleSet> vp) {
+    dlogpsi.resize(num_opt_vars, ValueType(0));
+    dhpsioverpsi.resize(num_opt_vars, ValueType(0));
     psi.evaluateDerivatives(elec, optvars, dlogpsi, dhpsioverpsi);
-    for (int ip = 0; ip < NumOptimizables; ip++)
+    for (int ip = 0; ip < num_opt_vars; ip++)
     {
       CHECK(std::real(dlogpsi[ip]) == Approx(dlogpsi_refs[ip]));
       CHECK(std::real(dhpsioverpsi[ip]) == Approx(dkinpsioverpsi_refs[ip]));
@@ -617,25 +717,27 @@ TEST_CASE("Evaluate_soecp", "[hamiltonian]")
         if (sopp != nullptr && dist[iat] < sopp->getRmax())
         {
           if (exact)
-            Value1 += sopp->evaluateValueAndDerivativesExactSpinIntegration(elec, iat, psi, jel, dist[iat], -displ[iat],
-                                                                            optvars, dlogpsi, dhpsioverpsi);
+            Value1 +=
+                sopp->evaluateValueAndDerivativesExactSpinIntegration(elec, *vp, iat, psi, jel, dist[iat], -displ[iat],
+                                                                      optvars, dlogpsi, dhpsioverpsi);
           else
-            Value1 += sopp->evaluateValueAndDerivatives(elec, iat, psi, jel, dist[iat], -displ[iat], optvars, dlogpsi,
-                                                        dhpsioverpsi);
+            Value1 += sopp->evaluateValueAndDerivatives(elec, vp, iat, psi, jel, dist[iat], -displ[iat], optvars,
+                                                        dlogpsi, dhpsioverpsi);
         }
     }
     REQUIRE(Value1 == Approx(-3.530511241).epsilon(2.e-5));
 
-    for (int ip = 0; ip < NumOptimizables; ip++)
+    for (int ip = 0; ip < num_opt_vars; ip++)
       CHECK(std::real(dhpsioverpsi[ip]) == Approx(dhpsioverpsi_refs[ip]));
   };
 
   {
-    sopp->initVirtualParticle(elec);
-    test_evaluateValueAndDerivatives(false);
-    test_evaluateValueAndDerivatives(true);
-    sopp->deleteVirtualParticle();
-    test_evaluateValueAndDerivatives(false);
+    //test with VPs
+    VirtualParticleSet vp(elec);
+    test_evaluateValueAndDerivatives(false, vp);
+    test_evaluateValueAndDerivatives(true, vp);
+    //test without VPs
+    test_evaluateValueAndDerivatives(false, std::nullopt);
   }
 }
 #endif

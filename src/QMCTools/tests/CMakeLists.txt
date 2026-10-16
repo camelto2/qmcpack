@@ -17,17 +17,13 @@ set(UTEST_DIR ${CMAKE_CURRENT_BINARY_DIR})
 
 set(SRCS test_qmcfstool.cpp)
 
-execute_process(COMMAND ${CMAKE_COMMAND} -E copy "${CMAKE_CURRENT_SOURCE_DIR}/simple_Sk.dat" ${UTEST_DIR})
-execute_process(COMMAND ${CMAKE_COMMAND} -E copy "${CMAKE_CURRENT_SOURCE_DIR}/simple_input.xml" ${UTEST_DIR})
-
 add_executable(${UTEST_EXE} ${SRCS})
 target_link_libraries(${UTEST_EXE} catch_main fstool)
 if(USE_OBJECT_TARGET)
   target_link_libraries(${UTEST_EXE} qmcparticle qmcparticle_omptarget qmcutil)
 endif()
 
-add_unit_test(${UTEST_NAME} 1 1 $<TARGET_FILE:${UTEST_EXE}>)
-set_tests_properties(${UTEST_NAME} PROPERTIES WORKING_DIRECTORY ${UTEST_DIR})
+add_unit_test(BASENAME ${UTEST_NAME} TEST_BINARY $<TARGET_FILE:${UTEST_EXE}> INPUT_FILES simple_Sk.dat simple_input.xml)
 
 # Minimal test for qmc-check-affinity. Check for "OpenMP" in output, no errorcodes.
 if(HAVE_MPI)
@@ -101,6 +97,27 @@ set_tests_properties(
              PROCESSOR_AFFINITY
              TRUE)
 
+if(HAVE_MPI)
+  add_test(NAME get-supercell_2dxy_terse COMMAND ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} 1 ${MPIEXEC_PREFLAGS}
+                                                 $<TARGET_FILE:qmc-get-supercell> --ptvs 1 0 0 0 1 0 0 0 1 --target 8 --2dxy)
+else()
+  add_test(NAME get-supercell_2dxy_terse COMMAND $<TARGET_FILE:qmc-get-supercell> --ptvs 1 0 0 0 1 0 0 0 1 --target 8 --2dxy)
+endif()
+set_tests_properties(
+  get-supercell_2dxy_terse
+  PROPERTIES TIMEOUT
+             120
+             LABELS
+             "deterministic"
+             PASS_REGULAR_EXPRESSION
+             "0.5   2   0   0   0   4   0   0   0   1   2   0   0   0   4   0   0   0   1"
+             PROCESSORS
+             1
+             ENVIRONMENT
+             OMP_NUM_THREADS=3
+             PROCESSOR_AFFINITY
+             TRUE)
+     
 # Check qmc-extract-eshdf-kvectors
 set(KTEST_HDF_INPUT1 ${qmcpack_SOURCE_DIR}/tests/solids/diamondC_1x1x1_pp/pwscf.pwscf.h5)
 set(KTEST_HDF_INPUT2 ${qmcpack_SOURCE_DIR}/tests/solids/diamondC_2x1x1_pp/pwscf.pwscf.h5)
@@ -168,3 +185,6 @@ set_tests_properties(
              OMP_NUM_THREADS=3
              PROCESSOR_AFFINITY
              TRUE)
+
+get_property(CURRENT_TESTS DIRECTORY PROPERTY TESTS)
+add_labels_for_tests("${CURRENT_TESTS}")

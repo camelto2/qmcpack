@@ -32,17 +32,11 @@ namespace qmcplusplus
 {
 ParticleSetPool::ParticleSetPool(Communicate* c, const char* aname)
     : MPIObjectBase(c), simulation_cell_(std::make_unique<SimulationCell>())
-{
-  ClassName = "ParticleSetPool";
-  myName    = aname;
-}
+{}
 
 ParticleSetPool::ParticleSetPool(ParticleSetPool&& other) noexcept
     : MPIObjectBase(other.myComm), simulation_cell_(std::move(other.simulation_cell_)), myPool(std::move(other.myPool))
-{
-  ClassName = other.ClassName;
-  myName    = other.myName;
-}
+{}
 
 ParticleSetPool::~ParticleSetPool() = default;
 
@@ -70,7 +64,7 @@ void ParticleSetPool::addParticleSet(std::unique_ptr<ParticleSet>&& p)
   if (pit == myPool.end())
   {
     auto& pname = p->getName();
-    LOGMSG("  Adding " << pname << " ParticleSet to the pool")
+    qmcplusplus::app_log() << "  Adding " << pname << " ParticleSet to the pool" << std::endl;
     if (&p->getSimulationCell() != simulation_cell_.get())
       throw std::runtime_error("Bug detected! ParticleSetPool::addParticleSet requires p created with the simulation "
                                "cell from ParticleSetPool.");
@@ -107,6 +101,9 @@ bool ParticleSetPool::readSimulationCellXML(xmlNodePtr cur)
   return lattice_defined;
 }
 
+void ParticleSetPool::createSimulationCellByLattice(const Lattice& lattice)
+{ simulation_cell_ = std::make_unique<SimulationCell>(lattice); }
+
 /** process an xml element
  * @param cur current xmlNodePtr
  * @return true, if successful.
@@ -118,7 +115,6 @@ bool ParticleSetPool::put(xmlNodePtr cur)
 {
   ReportEngine PRE("ParticleSetPool", "put");
   std::string id("e");
-  std::string role("none");
   std::string randomR("no");
   std::string randomsrc;
   std::string useGPU;
@@ -126,16 +122,12 @@ bool ParticleSetPool::put(xmlNodePtr cur)
   OhmmsAttributeSet pAttrib;
   pAttrib.add(id, "id");
   pAttrib.add(id, "name");
-  pAttrib.add(role, "role");
   pAttrib.add(randomR, "random");
   pAttrib.add(randomsrc, "randomsrc");
   pAttrib.add(randomsrc, "random_source");
   pAttrib.add(spinor, "spinor", {"no", "yes"});
   pAttrib.add(useGPU, "gpu", CPUOMPTargetSelector::candidate_values);
   pAttrib.put(cur);
-  //backward compatibility
-  if (id == "e" && role == "none")
-    role = "MC";
   ParticleSet* pTemp = getParticleSet(id);
   if (pTemp == 0)
   {

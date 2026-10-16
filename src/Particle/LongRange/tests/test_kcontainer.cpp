@@ -9,11 +9,12 @@
 //
 // File created by: Yubo "Paul" Yang, yubo.paul.yang@gmail.com, CCQ @ Flatiron
 //////////////////////////////////////////////////////////////////////////////////////
-#include "catch.hpp"
+#include <catch2/catch_test_macros.hpp>
+#include "Utilities/for_testing/Catch2Approx.h"
 
 #include "Particle/LongRange/KContainer.h"
 #include "Particle/Lattice/CrystalLattice.h"
-#include "Particle/tests/MinimalParticlePool.h"
+#include <MinimalParticlePool.h>
 #include "Utilities/for_testing/checkVector.hpp"
 #include "Utilities/for_testing/NativeInitializerPrint.hpp"
 
@@ -39,8 +40,7 @@ TEST_CASE("kcontainer at gamma in 3D", "[longrange]")
   for (int ik = 0; ik < kcs.size(); ik++)
   {
     const double kc = kcs[ik] + 1e-6;
-    klists.updateKLists(lattice, kc,
-                                                                                                         ndim);
+    klists.updateKLists(lattice, kc, ndim);
     CHECK(klists.getKpts().size() == nks[ik]);
   }
   const int mxk    = klists.getKpts().size();
@@ -54,7 +54,7 @@ TEST_CASE("kcontainer at gamma in 3D", "[longrange]")
     for (int ldim = 0; ldim < ndim; ldim++)
     {
       CHECK(klists.getKpts()[ik][ldim] == gvecs[ik][ldim]);
-      CHECK(klists.getKpts()[ik][ldim] * blat == Approx(klists.getKptsCartWorking()[ik][ldim]));
+      CHECK(klists.getKpts()[ik][ldim] * blat == Approx(klists.getKptsCart()[ik][ldim]));
     }
   }
 }
@@ -76,19 +76,17 @@ TEST_CASE("kcontainer at twist in 3D", "[longrange]")
 
   PosType twist;
   twist[0] = 0.1;
-  klists.updateKLists(lattice, kc,
-                                                                                                       ndim, twist);
+  klists.updateKLists(lattice, kc, ndim, twist);
   CHECK(klists.getKpts().size() == 1);
-  CHECK(klists.getKptsCartWorking()[0][0] == Approx(blat * (twist[0] - 1)));
+  CHECK(klists.getKptsCart()[0][0] == Approx(blat * (twist[0] - 1)));
 
   twist = {-0.5, 0, 0.5};
-  klists.updateKLists(lattice, kc,
-                                                                                                       ndim, twist);
+  klists.updateKLists(lattice, kc, ndim, twist);
   int gvecs[3][3] = {{0, 0, -1}, {1, 0, -1}, {1, 0, 0}};
   CHECK(klists.getKpts().size() == 3);
   for (int ik = 0; ik < klists.getKpts().size(); ik++)
     for (int ldim = 0; ldim < ndim; ldim++)
-      CHECK(klists.getKptsCartWorking()[ik][ldim] == Approx(blat * (twist[ldim] + gvecs[ik][ldim])));
+      CHECK(klists.getKptsCart()[ik][ldim] == Approx(blat * (twist[ldim] + gvecs[ik][ldim])));
 }
 
 TEST_CASE("kcontainer at gamma in 2D", "[longrange]")
@@ -109,8 +107,7 @@ TEST_CASE("kcontainer at gamma in 2D", "[longrange]")
   for (int ik = 0; ik < kcs.size(); ik++)
   {
     const double kc = kcs[ik] + 1e-6;
-    klists.updateKLists(lattice, kc,
-                                                                                                         ndim);
+    klists.updateKLists(lattice, kc, ndim);
     CHECK(klists.getKpts().size() == nks[ik]);
   }
   const int mxk    = klists.getKpts().size();
@@ -124,7 +121,7 @@ TEST_CASE("kcontainer at gamma in 2D", "[longrange]")
     for (int ldim = 0; ldim < ndim; ldim++)
     {
       CHECK(klists.getKpts()[ik][ldim] == gvecs[ik][ldim]);
-      CHECK(klists.getKpts()[ik][ldim] * blat == Approx(klists.getKptsCartWorking()[ik][ldim]));
+      CHECK(klists.getKpts()[ik][ldim] * blat == Approx(klists.getKptsCart()[ik][ldim]));
     }
   }
 }
@@ -146,38 +143,33 @@ TEST_CASE("kcontainer at twist in 2D", "[longrange]")
 
   PosType twist;
   twist[0] = 0.1;
-  klists.updateKLists(lattice, kc,
-                                                                                                       ndim, twist);
+  klists.updateKLists(lattice, kc, ndim, twist);
   CHECK(klists.getKpts().size() == 1);
-  CHECK(klists.getKptsCartWorking()[0][0] == Approx(blat * (twist[0] - 1)));
+  CHECK(klists.getKptsCart()[0][0] == Approx(blat * (twist[0] - 1)));
 
   twist[1] = 0.1;
-  klists.updateKLists(lattice, kc,
-                                                                                                       ndim, twist);
+  klists.updateKLists(lattice, kc, ndim, twist);
   CHECK(klists.getKpts().size() == 2);
-  CHECK(klists.getKptsCartWorking()[0][0] == Approx(blat * (twist[0] - 1)));
-  CHECK(klists.getKptsCartWorking()[0][1] == Approx(blat * twist[1]));
-  CHECK(klists.getKptsCartWorking()[1][0] == Approx(blat * (twist[0])));
-  CHECK(klists.getKptsCartWorking()[1][1] == Approx(blat * (twist[1] - 1)));
+  CHECK(klists.getKptsCart()[0][0] == Approx(blat * (twist[0] - 1)));
+  CHECK(klists.getKptsCart()[0][1] == Approx(blat * twist[1]));
+  CHECK(klists.getKptsCart()[1][0] == Approx(blat * (twist[0])));
+  CHECK(klists.getKptsCart()[1][1] == Approx(blat * (twist[1] - 1)));
 
   twist = {-0.5, 0.5, 0};
-  klists.updateKLists(lattice, kc,
-                                                                                                       ndim, twist);
+  klists.updateKLists(lattice, kc, ndim, twist);
   CHECK(klists.getKpts().size() == 3);
   //for (int ik=0;ik<3;ik++)
-  //  app_log() << klists.getKptsCartWorking()[ik] << std::endl;
-  CHECK(klists.getKptsCartWorking()[0][0] == Approx(blat * (twist[0] - 0)));
-  CHECK(klists.getKptsCartWorking()[0][1] == Approx(blat * (twist[1] - 1)));
-  CHECK(klists.getKptsCartWorking()[1][0] == Approx(blat * (twist[0] + 1)));
-  CHECK(klists.getKptsCartWorking()[1][1] == Approx(blat * (twist[1] - 1)));
-  CHECK(klists.getKptsCartWorking()[2][0] == Approx(blat * (twist[0] + 1)));
-  CHECK(klists.getKptsCartWorking()[2][1] == Approx(blat * twist[1]));
+  //  app_log() << klists.getKptsCart()[ik] << std::endl;
+  CHECK(klists.getKptsCart()[0][0] == Approx(blat * (twist[0] - 0)));
+  CHECK(klists.getKptsCart()[0][1] == Approx(blat * (twist[1] - 1)));
+  CHECK(klists.getKptsCart()[1][0] == Approx(blat * (twist[0] + 1)));
+  CHECK(klists.getKptsCart()[1][1] == Approx(blat * (twist[1] - 1)));
+  CHECK(klists.getKptsCart()[2][0] == Approx(blat * (twist[0] + 1)));
+  CHECK(klists.getKptsCart()[2][1] == Approx(blat * twist[1]));
 }
 
 TEST_CASE("kcontainer for diamond", "[longrange]")
 {
-  int ndim = 3;
-
   using Real         = QMCTraits::RealType;
   using FullPrecReal = QMCTraits::FullPrecRealType;
 
@@ -189,7 +181,7 @@ TEST_CASE("kcontainer for diamond", "[longrange]")
   lattice.LR_dim_cutoff = 15;
   SimulationCell cell(lattice);
 
-  const KContainer& klists = cell.getKLists();
+  const KContainer& klists                                                                 = cell.getKLists();
   std::remove_cv_t<std::remove_reference_t<decltype(KContainer().getKpts())>> kpoint_lists = {
       {-1, -1, -1}, {-1, 0, 0},   {0, -1, 0},   {0, 0, -1},   {0, 0, 1},    {0, 1, 0},    {1, 0, 0},    {1, 1, 1},
       {-1, -1, 0},  {-1, 0, -1},  {0, -1, -1},  {0, 1, 1},    {1, 0, 1},    {1, 1, 0},    {-2, -1, -1}, {-1, -2, -1},

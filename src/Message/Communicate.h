@@ -33,18 +33,13 @@ namespace mpi3 = boost::mpi3;
 struct CommunicatorTraits
 {
   using mpi_comm_type = MPI_Comm;
-  using status        = MPI_Status;
-  using request       = MPI_Request;
 };
 
 #else
 struct CommunicatorTraits
 {
   using mpi_comm_type               = int;
-  using status                      = int;
-  using request                     = int;
   static const int MPI_COMM_NULL    = 0;
-  static const int MPI_REQUEST_NULL = 1;
 };
 #endif
 
@@ -53,7 +48,6 @@ struct CommunicatorTraits
 #include <vector>
 #include <utility>
 #include <unistd.h>
-#include <cstring>
 
 #include "Message/AppAbort.h"
 
@@ -78,8 +72,15 @@ public:
 #endif
 
   /** constructor that splits in_comm
+   * in_comm.size() == 12 ; nparts = 2; stripe = 0
+   *   | group 0      | group 1       |
+   *   |  0 1 2 3 4 5 | 6 7 8 9 10 11 |
+   * in_comm.size() == 12 ; nparts = 2; stripe = 3;
+   *   | group 0 | group 1 |
+   *   |  0 1 2  |  3 4 5  |
+   *   |  6 7 8  | 9 10 11 |
    */
-  Communicate(const Communicate& in_comm, int nparts);
+  Communicate(const Communicate& in_comm, int nparts, int stripe = 0);
 
   /**destructor
    * Call proper finalization of Communication library
@@ -92,7 +93,6 @@ public:
   /// provide a node/shared-memory communicator from current (parent) communicator
   Communicate NodeComm() const;
 
-  void finalize();
   void barrier() const;
   void abort() const;
   void barrier_and_abort(const std::string& msg) const;
@@ -115,11 +115,6 @@ public:
   int getGroupID() const { return d_groupid; }
   ///return the number of intra_comms which belong to the same group
   int getNumGroups() const { return d_ngroups; }
-
-  void cleanupMessage(void*);
-  void setNodeID(int i) { d_mycontext = i; }
-  void setNumNodes(int n) { d_ncontexts = n; }
-
   void setName(const std::string& aname) { myName = aname; }
   void setName(const char* aname, int alen) { myName = std::string(aname, alen); }
   const std::string& getName() const { return myName; }
@@ -161,43 +156,28 @@ public:
   template<typename T>
   void reduce(T&);
   template<typename T>
-  void reduce(T* restrict, T* restrict, int n);
-  template<typename T>
   void reduce_in_place(T* restrict, int n);
   template<typename T>
   void bcast(T&);
   template<typename T>
   void bcast(T* restrict, int n);
   template<typename T>
-  void send(int dest, int tag, T&);
-  template<typename T>
   void gather(T& sb, T& rb, int dest = 0);
   template<typename T, typename IT>
   void gatherv(T& sb, T& rb, IT& counts, IT& displ, int dest = 0);
   template<typename T>
-  void allgather(T& sb, T& rb, int count);
-  template<typename T, typename IT>
-  void allgatherv(T& sb, T& rb, IT& counts, IT& displ);
+  void allgather(T& sb, T& rb);
   template<typename T>
   void scatter(T& sb, T& rb, int dest = 0);
   template<typename T, typename IT>
   void scatterv(T& sb, T& rb, IT& counts, IT& displ, int source = 0);
-  template<typename T>
-  request irecv(int source, int tag, T&);
-  template<typename T>
-  request isend(int dest, int tag, T&);
-  template<typename T>
-  request irecv(int source, int tag, T*, int n);
-  template<typename T>
-  request isend(int dest, int tag, T*, int n);
   template<typename T, typename IT>
   void gatherv(T* sb, T* rb, int n, IT& counts, IT& displ, int dest = 0);
   template<typename T, typename TMPI, typename IT>
-  void gatherv_in_place(T* buf, TMPI& datatype, IT& counts, IT& displ, int dest = 0);
+  void gatherv_in_place(T* buf, const TMPI& datatype, IT& counts, IT& displ, int dest = 0);
   template<typename T>
   void allgather(T* sb, T* rb, int count);
-  template<typename T>
-  void gsum(T&);
+
 
 protected:
   /** Raw communicator
@@ -216,12 +196,12 @@ protected:
   int d_groupid;
   /// Total number of groups in the parent communicator
   int d_ngroups;
-  /// Group Leader Communicator
-  std::unique_ptr<Communicate> GroupLeaderComm;
+  /// inter group communicator
+  std::unique_ptr<Communicate> inter_group_comm_;
 
 public:
   // Avoid public access to unique_ptr.
-  Communicate* getGroupLeaderComm() { return GroupLeaderComm.get(); }
+  Communicate& getInterGroupComm() const { return *inter_group_comm_; }
 
 #ifdef HAVE_MPI
   /// mpi3 communicator wrapper

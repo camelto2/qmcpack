@@ -23,6 +23,7 @@
 #include "QMCHamiltonians/ForceChiesaPBCAA.h"
 #include "OhmmsData/AttributeSet.h"
 #include <PlatformSelector.hpp>
+#include "Message/UniformCommunicateError.h"
 
 #if OHMMS_DIM == 3
 #include "QMCHamiltonians/ECPotentialBuilder.h"
@@ -49,7 +50,6 @@ void HamiltonianFactory::addMPCPotential(xmlNodePtr cur, bool isphysical)
   hAttrib.add(cutoff, "cutoff");
   hAttrib.add(physical, "physical");
   hAttrib.put(cur);
-  renameProperty(a);
   isphysical = (physical == "yes" || physical == "true");
 
   app_summary() << std::endl;
@@ -81,8 +81,6 @@ void HamiltonianFactory::addCoulombPotential(xmlNodePtr cur)
   std::string targetInp(targetPtcl.getName());
   std::string sourceInp(targetPtcl.getName());
   std::string title("ElecElec"), pbc("yes");
-  std::string forces("no");
-  std::string use_gpu;
   bool physical = true;
   OhmmsAttributeSet hAttrib;
   hAttrib.add(title, "id");
@@ -91,11 +89,8 @@ void HamiltonianFactory::addCoulombPotential(xmlNodePtr cur)
   hAttrib.add(sourceInp, "source");
   hAttrib.add(pbc, "pbc");
   hAttrib.add(physical, "physical");
-  hAttrib.add(forces, "forces");
-  hAttrib.add(use_gpu, "gpu", CPUOMPTargetSelector::candidate_values);
   hAttrib.put(cur);
   const bool applyPBC = (PBCType && pbc == "yes");
-  const bool doForces = (forces == "yes") || (forces == "true");
 
   app_summary() << std::endl;
   app_summary() << "   Coulomb Potential" << std::endl;
@@ -107,11 +102,10 @@ void HamiltonianFactory::addCoulombPotential(xmlNodePtr cur)
   ParticleSet* ptclA = &targetPtcl;
   if (sourceInp != targetPtcl.getName())
   {
-    //renameProperty(sourceInp);
     auto pit(ptclPool.find(sourceInp));
     if (pit == ptclPool.end())
     {
-      ERRORMSG("Missing source ParticleSet" << sourceInp);
+      app_error() << "Missing source ParticleSet" << sourceInp << std::endl;
       APP_ABORT("HamiltonianFactory::addCoulombPotential");
       return;
     }
@@ -120,13 +114,29 @@ void HamiltonianFactory::addCoulombPotential(xmlNodePtr cur)
 
   if (sourceInp == targetInp) // AA type
   {
+    std::string forces("no");
+    std::string use_gpu;
+    OhmmsAttributeSet aaAttrib;
+    aaAttrib.add(forces, "forces");
+    aaAttrib.add(use_gpu, "gpu", CPUOMPTargetSelector::candidate_values);
+    aaAttrib.put(cur);
+    const bool doForces = (forces == "yes") || (forces == "true");
+
     if (!applyPBC && ptclA->getTotalNum() == 1)
     {
       app_log() << "  CoulombAA for " << sourceInp << " is not created.  Number of particles == 1 and nonPeriodic"
                 << std::endl;
       return;
     }
+    // In my opion the ParticleSet should know whether its quantum or
+    // not.  In fact in CoulombPBCAA's attached to quantum particule
+    // sets are refered to as active and ones with classical
+    // particlesets are not.  The assumption here is that classic
+    // particles never change position during a qmcrun.
     bool quantum = (sourceInp == targetPtcl.getName());
+    app_summary() << "    AA ParticleSet: " << sourceInp << " dynamic particle set: " << (quantum ? "true" : "false")
+                  << std::endl;
+
     if (applyPBC)
     {
       if (use_gpu.empty())
@@ -173,18 +183,17 @@ void HamiltonianFactory::addForceHam(xmlNodePtr cur)
 
   bool quantum = (a == targetPtcl.getName());
 
-  renameProperty(a);
   auto pit(ptclPool.find(a));
   if (pit == ptclPool.end())
   {
-    ERRORMSG("Missing source ParticleSet" << a)
+    app_error() << "Missing source ParticleSet" << a << std::endl;
     return;
   }
   ParticleSet* source = pit->second.get();
   pit                 = ptclPool.find(targetName);
   if (pit == ptclPool.end())
   {
-    ERRORMSG("Missing target ParticleSet" << targetName)
+    app_error() << "Missing target ParticleSet" << targetName << std::endl;
     return;
   }
   ParticleSet* target = pit->second.get();
@@ -213,19 +222,20 @@ void HamiltonianFactory::addForceHam(xmlNodePtr cur)
   else if (mode == "acforce")
   {
     app_log() << "Adding Assaraf-Caffarel total force.\n";
-    auto psi_it(psiPool.find(PsiName));
-    if (psi_it == psiPool.end())
+    if (!psi_optional_)
+      throw UniformCommunicateError(
+          "Self-heading overlap estimator requires an explicitly associated wavefunction. Please specify the "
+          "wavefunction attribute of the hamiltonian node in the xml input.");
+    else
     {
-      APP_ABORT("Unknown psi \"" + PsiName + "\" for zero-variance force.");
+      std::unique_ptr<ACForce> acforce = std::make_unique<ACForce>(*source, *target, *psi_optional_, *targetH);
+      acforce->put(cur);
+      targetH->addOperator(std::move(acforce), title, false);
     }
-    TrialWaveFunction& psi           = *psi_it->second;
-    std::unique_ptr<ACForce> acforce = std::make_unique<ACForce>(*source, *target, psi, *targetH);
-    acforce->put(cur);
-    targetH->addOperator(std::move(acforce), title, false);
   }
   else
   {
-    ERRORMSG("Failed to recognize Force mode " << mode);
+    app_error() << "Failed to recognize Force mode " << mode << std::endl;
   }
 #endif
 }
@@ -233,50 +243,31 @@ void HamiltonianFactory::addForceHam(xmlNodePtr cur)
 void HamiltonianFactory::addPseudoPotential(xmlNodePtr cur)
 {
 #if OHMMS_DIM == 3
-  std::string src("i"), title("PseudoPot"), wfname("invalid"), format("xml");
+  std::string src("i"), title("PseudoPot"), format("xml");
   OhmmsAttributeSet pAttrib;
   pAttrib.add(title, "name");
   pAttrib.add(src, "source");
-  pAttrib.add(wfname, "wavefunction");
   pAttrib.add(format, "format"); //temperary tag to switch between format
   pAttrib.put(cur);
   if (format == "old")
   {
     APP_ABORT("pseudopotential Table format is not supported.");
   }
-  renameProperty(src);
-  renameProperty(wfname);
   auto pit(ptclPool.find(src));
   if (pit == ptclPool.end())
   {
-    ERRORMSG("Missing source ParticleSet" << src)
+    app_error() << "Missing source ParticleSet" << src << std::endl;
     return;
   }
   ParticleSet* ion = pit->second.get();
-  auto oit(psiPool.find(wfname));
-  TrialWaveFunction* psi = 0;
-  if (oit == psiPool.end())
-  {
-    if (psiPool.empty())
-      return;
-    app_warning() << "  Cannot find " << wfname << " in the Wavefunction pool. Using the first wavefunction."
-                  << std::endl;
-    psi = psiPool.begin()->second.get();
-  }
-  else
-  {
-    psi = (*oit).second.get();
-  }
-  //remember the TrialWaveFunction used by this pseudopotential
-  psiName = wfname;
 
   app_summary() << std::endl;
   app_summary() << "   Pseudo Potential" << std::endl;
   app_summary() << "   ----------------" << std::endl;
-  app_summary() << "    Name: " << title << "   Wavefunction : " << psiName << std::endl;
+  app_summary() << "    Name: " << title << std::endl;
   app_summary() << std::endl;
 
-  ECPotentialBuilder ecp(*targetH, *ion, targetPtcl, *psi, myComm);
+  ECPotentialBuilder ecp(*targetH, *ion, targetPtcl, myComm);
   ecp.put(cur);
 #else
   APP_ABORT("HamiltonianFactory::addPseudoPotential\n pairpot@type=\"pseudo\" is invalid if DIM != 3");

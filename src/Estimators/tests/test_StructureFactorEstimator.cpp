@@ -8,8 +8,8 @@
 //
 // File created by: Peter Doak, doakpw@ornl.gov, Oak Ridge National Lab
 //////////////////////////////////////////////////////////////////////////////////////
-
-#include "catch.hpp"
+#include <catch2/catch_test_macros.hpp>
+#include "Utilities/for_testing/Catch2Approx.h"
 #include "test_StructureFactorEstimator.h"
 #include "StructureFactorInput.h"
 #include "ValidStructureFactorInput.h"
@@ -52,7 +52,7 @@ TEST_CASE("StructureFactorEstimator::StructureFactorEstimator", "[estimators]")
   // NOLINTEND(cppcoreguidelines-avoid-magic-numbers)
 
   Libxml2Document doc;
-  bool okay       = doc.parseFromString(Input::getXml(Input::valid::SKALL));
+  REQUIRE(doc.parseFromString(Input::getXml(Input::valid::SKALL)));
   xmlNodePtr node = doc.getRoot();
   UPtr<StructureFactorInput> sf_in;
   sf_in = std::make_unique<StructureFactorInput>(node);
@@ -68,7 +68,7 @@ TEST_CASE("StructureFactorEstimator::Accumulate", "[estimators]")
   comm = OHMMS::Controller;
 
   Libxml2Document doc;
-  bool okay       = doc.parseFromString(Input::getXml(Input::valid::SKALL));
+  REQUIRE(doc.parseFromString(Input::getXml(Input::valid::SKALL)));
   xmlNodePtr node = doc.getRoot();
   UPtr<StructureFactorInput> sf_in;
   sf_in = std::make_unique<StructureFactorInput>(node);
@@ -133,32 +133,24 @@ TEST_CASE("StructureFactorEstimator::Accumulate", "[estimators]")
 
   auto wavefunction_pool =
       MinimalWaveFunctionPool::make_diamondC_1x1x1(test_project.getRuntimeOptions(), comm, particle_pool);
-  auto& spomap = wavefunction_pool.getWaveFunction("wavefunction")->getSPOMap();
 
-  auto& trial_wavefunction = *(wavefunction_pool.getPrimary());
+  TrialWaveFunction& psi(wavefunction_pool.getWaveFunction().value());
   std::vector<UPtr<TrialWaveFunction>> twfcs(nwalkers);
   for (int iw = 0; iw < nwalkers; ++iw)
-    twfcs[iw] = trial_wavefunction.makeClone(psets[iw]);
+    twfcs[iw] = psi.makeClone(psets[iw]);
 
   auto ref_wfns = convertUPtrToRefVector(twfcs);
 
   // These hamiltomians are just pro forma arguments needed to hold off UBSan,
   // StructureFactorEstimator never accesses into them.
-  auto hamiltonian_pool  = MinimalHamiltonianPool::makeHamWithEEEI(comm, particle_pool, wavefunction_pool);
-  auto& gold_hamiltonian = *(hamiltonian_pool.getPrimary());
+  auto hamiltonian_pool = MinimalHamiltonianPool::makeHamWithEEEI(comm, particle_pool, wavefunction_pool);
+  QMCHamiltonian& gold_hamiltonian(hamiltonian_pool.getHamiltonian().value());
   std::vector<UPtr<QMCHamiltonian>> hams(nwalkers);
   for (int iw = 0; iw < nwalkers; ++iw)
     hams[iw] = gold_hamiltonian.makeClone(psets[iw], ref_wfns[iw]);
 
   auto ref_hams = convertUPtrToRefVector(hams);
   RefVectorWithLeader<QMCHamiltonian> rvwl_hams(ref_hams[0], ref_hams);
-
-  auto updateWalker = [](auto& walker, auto& pset_target, auto& trial_wavefunction) {
-    pset_target.update(false);
-    pset_target.donePbyP();
-    trial_wavefunction.evaluateLog(pset_target);
-    //pset_target.saveWalker(walker);
-  };
 
   using QMCT = OperatorEstBase::QMCT;
   std::vector<QMCT::RealType> rng_reals(nwalkers * QMCT::DIM * 2);
@@ -170,7 +162,7 @@ TEST_CASE("StructureFactorEstimator::Accumulate", "[estimators]")
     // this is not an app_log() because generate_test_data should
     // never be true for merged production code. It is only for
     // developer use when the test data must be regenerated.
-    std::cout << "rng_reals = " << NativePrint(rng_reals) << '\n';
+    app_log() << "rng_reals = " << NativePrint(rng_reals) << '\n';
   }
   else
   {
@@ -284,7 +276,7 @@ TEST_CASE("StructureFactorEstimator::Accumulate", "[estimators]")
   };
   // NOLINTEND(cppcoreguidelines-avoid-magic-numbers)
 
-  //std::cout << "kpoint_lists = " << NativePrint(sfe.getKLists().kpts) << '\n';
+  //app_log() << "kpoint_lists = " << NativePrint(sfe.getKLists().kpts) << '\n';
 
   double tolerance = 0.1;
   {
@@ -303,10 +295,10 @@ TEST_CASE("StructureFactorEstimator::Accumulate", "[estimators]")
 
   if constexpr (generate_test_data)
   {
-    std::cout << "sfk_e_e_expected = ";
-    std::cout << NativePrint(sfk_e_e) << '\n';
-    std::cout << "rhok_e_expected = ";
-    std::cout << NativePrint(rhok_e) << '\n';
+    app_log() << "sfk_e_e_expected = ";
+    app_log() << NativePrint(sfk_e_e) << '\n';
+    app_log() << "rhok_e_expected = ";
+    app_log() << NativePrint(rhok_e) << '\n';
     //    FAIL_CHECK("Test always fails when generating new test reference data.");
   }
 

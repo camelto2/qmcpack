@@ -5,6 +5,7 @@
 // Copyright (c) 2021 QMCPACK developers.
 //
 // File developed by:   Raymond Clay III, rclay@sandia.gov, Sandia National Laboratories
+//                      Anouar Benali, abenali.sci@gmail.com, Qubit Pharmaceuticals
 //
 // File created by:   Raymond Clay III, rclay@sandia.gov, Sandia National Laboratories
 //////////////////////////////////////////////////////////////////////////////////////
@@ -14,11 +15,16 @@
 #define QMCPLUSPLUS_TWFFASTDERIVWRAPPER_H
 
 #include "QMCWaveFunctions/WaveFunctionComponent.h"
+#include "ResourceCollection.h"
+#include "Utilities/ResourceCollection.h"
 #include "QMCWaveFunctions/SPOSet.h"
 #include "Configuration.h"
 #include "Particle/ParticleSet.h"
+
 namespace qmcplusplus
 {
+class MultiDiracDeterminant;
+
 /**
  *  TWFFastDerivWrapper is a wrapper class for TrialWavefunction that provides separate and low level access to the Jastrow and 
  *  SPOSet objects.  This is so that observables can be recast in matrix form and their derivatives taken efficiently. 
@@ -271,7 +277,7 @@ public:
                                 const std::vector<ValueMatrix>& Minv_dM,
                                 const std::vector<ValueMatrix>& Minv_dB,
                                 const std::vector<IndexType>& mdd_spo_ids,
-                                const std::vector<const WaveFunctionComponent*>& mdds,
+                                const std::vector<const MultiDiracDeterminant*>& mdds,
                                 std::vector<ValueVector>& dvals_dmu_O,
                                 std::vector<ValueVector>& dvals_dmu) const;
 
@@ -288,7 +294,7 @@ public:
   void computeMDDerivatives_Obs(const std::vector<ValueMatrix>& Minv_Mv,
                                 const std::vector<ValueMatrix>& Minv_B,
                                 const std::vector<IndexType>& mdd_spo_ids,
-                                const std::vector<const WaveFunctionComponent*>& mdds,
+                                const std::vector<const MultiDiracDeterminant*>& mdds,
                                 std::vector<ValueVector>& dvals_O) const;
 
   /** @brief Uses per-det lists of derivatives to calculate total excited det contributions
@@ -300,7 +306,7 @@ public:
    *  @return  {d_mu(OPsi/Psi), d_mu(log(Psi)), OPsi/Psi}
    */
   std::tuple<TWFFastDerivWrapper::ValueType, TWFFastDerivWrapper::ValueType, TWFFastDerivWrapper::ValueType>
-      computeMDDerivatives_total(const std::vector<const WaveFunctionComponent*>& mdds,
+      computeMDDerivatives_total(const std::vector<const MultiDiracDeterminant*>& mdds,
                                  const std::vector<ValueVector>& dvals_dmu_O,
                                  const std::vector<ValueVector>& dvals_O,
                                  const std::vector<ValueVector>& dvals_dmu) const;
@@ -391,6 +397,14 @@ public:
    */
   void transform_Av_AoBv(const ValueMatrix& A, const ValueMatrix& B, ValueMatrix& X) const;
 
+  // Minimal resource interface so TWF can call it like other components
+  static void createResource(ResourceCollection& collection);
+
+  static void acquireResource(ResourceCollection& collection, const RefVectorWithLeader<TWFFastDerivWrapper>& wrappers);
+
+  static void releaseResource(ResourceCollection&, const RefVectorWithLeader<TWFFastDerivWrapper>& wrappers);
+
+
 private:
   std::vector<SPOSet*> spos_;
   std::vector<IndexType> groups_;
@@ -400,6 +414,9 @@ private:
   // pointer to MultiSlaterDetTableMethod if one has been registered, otherwise nullptr
   // access constituent MultiDiracDets and SPOsets through this slaterdet (associate with spos_ via group ID)
   const WaveFunctionComponent* multislaterdet_ = nullptr;
+
+  struct TWFFastDerivWrapperMultiWalkerMem;
+  ResourceHandle<TWFFastDerivWrapperMultiWalkerMem> mw_mem_handle_;
 };
 
 /**@}*/

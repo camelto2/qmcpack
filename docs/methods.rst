@@ -85,7 +85,7 @@ Additional information:
 
 The particle configurations are written to a ``.config.h5`` file.
 
-.. code-block::
+.. code-block:: xml
   :caption: The following is an example of running a simulation that can be restarted.
   :name: Listing 42
 
@@ -101,7 +101,7 @@ Check that this file exists before attempting a restart.
 
 To continue a run, specify the ``mcwalkerset`` element before your VMC/DMC block:
 
-.. code-block::
+.. code-block:: xml
   :caption: Restart (read walkers from previous run).
   :name: Listing 43
 
@@ -116,6 +116,27 @@ To continue a run, specify the ``mcwalkerset`` element before your VMC/DMC block
 
 In the project id section, make sure that the series number is different from any existing ones to avoid overwriting them.
 
+
+``qmc`` element may contain ``qmcsystem`` elements for selecting specific wavefunction and hamiltonian pairs by name.
+In most QMC methods, only one pair of wavefunction and hamiltonian is needed, ``qmcsystem`` is only necessary
+when more than one pair of ``wavefunction`` and ``hamiltonian`` elements where specified in the simulation system specification.
+CSVMC driver requires at least two entries of ``qmcsystem`` elements.
+
+  +-----------------+---------------+
+  | Parent elements | ``qmc``       |
+  +-----------------+---------------+
+  | Child elements  | ``qmcsystem`` |
+  +-----------------+---------------+
+
+attributes:
+
++-----------------------------+------------+--------+---------+----------------------------------------+
+| Name                        | Datatype   | Values | Default | Description                            |
++=============================+============+========+=========+========================================+
+| ``wavefunction``            | Text       |        |  ""     | name of the wavefunction to operate on |
++-----------------------------+------------+--------+---------+----------------------------------------+
+| ``hamiltonian``             | Text       |        |  ""     | name of the hamiltonian to operate on  |
++-----------------------------+------------+--------+---------+----------------------------------------+
 
 .. _batched_drivers:
 
@@ -135,7 +156,7 @@ Note that changing the number of crowds does not change the statistics of a run 
 crowds only affects how the work is distributed, not the amount of work. Due to differences in scheduling and random number utilization, otherwise
 identical runs with different numbers of crowds will not give numerically identical results at each step. The overall statistical properties and results are unchanged.
 
-Crowds are owned by MPI processes and the number of crowds is specifed on a per MPI process basis. If a user requests 4 crowds
+Crowds are owned by MPI processes and the number of crowds is specified on a per MPI process basis. If a user requests 4 crowds
 and there are 16 walkers per MPI rank, then each crowd will have 4 walkers.
 For the purposes of pure CPU runs, it is generally sufficient to have the number of crowds match the number of threads
 spawned by each MPI process and one walker per crowd. For large GPU runs, either for large electron
@@ -164,7 +185,7 @@ There are notable changes in the driver input section when moving from classic d
   - When running on GPUs, tuning ``walkers_per_rank`` or ``total_walkers`` is needed to maximize GPU throughput,
     just like tuning ``walkers`` in the classic drivers.
 
-  - ``crowds`` can be optionally added in batched drivers to specify the number of crowds and optimize peformance on GPUs.
+  - ``crowds`` can be optionally added in batched drivers to specify the number of crowds and optimize performance on GPUs.
 
   - Only particle-by-particle moves are supported. All-particle moves are not yet supported. Provide feedback if you have a use for these. 
 
@@ -202,6 +223,8 @@ Parameters:
   | ``usedrift``                   | text         | yes,no                  | yes         | Use the algorithm with drift                         |
   +--------------------------------+--------------+-------------------------+-------------+------------------------------------------------------+
   | ``timestep``                   | real         | :math:`> 0`             | 0.1         | Time step for each electron move                     |
+  +--------------------------------+--------------+-------------------------+-------------+------------------------------------------------------+
+  | ``estimator_period``           | integer      | :math:`> 0`             | 1           | Number of steps between estimator measurements       |
   +--------------------------------+--------------+-------------------------+-------------+------------------------------------------------------+
   | ``samples``                    | integer      | :math:`\geq 0`          | 0           | Total number of walker samples for this VMC run      |
   +--------------------------------+--------------+-------------------------+-------------+------------------------------------------------------+
@@ -269,6 +292,9 @@ Additional information:
   acceptance ratio should be close to 50% for an efficient
   simulation.
 
+- ``estimator_period`` The period with which estimators are evaluated, measured in steps. If measurements have a significant
+    correlation time, this can reduce the computational cost of unnecessarily frequent estimator evaluations.
+
 - ``samples`` The intended total number of samples that will be made in the QMC section. This is primarily intended for VMC
   wavefunction optimization. The implementation always obtains at least the requested number but may obtain slightly more samples
   than requested so as to map efficiently on to the MPI tasks and OpenMP threads. If ``samples`` and ``steps`` are both
@@ -289,7 +315,7 @@ Additional information:
 
 An example VMC section for a simple batched ``vmc`` run:
 
-::
+.. code-block:: xml
 
   <qmc method="vmc" move="pbyp">
     <estimator name="LocalEnergy" hdf5="no"/>
@@ -422,7 +448,7 @@ Additional information:
 
 An example VMC section for a simple VMC run:
 
-::
+.. code-block:: xml
 
   <qmc method="vmc" move="pbyp">
     <estimator name="LocalEnergy" hdf5="no"/>
@@ -439,7 +465,7 @@ Here we set 256 ``walkers`` per MPI, have a brief initial equilibration of 100 `
 
 The following is an example of VMC section storing configurations (walker samples) for optimization.
 
-::
+.. code-block:: xml
 
   <qmc method="vmc" move="pbyp" gpu="yes">
      <estimator name="LocalEnergy" hdf5="no"/>
@@ -475,7 +501,7 @@ can therefore make use of crowds, batching, and supports running a large number 
 
 A typical optimization block looks like the following. It starts with method="linear" and contains three blocks of parameters.
 
-::
+.. code-block:: xml
 
   <loop max="10">
    <qmc method="linear" move="pbyp" gpu="yes">
@@ -568,7 +594,7 @@ Additional information:
 
 The cost function consists of three components: energy, unreweighted variance, and reweighted variance.
 
-::
+.. code-block:: xml
 
      <cost name="energy">                   0.95 </cost>
      <cost name="unreweightedvariance">     0.00 </cost>
@@ -585,7 +611,7 @@ If variational parameters are set as not optimizable in the predominant way, the
 
 The following example shows optimizing subsets of parameters in stages in a single QMCPACK run.
 
-::
+.. code-block:: xml
 
     <qmc method="linear">
       ...
@@ -627,11 +653,11 @@ Optimizers
 
 QMCPACK implements a number of different optimizers each with different
 priorities for accuracy, convergence, memory usage, and stability. The
-optimizers can be switched among “OneShiftOnly” (default), “adaptive,”
-“descent,” “hybrid,” "sr_cg," and “quartic” (old) using the following line in the
+optimizers can be switched among “OneShiftOnly” (default), “descent,”
+"sr_cg," and “quartic” (old) using the following line in the
 optimization block:
 
-::
+.. code-block:: xml
 
 <parameter name="MinMethod"> THE METHOD YOU LIKE </parameter>
 
@@ -695,7 +721,7 @@ also use large ``minwalkers``, for example adding three-body Jastrow factor to c
 developing a reliable optimization recipe for a new system, one should check convergence of the process with significantly increased
 samples, e.g. 4x, and repeat the check each time the flexibility in the wavefunction and number of parameters is increased.
 
-::
+.. code-block:: xml
 
   <loop max="6">
    <qmc method="linear" move="pbyp" gpu="yes">
@@ -750,223 +776,11 @@ optimization strategy. To track the progress of optimization, use the
 command ``qmca -q ev *.scalar.dat`` to look at the VMC energy and
 variance for each optimization step.
 
-Adaptive Optimizer
-^^^^^^^^^^^^^^^^^^
-
-The default setting of the adaptive optimizer is to construct the linear
-method Hamiltonian and overlap matrices explicitly and add different
-shifts to the Hamiltonian matrix as “stabilizers.” The generalized
-eigenvalue problem is solved for each shift to obtain updates to the
-wavefunction parameters. Then a correlated sampling is performed for
-each shift’s updated wavefunction and the initial trial wavefunction
-using the middle shift’s updated wavefunction as the guiding function.
-The cost function for these wavefunctions is compared, and the update
-corresponding to the best cost function is selected. In the next
-iteration, the median magnitude of the stabilizers is set to the
-magnitude that generated the best update in the current iteration, thus
-adapting the magnitude of the stabilizers automatically.
-
-When the trial wavefunction contains more than 10,000 parameters,
-constructing and storing the linear method matrices could become a
-memory bottleneck. To avoid explicit construction of these matrices, the
-adaptive optimizer implements the block linear method (BLM) approach.
-:cite:`Zhao:2017:blocked_lm` The BLM tries to find an
-approximate solution :math:`\vec{c}_{opt}` to the standard LM
-generalized eigenvalue problem by dividing the variable space into a
-number of blocks and making intelligent estimates for which directions
-within those blocks will be most important for constructing
-:math:`\vec{c}_{opt}`, which is then obtained by solving a smaller, more
-memory-efficient eigenproblem in the basis of these supposedly important
-block-wise directions.
-
-``linear`` method:
-
-  parameters:
-
-  +---------------------------+--------------+-------------------------+-------------+-------------------------------------------------------------------------------------------------+
-  | **Name**                  | **Datatype** | **Values**              | **Default** | **Description**                                                                                 |
-  +===========================+==============+=========================+=============+=================================================================================================+
-  | ``max_relative_change``   | real         | :math:`> 0`             | 10.0        | Allowed change in cost function                                                                 |
-  +---------------------------+--------------+-------------------------+-------------+-------------------------------------------------------------------------------------------------+
-  | ``max_param_change``      | real         | :math:`> 0`             | 0.3         | Allowed change in wavefunction parameter                                                        |
-  +---------------------------+--------------+-------------------------+-------------+-------------------------------------------------------------------------------------------------+
-  | ``shift_i``               | real         | :math:`> 0`             | 0.01        | Initial diagonal stabilizer added to the Hamiltonian matrix                                     |
-  +---------------------------+--------------+-------------------------+-------------+-------------------------------------------------------------------------------------------------+
-  | ``shift_s``               | real         | :math:`> 0`             | 1.00        | Initial overlap-based stabilizer added to the Hamiltonian matrix                                |
-  +---------------------------+--------------+-------------------------+-------------+-------------------------------------------------------------------------------------------------+
-  | ``target_shift_i``        | real         | any                     | -1.0        | Diagonal stabilizer value aimed for during adaptive method (disabled if :math:`\leq 0`)         |
-  +---------------------------+--------------+-------------------------+-------------+-------------------------------------------------------------------------------------------------+
-  | ``cost_increase_tol``     | real         | :math:`\geq 0`          | 0.0         |  Tolerance for cost function increases                                                          |
-  +---------------------------+--------------+-------------------------+-------------+-------------------------------------------------------------------------------------------------+
-  | ``chase_lowest``          | text         | yes, no                 | yes         | Chase the lowest eigenvector in iterative solver                                                |
-  +---------------------------+--------------+-------------------------+-------------+-------------------------------------------------------------------------------------------------+
-  | ``chase_closest``         | text         | yes, no                 | no          | Chase the eigenvector closest to initial guess                                                  |
-  +---------------------------+--------------+-------------------------+-------------+-------------------------------------------------------------------------------------------------+
-  | ``block_lm``              | text         | yes, no                 | no          | Use BLM                                                                                         |
-  +---------------------------+--------------+-------------------------+-------------+-------------------------------------------------------------------------------------------------+
-  | ``blocks``                | integer      | :math:`> 0`             |             | Number of blocks in BLM                                                                         |
-  +---------------------------+--------------+-------------------------+-------------+-------------------------------------------------------------------------------------------------+
-  | ``nolds``                 | integer      | :math:`> 0`             |             | Number of old update vectors used in BLM                                                        |
-  +---------------------------+--------------+-------------------------+-------------+-------------------------------------------------------------------------------------------------+
-  | ``nkept``                 | integer      | :math:`> 0`             |             | Number of eigenvectors to keep per block in BLM                                                 |
-  +---------------------------+--------------+-------------------------+-------------+-------------------------------------------------------------------------------------------------+
-  | ``store_samples``         | text         | yes, no                 | no          | Whether to store derivative ratios from each sample in the LM engine (required for filtering)   |
-  +---------------------------+--------------+-------------------------+-------------+-------------------------------------------------------------------------------------------------+
-  | ``filter_param``          | text         | yes, no                 | no          | Whether to turn off optimization of parameters with noisy gradients                             |
-  +---------------------------+--------------+-------------------------+-------------+-------------------------------------------------------------------------------------------------+
-  | ``deriv_threshold``       | real         | :math:`> 0`             | 0.0         | Threshold on the ratio of the parameter gradient mean and standard deviation                    |
-  +---------------------------+--------------+-------------------------+-------------+-------------------------------------------------------------------------------------------------+
-  | ``filter_info``           | text         | yes, no                 | no          | Whether to print out details on which parameters are turned on or off                           |
-  +---------------------------+--------------+-------------------------+-------------+-------------------------------------------------------------------------------------------------+
-
-Additional information:
-
--  ``shift_i`` This is the initial coefficient used to scale the diagonal
-   stabilizer. More stable but slower optimization is expected with a
-   large value. The adaptive method will automatically adjust this value
-   after each linear method iteration.
-
--  ``shift_s`` This is the initial coefficient used to scale the overlap-based
-   stabilizer. More stable but slower optimization is expected with a
-   large value. The adaptive method will automatically adjust this value
-   after each linear method iteration.
-
--  ``target_shift_i`` If set greater than zero, the adaptive method will choose the
-   update whose shift_i value is closest to this target value so long as
-   the associated cost is within cost_increase_tol of the lowest cost.
-   Disable this behavior by setting target_shift_i to a negative number.
-
--  ``cost_increase_tol`` Tolerance for cost function increases when selecting the best
-   shift.
-
--  ``nblocks`` This is the number of blocks used in BLM. The amount of memory
-   required to store LM matrices decreases as the number of blocks
-   increases. But the error introduced by BLM would increase as the
-   number of blocks increases.
-
--  ``nolds`` In BLM, the interblock correlation is accounted for by including a
-   small number of wavefunction update vectors outside the block. Larger
-   would include more interblock correlation and more accurate results
-   but also higher memory requirements.
-
--  ``nkept`` This is the number of update directions retained from each block in
-   the BLM. If all directions are retained in each block, then the BLM
-   becomes equivalent to the standard LM. Retaining five or fewer
-   directions per block is often sufficient.
-
--  ``deriv_threshold`` This is a threshold on the ratio of the (absolute) mean value of a 
-   parameter derivative to the standard deviation of that derivative. Parameters 
-   with a ratio less than the chosen threshold will be turned off when using parameter 
-   filtration.
-
-Recommendations:
-
--  Default ``shift_i``, ``shift_s`` should be fine.
-
--  When there are fewer than about 5,000 variables being optimized, the
-   traditional LM is preferred because it has a lower overhead than the
-   BLM when the number of variables is small.
-
--  Initial experience with the BLM suggests that a few hundred blocks
-   and a handful of and often provide a good balance between memory use
-   and accuracy. In general, using fewer blocks should be more accurate
-   but would require more memory.
-
--  When using parameter filtration, setting ``deriv_threshold`` to 1.0
-    is an effective choice that generally leads to roughly a third of the 
-    parameters being turned off on any given LM iteration. The precise 
-    number and identity of those parameters will vary from iteration to 
-    iteration. Using the hybrid method (see below) is recommended when parameter 
-    filtration is on so that accelerated descent can be used to optimize
-    parameters that the LM leaves untouched. :cite:`Otis2021`
-
-::
-
-  <loop max="15">
-   <qmc method="linear" move="pbyp">
-     <!-- Specify the VMC options -->
-     <parameter name="walkers">                1 </parameter>
-     <parameter name="samples">            20000 </parameter>
-     <parameter name="stepsbetweensamples">    1 </parameter>
-     <parameter name="substeps">               5 </parameter>
-     <parameter name="warmupSteps">            5 </parameter>
-     <parameter name="blocks">                50 </parameter>
-     <parameter name="timestep">             1.0 </parameter>
-     <parameter name="usedrift">              no </parameter>
-     <estimator name="LocalEnergy" hdf5="no"/>
-     <!-- Specify the correlated sampling options and define the cost function -->
-          <cost name="energy">               1.00 </cost>
-          <cost name="unreweightedvariance"> 0.00 </cost>
-          <cost name="reweightedvariance">   0.00 </cost>
-     <!-- Specify the optimizer options -->
-     <parameter name="MinMethod">adaptive</parameter>
-     <parameter name="max_relative_cost_change">10.0</parameter>
-     <parameter name="shift_i"> 1.00 </parameter>
-     <parameter name="shift_s"> 1.00 </parameter>
-     <parameter name="max_param_change"> 0.3 </parameter>
-     <parameter name="chase_lowest"> yes </parameter>
-     <parameter name="chase_closest"> yes </parameter>
-     <parameter name="block_lm"> no </parameter>
-     <!-- Specify the BLM specific options if needed
-       <parameter name="nblocks"> 100 </parameter>
-       <parameter name="nolds"> 5 </parameter>
-       <parameter name="nkept"> 3 </parameter>
-     -->
-   </qmc>
-  </loop>
-
-The adaptive optimizer is also able to optimize individual excited states directly. :cite:`Zhao:2016:dir_tar`
-In this case, it tries to minimize the following function:
-
-.. math:: \Omega[\Psi]=\frac{\left<\Psi|\omega-H|\Psi\right>}{\left<\Psi|{\left(\omega-H\right)}^2|\Psi\right>}\:.
-
-The global minimum of this function corresponds to the state whose
-energy lies immediately above the shift parameter :math:`\omega` in the
-energy spectrum. For example, if :math:`\omega` were placed in between
-the ground state energy and the first excited state energy and the
-wavefunction ansatz was capable of a good description for the first
-excited state, then the wavefunction would be optimized for the first
-excited state. Note that if the ansatz is not capable of a good
-description of the excited state in question, the optimization could
-converge to a different state, as is known to occur in some
-circumstances for traditional ground state optimizations. Note also that
-the ground state can be targeted by this method by choosing
-:math:`\omega` to be below the ground state energy, although we should
-stress that this is not the same thing as a traditional ground state
-optimization and will in general give a slightly different wavefunction.
-Excited state targeting requires two additional parameters, as shown in
-the following table.
-
-Excited state targeting:
-
-  parameters:
-
-  +-------------------+--------------+--------------+-------------+---------------------------------------------------------+
-  | **Name**          | **Datatype** | **Values**   | **Default** | **Description**                                         |
-  +===================+==============+==============+=============+=========================================================+
-  | ``targetExcited`` | text         | yes, no      | no          | Whether to use the excited state targeting optimization |
-  +-------------------+--------------+--------------+-------------+---------------------------------------------------------+
-  | ``omega``         | real         | real numbers | none        | Energy shift used to target different excited states    |
-  +-------------------+--------------+--------------+-------------+---------------------------------------------------------+
-
-Excited state recommendations:
-
--  Because of the finite variance in any approximate wavefunction, we
-   recommended setting :math:`\omega=\omega_0-\sigma`, where
-   :math:`\omega_0` is placed just below the energy of the targeted
-   state and :math:`\sigma^2` is the energy variance.
-
--  To obtain an unbiased excitation energy, the ground state should be
-   optimized with the excited state variational principle as well by
-   setting ``omega`` below the ground state energy. Note that using the ground
-   state variational principle for the ground state and the excited
-   state variational principle for the excited state creates a bias in
-   favor of the ground state.
-
 Descent Optimizer
 ^^^^^^^^^^^^^^^^^
 
-Gradient descent algorithms are an alternative set of optimization methods to the OneShiftOnly and adaptive optimizers based on the linear method.
+The descent optimizer is available only with the batched driver.
+Gradient descent algorithms are an alternative to OneShiftOnly and older optimizers based on the linear method.
 These methods use only first derivatives to optimize trial wave functions and convergence can be accelerated by retaining a memory of previous derivative values.
 Multiple flavors of accelerated descent methods are available. They differ in details such as the schemes for adaptive adjustment of step sizes. :cite:`Otis2019`
 Descent algorithms avoid the construction of matrices that occurs in the linear method and consequently can be applied to larger sets of
@@ -1006,9 +820,8 @@ Parameters for descent are shown in the table below.
   +---------------------+--------------+--------------------------------+-------------+-----------------------------------------------------------------+
 
 
-These descent algorithms have been extended to the optimization of the same excited state functional as the adaptive LM. :cite:`Otis2020`
-This also allows the hybrid optimizer discussed below to be applied to excited states.
-The relevant parameters are the same as for targeting excited states with the adaptive optimizer above.
+These descent algorithms support excited-state optimization. :cite:`Otis2020`
+Set ``targetExcited`` to ``yes`` and use ``omega`` to provide the energy shift for the targeted state.
 
 Additional information and recommendations:
 
@@ -1055,13 +868,7 @@ Additional information and recommendations:
     the end of the optimization when the wave function parameters are essentially 
     no longer changing.
 
--  In cases where a descent optimization struggles to reach the minimum
-   and a linear method optimization is not possible or unsatisfactory,
-   it may be useful to try the hybrid optimization approach described in
-   the next subsection.
-
-::
-
+.. code-block:: xml
 
   <loop max="2000">
      <qmc method="linear" move="pbyp" checkpoint="-1" gpu="no">
@@ -1096,113 +903,13 @@ Additional information and recommendations:
        <parameter name="compute_step">998</parameter>
        
       <parameter name="targetExcited"> yes </parameter>
-      <parameter name="targetExcited"> -11.4 </parameter>
+      <parameter name="omega"> -11.4 </parameter>
 
        <parameter name="print_derivs">no</parameter>
 
 
      </qmc>
   </loop>
-
-Hybrid Optimizer
-^^^^^^^^^^^^^^^^
-
-Another optimization option is to use a hybrid combination of accelerated descent and blocked linear method.
-It provides a means to retain the advantages of both individual methods while scaling to large numbers of parameters beyond the traditional 10,000 parameter limit of the linear method. :cite:`Otis2019`
-In a hybrid optimization, alternating sections of descent and BLM optimization are used.
-Gradient descent is used to identify the previous important directions in parameter space used by the BLM, the number of which is set by the ``nold`` input for the BLM.
-Over the course of a section of descent, vectors of parameter differences are stored and then passed to the linear method engine after the optimization changes to the BLM.
-One motivation for including sections of descent is to counteract noise in linear method updates due to uncertainties in its step direction and allow for a smoother movement to the minimum.
-There are two additional parameters used in the hybrid optimization and it requires a slightly different format of input to specify the constituent methods as shown below in the example.
-
-``descent`` method:
-
-  parameters:
-
-  +---------------------+--------------+-------------+-------------+--------------------------------------+
-  | **Name**            | **Datatype** | **Values**  | **Default** | **Description**                      |
-  +=====================+==============+=============+=============+======================================+
-  | ``num_updates``     | integer      | :math:`> 0` |             | Number of steps for a method         |
-  +---------------------+--------------+-------------+-------------+--------------------------------------+
-  | ``Stored_Vectors``  | integer      | :math:`> 0` | 5           | Number of vectors to transfer to BLM |
-  +---------------------+--------------+-------------+-------------+--------------------------------------+
-
-::
-
-
-  <loop max="203">
-  <qmc method="linear" move="pbyp" checkpoint="-1" gpu="no">
-   <parameter name="Minmethod"> hybrid </parameter>
-
-   <optimizer num_updates="100">
-
-  <parameter name="blocks">1000</parameter>
-       <parameter name="steps">1</parameter>
-       <parameter name="samples">20000</parameter>
-       <parameter name="warmupsteps">1000</parameter>
-       <parameter name="timestep">0.05</parameter>
-
-       <estimator name="LocalEnergy" hdf5="no"/>
-
-       <parameter name="Minmethod"> descent </parameter>
-       <parameter name="Stored_Vectors">5</parameter>
-       <parameter name="flavor">RMSprop</parameter>
-       <parameter name="TJF_2Body_eta">.01</parameter>
-       <parameter name="TJF_1Body_eta">.01</parameter>
-       <parameter name="CI_eta">.1</parameter>
-
-       <parameter name="Ramp_eta">no</parameter>
-       <parameter name="Ramp_num">10</parameter>
-   </optimizer>
-
-   <optimizer num_updates="3">
-
-       <parameter name="blocks">2000</parameter>
-       <parameter name="steps">1</parameter>
-       <parameter name="samples">1000000</parameter>
-       <parameter name="warmupsteps">1000</parameter>
-       <parameter name="timestep">0.05</parameter>
-
-       <estimator name="LocalEnergy" hdf5="no"/>
-
-       <parameter name="Minmethod"> adaptive </parameter>
-       <parameter name="max_relative_cost_change">10.0</parameter>
-       <parameter name="max_param_change">3</parameter>
-       <parameter name="shift_i">0.01</parameter>
-       <parameter name="shift_s">1.00</parameter>
-
-       <parameter name="block_lm">yes</parameter>
-       <parameter name="nblocks">2</parameter>
-       <parameter name="nolds">5</parameter>
-       <parameter name="nkept">5</parameter>
-
-   </optimizer>
-  </qmc>
-  </loop>
-
-Additional information and recommendations:
-
--  In the example above, the input for ``loop`` gives the total number
-   of steps for the full optimization while the inputs for
-   ``num_updates`` specify the number of steps in the constituent
-   methods. For this case, the optimization would begin with 100 steps
-   of descent using the parameters in the first ``optimizer`` block and
-   then switch to the BLM for 3 steps before switching back to descent
-   for the final 100 iterations of the total of 203.
-
--  The design of the hybrid method allows for more than two
-   ``optimizer`` blocks to be used and the optimization will cycle
-   through the individual methods. However, the effectiveness of this in
-   terms of the quality of optimization results is unexplored.
-
--  It can be useful to follow a hybrid optimization with a section of
-   pure descent optimization and take an average energy over the last
-   few hundred iterations as the final variational energy. This approach
-   can achieve a lower statistical uncertainty on the energy for less
-   overall sampling effort compared to what a pure linear method
-   optimization would require. The ``collection_step`` and ``compute_step``
-   parameters discussed earlier for descent are useful for setting up
-   the descent engine to do this averaging on its own.
 
 Stochastic Reconfiguration with Conjugate Gradient
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -1215,7 +922,7 @@ counts, e.g. in orbital optimization. The SR method determines the parameter cha
 
 :math:`-\tau \mathbf{g} = \mathbf{S} \Delta \mathbf{p}`
 
-where :math:`\mathbf{S}` is given by :math:`\langle \Psi_i | \Psi_j\rangle`, :math:`\mathbf{g}` is given by :math:`\langle \Psi_i | H | \Psi_0\rangle`, :math:`\Delta \mathbf{p}` is the parameter update, and :math:`\tau` is an effective timestep since the SR method can be interpretted as an imaginary time projection expanded in the parameter derivative basis. 
+where :math:`\mathbf{S}` is given by :math:`\langle \Psi_i | \Psi_j\rangle`, :math:`\mathbf{g}` is given by :math:`\langle \Psi_i | H | \Psi_0\rangle`, :math:`\Delta \mathbf{p}` is the parameter update, and :math:`\tau` is an effective timestep since the SR method can be interpreted as an imaginary time projection expanded in the parameter derivative basis. 
 The solution could be found by directly inverting the overlap matrix :math:`\mathbf{S}`, but this becomes prohibitive for large parameter counts. Therefore, we have implemented the conjugate gradient iterative scheme to solve the linear equation :cite:`Neuscamman2012`. This avoids having to directly invert the overlap matrix and significantly reduces the cost for large parameter counts.
 
 Since we are using finite samples to represent the overlap matrix, it can become ill-conditioned. We choose to use a simple regularization scheme to improve the optimization, described in :cite:`Sorella2007`. The overlap matrix is scaled via :math:`\mathbf{S} \rightarrow \mathbf{S} + \epsilon \mathbf{I}`, where :math:`\epsilon` is a small scalar. This can be controlled through ``sr_regularization``. 
@@ -1224,7 +931,7 @@ By default, the parameter update is accepted as is, and the size of the proposed
 
 We are currently investigating various improvements to make this a more reliable optimizer. 
 
-``sr_cg` method:
+``sr_cg`` method:
 
   parameters:
 
@@ -1245,7 +952,7 @@ Quartic Optimizer
 ^^^^^^^^^^^^^^^^^
 
 *This is an older optimizer method retained for compatibility. We
-recommend starting with the newest OneShiftOnly or adaptive optimizers.*
+recommend starting with the newer OneShiftOnly optimizer.*
 The quartic optimizer fits a quartic polynomial to 7 values of the cost
 function obtained using reweighting along the chosen direction and
 determines the optimal move. This optimizer is very robust but is a bit
@@ -1283,7 +990,7 @@ Recommendations:
    3-Body J), set ``exp0`` to 0 and do a single inner iteration (max its=1) per
    sample of configurations.
 
-::
+.. code-block:: xml
 
   <!-- Specify the optimizer options -->
   <parameter name="MinMethod">quartic</parameter>
@@ -1326,15 +1033,15 @@ stored in HDF5 format. The optimization header block will have to
 specify that the new CI coefficients will be saved to HDF5 format. If
 the tag is not added coefficients will not be saved.
 
-::
+.. code-block:: xml
 
   <qmc method="linear" move="pbyp" gpu="no" hdf5="yes">
 
-  The rest of the optimization block remains the same.
+The rest of the optimization block remains the same.
 
 When running the optimization, the new coefficients will be stored in a ``*.sXXX.opt.h5`` file,  where XXX corresponds to the series number. The H5 file contains only the optimized coefficients. The corresponding ``*.sXXX.opt.xml`` will be updated for each optimization block as follows:
 
-::
+.. code-block:: xml
 
   <detlist size="1487" type="DETS" nca="0" ncb="0" nea="2" neb="2" nstates="85" cutoff="1e-2" href="../LiH.orbs.h5" opt_coeffs="LiH.s001.opt.h5"/>
 
@@ -1355,7 +1062,7 @@ The gradients of the energy with respect to the variational parameters can be ch
 The check compares the analytic derivatives with a finite difference approximation.
 These are activated by giving a ``gradient_test`` method in an ``optimize`` block, as follows:
 
-::
+.. code-block:: xml
 
      <qmc method="linear" move="pbyp">
       <optimize method="gradient_test">
@@ -1378,7 +1085,7 @@ It contains one line per loop iteration, to allow using existing tools to comput
 
 The input would look like the following:
 
-::
+.. code-block:: xml
 
     <qmc method="linear" move="pbyp" checkpoint="-1" gpu="no">
       <optimize method="gradient_test">
@@ -1455,6 +1162,8 @@ Parameters:
   +--------------------------------+--------------+-------------------------+-------------------+-------------------------------------------------+
   | ``timestep``                   | real         | :math:`> 0`             | 0.1               | Time step for each electron move                |
   +--------------------------------+--------------+-------------------------+-------------------+-------------------------------------------------+
+  | ``estimator_period``           | integer      | :math:`> 0`             | 1                 | Number of steps between estimator measurements  |
+  +--------------------------------+--------------+-------------------------+-------------------+-------------------------------------------------+
   | ``nonlocalmoves``              | string       | yes, no, v0, v1, v3     | no                | Run with T-moves                                |
   +--------------------------------+--------------+-------------------------+-------------------+-------------------------------------------------+
   | ``branching_cutoff_scheme``    | string       | classic/DRV/ZSGMA/YL    | classic           | Branch cutoff scheme                            |
@@ -1500,6 +1209,8 @@ Parameters:
 
 - ``target_walkers`` The target population size. Population control algorithms work towards this target. Do not confuse it with the actual walker count during random walking. The default will be the number of walkers when a DMC calculation starts, namely ``total_walkers``.
 
+- ``estimator_period`` The period with which estimators are evaluated, measured in steps. If measurements have a significant correlation time, as is typical in DMC, this can reduce the computational cost of unnecessarily frequent estimator evaluations.
+
 - ``debug_checks`` valid values are 'no', 'all', 'checkGL_after_load', 'checkGL_after_moves', 'checkGL_after_tmove'. If the build type is `debug`, the default value is 'all'. Otherwise, the default value is 'no'.
 
 - ``spin_mass`` Optional parameter to allow the user to change the rate of spin sampling. If spin sampling is on using ``spinor`` == yes in the electron ParticleSet input,  the spin mass determines the rate
@@ -1542,7 +1253,7 @@ where :math:`E_\text{ref}` is the :math:`E_\text{pop\_avg}` average over all the
   'limited_history' uses weighted average of :math:`E_\text{pop\_avg}` of the latest at maximum
   min(1, int(1.0 / (feedback * tau))) steps collected post warm-up. Default 'unlimited_history'.
 
-.. code-block::
+.. code-block:: xml
   :caption: The following is an example of a minimal DMC section using the batched ``dmc`` driver
   :name: Listing 48b
 
@@ -1815,7 +1526,7 @@ where :math:`E_\text{ref}` is the :math:`E_\text{pop\_avg}` average over all the
       wavefunction quality via the term :math:`\sigma`.
       :math:`\mathrm{sigmaBound}` is default to 10.
 
-.. code-block::
+.. code-block:: xml
   :caption: The following is an example of a very simple DMC section.
   :name: Listing 44
 
@@ -1829,7 +1540,7 @@ where :math:`E_\text{ref}` is the :math:`E_\text{pop\_avg}` average over all the
 The time step should be individually adjusted for each problem.  Please refer to the theory section
 on diffusion Monte Carlo.
 
-.. code-block::
+.. code-block:: xml
   :caption: The following is an example of running a simulation that can be restarted.
   :name: Listing 45
 
@@ -1845,7 +1556,7 @@ This also works in VMC. This will output an h5 file with the name
 attempting a restart. To read in this file for a continuation run,
 specify the following:
 
-.. code-block::
+.. code-block:: xml
   :caption: Restart (read walkers from previous run).
   :name: Listing 46
 
@@ -1855,7 +1566,7 @@ BH is the project id, and s002 is the calculation number to read in the walkers 
 
 Combining VMC and DMC in a single run (wavefunction optimization can be combined in this way too) is the standard way in which QMCPACK is typically run.   There is no need to run two separate jobs since method sections can be stacked and walkers are transferred between them.
 
-.. code-block::
+.. code-block:: xml
   :caption: Combined VMC and DMC run.
   :name: Listing 47
 
@@ -1885,7 +1596,7 @@ Combining VMC and DMC in a single run (wavefunction optimization can be combined
 Reptation Monte Carlo
 ---------------------
 
-Note: repatation Monte Carlo is not currently supported as a batched driver.
+Note: reptation Monte Carlo is not currently supported as a batched driver.
 It can only be run by selecting use of legacy drivers via the driver_version project level setting, see :ref:`driver-version-parameter`.
 To aid prioritization, potential users are welcome to request porting and describe their science case.
 
@@ -1989,7 +1700,7 @@ declaration to ensure correct sampling:
 
 
 
-.. _walker_logging
+.. _walker_logging:
 
 Walker Data Logging
 ===================
@@ -2008,7 +1719,7 @@ The default walker data logging functionality is enabled by including the
 <walkerlogs/> XML element (once) just before the QMC driver sections, 
 for example:
 
-::
+.. code-block:: xml
 
   <walkerlogs/>
   <qmc method="vmc" move="pbyp">
@@ -2230,8 +1941,3 @@ real-valued wavefunction):
     size                8           # array has 8 elements total
     shape               8, 0, 0, 0  # array has linear shape, length 8
     unit_size           1           # data stored as single real values (2 if complex)
-
-
-
-
-.. bibliography:: /bibs/methods.bib

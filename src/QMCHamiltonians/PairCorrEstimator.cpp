@@ -103,8 +103,6 @@ PairCorrEstimator::PairCorrEstimator(ParticleSet& elns, std::string& sources)
   }
 }
 
-void PairCorrEstimator::resetTargetParticleSet(ParticleSet& P) {}
-
 // The value should match the index to norm_factor in set_norm_factor
 int PairCorrEstimator::gen_pair_id(const int ig, const int jg, const int ns)
 {
@@ -210,12 +208,10 @@ bool PairCorrEstimator::put(xmlNodePtr cur)
 {
   //set resolution
   int nbins = (int)std::ceil(Dmax * DeltaInv);
-  std::string debug("no");
   OhmmsAttributeSet attrib;
   attrib.add(nbins, "num_bin");
   attrib.add(Dmax, "rmax");
   attrib.add(Delta, "dr");
-  attrib.add(debug, "debug");
   attrib.put(cur);
   Delta    = Dmax / static_cast<RealType>(nbins);
   DeltaInv = 1.0 / Delta;
@@ -324,7 +320,7 @@ bool PairCorrEstimator::get(std::ostream& os) const
   return true;
 }
 
-std::unique_ptr<OperatorBase> PairCorrEstimator::makeClone(ParticleSet& qp, TrialWaveFunction& psi)
+std::unique_ptr<OperatorBase> PairCorrEstimator::makeClone(ParticleSet& P) const
 {
   //default constructor is sufficient
   return std::make_unique<PairCorrEstimator>(*this);

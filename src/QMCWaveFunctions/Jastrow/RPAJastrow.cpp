@@ -96,8 +96,8 @@ void RPAJastrow::buildOrbital(const std::string& name,
       Rs = 100.0;
     }
   }
-  int indx      = targetPtcl.getSimulationCell().getKLists().getKSQWorking().size() - 1;
-  double Kc_max = std::pow(targetPtcl.getSimulationCell().getKLists().getKSQWorking()[indx], 0.5);
+  int indx      = targetPtcl.getSimulationCell().getKLists().getKSQ().size() - 1;
+  double Kc_max = std::pow(targetPtcl.getSimulationCell().getKLists().getKSQ()[indx], 0.5);
   if (Kc < 0)
   {
     Kc = 2.0 * std::pow(2.25 * M_PI, 1.0 / 3.0) / tlen;
@@ -200,7 +200,7 @@ void RPAJastrow::makeShortRange()
   Psi.push_back(std::move(j2));
 }
 
-void RPAJastrow::checkOutVariables(const opt_variables_type& active)
+void RPAJastrow::checkOutVariables(const OptVariables& active)
 {
   LongRangeRPA->checkOutVariables(active);
   ShortRangeRPA->checkOutVariables(active);

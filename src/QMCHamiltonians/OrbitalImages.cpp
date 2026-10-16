@@ -60,11 +60,11 @@ OrbitalImages::OrbitalImages(const OrbitalImages& other)
     sposets.push_back(element->makeClone());
 }
 
-std::unique_ptr<OperatorBase> OrbitalImages::makeClone(ParticleSet& P, TrialWaveFunction& Psi)
+std::unique_ptr<OperatorBase> OrbitalImages::makeClone(ParticleSet& qp, TrialWaveFunction& psi) const
 {
   //cloning shouldn't strictly be necessary, but do it right just in case
   std::unique_ptr<OrbitalImages> clone = std::make_unique<OrbitalImages>(*this);
-  clone->Peln                          = &P;
+  clone->Peln                          = &qp;
   return clone;
 }
 
@@ -224,11 +224,11 @@ bool OrbitalImages::put(xmlNodePtr cur)
     for (int n = 0; n < sposet_inds.size(); ++n)
     {
       int index = sposet_inds[n];
-      if (index < 0 || index > sposet->size())
+      if (index < 0 || index >= sposet->size())
       {
-        app_log() << "\nindex for sposet " << sposet_names[i] << " is out of range\nindex must be between 0 and "
-                  << sposet->size() - 1 << "\nyou provided: " << index << std::endl;
-        APP_ABORT("OrbitalImages::put  sposet index out of range, see message above");
+        throw std::runtime_error("OrbitalImages::put  index " + std::to_string(index) + " for sposet " +
+                                 sposet_names[i] + " is out of range [0, " +
+                                 std::to_string(sposet->size() - 1) + "]");
       }
     }
   }
@@ -303,10 +303,15 @@ void OrbitalImages::report(const std::string& pad)
 }
 
 
-OrbitalImages::Return_t OrbitalImages::evaluate(ParticleSet& P)
+OrbitalImages::Return_t OrbitalImages::evaluate(TrialWaveFunction& psi, ParticleSet& P)
 {
   //only the first thread of the master task writes the orbitals
-  if (comm->rank() == 0 && omp_get_thread_num() == 0)
+#if _OPENMP >= 202011
+  #pragma omp masked
+#else
+  #pragma omp master
+#endif
+  if (comm->rank() == 0)
   {
     app_log() << std::endl;
     app_log() << "OrbitalImages::evaluate  writing orbital images" << std::endl;

@@ -17,8 +17,6 @@
 #include "Particle/ParticleSet.h"
 #include "QMCDrivers/WalkerProperties.h"
 #include "QMCHamiltonians/OperatorBase.h"
-#include "CPU/VectorOps.h"
-#include "OhmmsData/ParameterSet.h"
 
 
 namespace qmcplusplus
@@ -27,35 +25,34 @@ namespace qmcplusplus
  @brief Evaluate the Bare Pressure.
  P=/frac{2T+V}{d* /Omega}
  where d is the dimension of space and /Omega is the volume.
-**/
-
-struct Pressure : public OperatorBase
+ Pressure can only be a non-Hamiltonian operator.
+ In physics, it depends on the full Hamiltonian, see the above equation.
+ The current implementation accesses Hamiltonian value via ParticleSet::PropertyList.
+ This is a quite bad implementation choice but cannot be addressed
+ until a proper ParticleSet::PropertyList gets in-place.
+ **/
+class Pressure : public OperatorDependsOnlyOnParticleSet
 {
   using WP = WalkerProperties::Indexes;
-  double pNorm;
   //     bool ZV;
   //     bool ZB;
 
+public:
   /** constructor
    *
    * Pressure operators need to be re-evaluated during optimization.
    */
-  Pressure(ParticleSet& P)
-  {
-    update_mode_.set(OPTIMIZABLE, 1);
-    pNorm = 1.0 / (P.getLattice().DIM * P.getLattice().Volume);
-  }
+  Pressure() { update_mode_.set(OPTIMIZABLE, 1); }
   ///destructor
   ~Pressure() override {}
 
-  bool dependsOnWaveFunction() const override { return true; }
   std::string getClassName() const override { return "Pressure"; }
-  void resetTargetParticleSet(ParticleSet& P) override { pNorm = 1.0 / (P.getLattice().DIM * P.getLattice().Volume); }
 
   inline Return_t evaluate(ParticleSet& P) override
   {
-    value_ = 2.0 * P.PropertyList[WP::LOCALENERGY] - P.PropertyList[WP::LOCALPOTENTIAL];
-    value_ *= pNorm;
+    const double pNorm = 1.0 / (P.getLattice().DIM * P.getLattice().Volume);
+    value_             = 2.0 * P.PropertyList[WP::LOCALENERGY] - P.PropertyList[WP::LOCALPOTENTIAL];
+    value_ *= 1.0 / (P.getLattice().DIM * P.getLattice().Volume);
     return 0.0;
   }
 
@@ -66,74 +63,13 @@ struct Pressure : public OperatorBase
 
   bool put(xmlNodePtr cur) override { return true; }
 
-  //     bool put(xmlNodePtr cur, ParticleSet& P, QMCHamiltonian* H) {
-  //       xmlNodePtr tcur = cur->children;
-  //
-  //       double RPAKCut= -1.0;
-  //       std::string RPAPCorr("ZB");
-  //       std::string RPAPfunc("RPA_LR");
-  //       ParameterSet nattrib;
-  //       OhmmsAttributeSet attrib;
-  //       attrib.add(RPAPCorr,"etype" );
-  //       attrib.add(RPAPfunc,"functor" );
-  //       attrib.put(cur);
-  //       nattrib.add(RPAKCut,"kc");
-  //       nattrib.put(cur);
-
-  //       if (RPAPCorr=="ZB"){
-  //         ZB=true;
-  //         ZV=false;
-  //         bpcorr = new RPAPressureCorrection(P);
-  //         bpcorr-> put(cur, P);
-  //         H->addOperator(bpcorr,"ZVterm");
-  //       }
-  //       else if (RPAPCorr=="ZVZB"){
-  //         ZB=true;
-  //         ZV=true;
-  //         bpcorr = new RPAPressureCorrection(P);
-  //         wfderivE = new RPADerivEnergy(P);
-  //         wfderivE2 = new RPADerivEnergy2(P);
-  //         wfEP = new RPAEnergyPressure(P);
-  //         bpcorr-> put(cur, P);
-  //         wfderiv = new RPADeriv(P);
-  //         wfderiv -> put(cur, bpcorr);
-  //         wfderivE -> put(cur, bpcorr, H);
-  //         wfderivE2 -> put(cur, bpcorr, H);
-  //         wfEP -> put(cur, bpcorr, H);
-  //         potkin = new RPAPotKin(P);
-  //         H->addOperator(potkin,"PotKin");
-  //         H->addOperator(wfEP,"EPterm");
-  //         H->addOperator(bpcorr,"ZVterm");
-  //         H->addOperator(wfderiv,"dpsi");
-  //         H->addOperator(wfderivE,"Edpsi");
-  //         H->addOperator(wfderivE2,"Tdpsi");
-  //       }
-  //       else if (RPAPCorr=="ZV"){
-  //         ZV=true;
-  //         ZB=false;
-  //         bpcorr = new RPAPressureCorrection(P);
-  //         bpcorr-> put(cur, P);
-  //         H->addOperator(bpcorr,"ZVterm");
-  //       }
-  //       else if (RPAPCorr=="none"){
-  //         ZV=false;
-  //         ZB=false;
-  //         app_log() <<" using bare estimator "<< std::endl;;
-  //       }
-
-  //       return true;
-  //     }
-
   bool get(std::ostream& os) const override
   {
     os << "Pressure";
     return true;
   }
 
-  std::unique_ptr<OperatorBase> makeClone(ParticleSet& qp, TrialWaveFunction& psi) final
-  {
-    return std::make_unique<Pressure>(qp);
-  }
+  std::unique_ptr<OperatorBase> makeClone(ParticleSet& qp) const final { return std::make_unique<Pressure>(); }
 };
 } // namespace qmcplusplus
 #endif

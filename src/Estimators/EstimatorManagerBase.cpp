@@ -21,7 +21,6 @@
 #include "QMCHamiltonians/QMCHamiltonian.h"
 #include "Message/Communicate.h"
 #include "Message/CommOperators.h"
-#include "Message/CommUtilities.h"
 #include "Estimators/LocalEnergyEstimator.h"
 #include "Estimators/LocalEnergyOnlyEstimator.h"
 #include "Estimators/RMCLocalEnergyEstimator.h"
@@ -135,8 +134,6 @@ void EstimatorManagerBase::reset()
   if (Collectables)
     Collectables->add2Record(BlockAverages);
 }
-
-void EstimatorManagerBase::resetTargetParticleSet(ParticleSet& p) {}
 
 void EstimatorManagerBase::addHeader(std::ostream& o)
 {

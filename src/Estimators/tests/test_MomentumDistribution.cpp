@@ -8,9 +8,8 @@
 //
 // File created by: Jaron T. Krogel, krogeljt@ornl.gov, Oak Ridge National Lab
 //////////////////////////////////////////////////////////////////////////////////////
-
-
-#include "catch.hpp"
+#include <catch2/catch_test_macros.hpp>
+#include "Utilities/for_testing/Catch2Approx.h"
 
 #include "MomentumDistribution.h"
 #include "ValidOneBodyDensityMatricesInput.h"
@@ -20,8 +19,8 @@
 #include "TrialWaveFunction.h"
 #include "OhmmsData/Libxml2Doc.h"
 #include "Message/UniformCommunicateError.h"
-#include "Particle/tests/MinimalParticlePool.h"
-#include "QMCWaveFunctions/tests/MinimalWaveFunctionPool.h"
+#include <MinimalParticlePool.h>
+#include <MinimalWaveFunctionPool.h>
 #include "Utilities/StdRandom.h"
 #include "Utilities/StlPrettyPrint.hpp"
 #include "Utilities/ProjectData.h"
@@ -68,9 +67,7 @@ TEST_CASE("MomentumDistribution::MomentumDistribution", "[estimators]")
 
   // Read xml into input object
   Libxml2Document doc;
-  bool okay = doc.parseFromString(xml);
-  if (!okay)
-    throw std::runtime_error("cannot parse MomentumDistributionInput section");
+  REQUIRE(doc.parseFromString(xml));
   xmlNodePtr node = doc.getRoot();
   MomentumDistributionInput mdi(node);
 
@@ -116,9 +113,7 @@ TEST_CASE("MomentumDistribution::accumulate", "[estimators]")
 
   // Read xml into input object
   Libxml2Document doc;
-  bool okay = doc.parseFromString(xml);
-  if (!okay)
-    throw std::runtime_error("cannot parse MomentumDistributionInput section");
+  REQUIRE(doc.parseFromString(xml));
   xmlNodePtr node = doc.getRoot();
   MomentumDistributionInput mdi(node);
 
@@ -156,10 +151,10 @@ TEST_CASE("MomentumDistribution::accumulate", "[estimators]")
   for (int iw = 0; iw < nwalkers; ++iw)
     psets.emplace_back(pset);
 
-  auto& trial_wavefunction = *(wavefunction_pool.getPrimary());
+  TrialWaveFunction& psi(wavefunction_pool.getWaveFunction().value());
   std::vector<UPtr<TrialWaveFunction>> wfns(nwalkers);
   for (int iw = 0; iw < nwalkers; ++iw)
-    wfns[iw] = trial_wavefunction.makeClone(psets[iw]);
+    wfns[iw] = psi.makeClone(psets[iw]);
 
   //     Initialize walker, pset, wfn
   for (int iw = 0; iw < nwalkers; ++iw)
@@ -197,10 +192,10 @@ TEST_CASE("MomentumDistribution::accumulate", "[estimators]")
               -9.4969045,    -9.470020717, -2.520417488,  -0.2024849597, -9.177741101, 21.82310933,   0.9716326509,
               0.08942598353, -5.130834919, 8.307662762,   4.78276286,    -5.752141485, 3.92261216};
 
-  //std::cout<<"\n\n\nn(k) data:\n{";
+  //app_log()<<"\n\n\nn(k) data:\n{";
   //for(int i=0;i<data.size();++i)
-  //  std::cout<<data[i]<<", ";
-  //std::cout<<"}\n\n\n";
+  //  app_log()<<data[i]<<", ";
+  //app_log()<<"}\n\n\n";
 
   for (size_t id = 0; id < ref_data.size(); ++id)
   {
@@ -226,9 +221,7 @@ TEST_CASE("MomentumDistribution::spawnCrowdClone", "[estimators]")
 
   // Read xml into input object
   Libxml2Document doc;
-  bool okay = doc.parseFromString(xml);
-  if (!okay)
-    throw std::runtime_error("cannot parse MomentumDistributionInput section");
+  REQUIRE(doc.parseFromString(xml));
   xmlNodePtr node = doc.getRoot();
   MomentumDistributionInput mdi(node);
 

@@ -17,23 +17,27 @@ set(TEST_ESTIMATORS_HELP
     EstimatorManagerInputTest.cpp
     GenerateRandomParticleSets.cpp
     EnergyDensityTest.cpp
-    EstimatorTesting.cpp)
+    EDenEstimatorManagerIntegrationTest.cpp
+    EstimatorTesting.cpp
+    SpaceGridTest.cpp)
 
 if(USE_OBJECT_TARGET)
   add_library(test_estimators_help OBJECT ${TEST_ESTIMATORS_HELP})
 else()
   add_library(test_estimators_help ${TEST_ESTIMATORS_HELP})
 endif()
-
-target_link_libraries(test_estimators_help catch_main qmcestimators minimal_testing_pools mock_walker_elements)
+target_link_libraries(test_estimators_help catch_main qmcestimators mock_walker_elements)
 
 set(UTEST_EXE test_${SRC_DIR})
 set(UTEST_NAME deterministic-unit_test_${SRC_DIR})
-set(UTEST_HDF_INPUT ${qmcpack_SOURCE_DIR}/tests/solids/diamondC_1x1x1_pp/pwscf.pwscf.h5)
-set(UTEST_HDF_INPUT_SPINOR ${qmcpack_SOURCE_DIR}/tests/solids/monoO_noncollinear_1x1x1_pp/o2_45deg_spins.pwscf.h5)
-set(UTEST_DIR ${CMAKE_CURRENT_BINARY_DIR})
-maybe_symlink(${UTEST_HDF_INPUT} ${UTEST_DIR}/diamondC_1x1x1.pwscf.h5)
-maybe_symlink(${UTEST_HDF_INPUT_SPINOR} ${UTEST_DIR}/o2_45deg_spins.pwscf.h5)
+
+
+set(ALIASED_FILES)
+make_file_alias(${qmcpack_SOURCE_DIR}/tests/solids/diamondC_1x1x1_pp/pwscf.pwscf.h5 diamondC_1x1x1.pwscf.h5)
+
+set(UTEST_INPUT_FILES ${ALIASED_FILES}
+    ${qmcpack_SOURCE_DIR}/tests/solids/monoO_noncollinear_1x1x1_pp/o2_45deg_spins.pwscf.h5
+    ${qmcpack_SOURCE_DIR}/tests/pseudopotentials_for_tests/C.BFD.xml)
 
 set(SRCS
     test_accumulator.cpp
@@ -73,7 +77,7 @@ set(SRCS
     )
 
 add_executable(${UTEST_EXE} ${SRCS})
-target_link_libraries(${UTEST_EXE} catch_main qmcutil qmcestimators test_estimators_help utilities_for_test sposets_for_testing minimal_testing_pools)
+target_link_libraries(${UTEST_EXE} catch_main qmcutil qmcestimators test_estimators_help utilities_for_test sposets_for_testing minimal_test_pools)
 if(USE_OBJECT_TARGET)
   target_link_libraries(
     ${UTEST_EXE}
@@ -92,7 +96,7 @@ if(USE_OBJECT_TARGET)
     utilities_for_test)
 endif()
 
-add_unit_test(${UTEST_NAME} 1 1 $<TARGET_FILE:${UTEST_EXE}>)
+add_unit_test(BASENAME ${UTEST_NAME} TEST_BINARY $<TARGET_FILE:${UTEST_EXE}> INPUT_FILES ${UTEST_INPUT_FILES})
 
 if(HAVE_MPI)
   set(UTEST_EXE test_${SRC_DIR}_mpi)
@@ -112,13 +116,18 @@ if(HAVE_MPI)
       qmcwfs
       qmcparticle
       qmcwfs_omptarget
+      spline2
+      spline2_omptarget
       qmcparticle_omptarget
       qmcutil
       platform_omptarget_LA
       utilities_for_test)
   endif()
   target_link_libraries(${UTEST_EXE} catch_main qmcestimators
-  test_estimators_help minimal_testing_pools mock_walker_elements)
+  test_estimators_help minimal_test_pools mock_walker_elements)
   # Right now the unified driver mpi tests are hard coded for 3 MPI ranks
-  add_unit_test(${UTEST_NAME} 3 1 $<TARGET_FILE:${UTEST_EXE}>)
+  add_unit_test(BASENAME ${UTEST_NAME} PROCS 3 TEST_BINARY $<TARGET_FILE:${UTEST_EXE}> INPUT_FILES ${UTEST_INPUT_FILES})
 endif()
+
+get_property(CURRENT_TESTS DIRECTORY PROPERTY TESTS)
+add_labels_for_tests("${CURRENT_TESTS}")

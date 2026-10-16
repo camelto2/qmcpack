@@ -10,15 +10,21 @@
 #//////////////////////////////////////////////////////////////////////////////////////
 
 
-add_library(spline2_omptarget OBJECT MultiBsplineOffload.cpp)
-target_link_libraries(spline2_omptarget PUBLIC einspline platform_runtime)
+add_library(spline2_omptarget OBJECT MultiBsplineOffloadMapperBase.cpp MultiBsplineOffloadMapper.cpp)
+target_link_libraries(spline2_omptarget PUBLIC einspline platform_runtime containers)
+
+set(SPLINE2_SRC MultiBspline.cpp
+  MultiBsplineBase.cpp MultiBspline1D.cpp SplineUtils.cpp)
+if(HAVE_MPI)
+  list(APPEND SPLINE2_SRC MultiBsplineMPIShared.cpp)
+endif()
 
 if(USE_OBJECT_TARGET)
-  add_library(spline2 OBJECT MultiBspline.cpp)
+  add_library(spline2 OBJECT ${SPLINE2_SRC})
 else()
-  add_library(spline2 MultiBspline.cpp)
+  add_library(spline2 ${SPLINE2_SRC})
 endif()
-target_link_libraries(spline2 PUBLIC spline2_omptarget)
+target_link_libraries(spline2 PUBLIC spline2_omptarget message qmcio)
 
 if(BUILD_UNIT_TESTS)
   add_subdirectory(tests)

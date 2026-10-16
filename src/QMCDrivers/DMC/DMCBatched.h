@@ -17,6 +17,8 @@
 #include "QMCDrivers/DMC/DMCDriverInput.h"
 #include "QMCDrivers/MCPopulation.h"
 #include "Particle/MCCoords.hpp"
+#include "WalkerLogManager.h"
+#include "RunTimeManager.h"
 
 namespace qmcplusplus
 {
@@ -105,8 +107,8 @@ public:
    *
    *  This is the shared entry point
    *  from QMCMain so cannot be updated yet
-   *  
-   *  Contains logic that sets walkers_per_rank_ 
+   *
+   *  Contains logic that sets walkers_per_rank_
    *  TargetWalkers trump walkers, if it is not set
    *  walkers which is by default per rank for the batched drivers
    *  from this or the previous section wins.
@@ -115,7 +117,7 @@ public:
    */
   void process(xmlNodePtr cur) override;
 
-  bool run() override;
+  void run() override;
 
   QMCRunType getRunType() override { return QMCRunType::DMC_BATCH; }
 
@@ -124,6 +126,8 @@ private:
   class DMCContextForSteps;
 
   const DMCDriverInput dmcdriver_input_;
+  /// Optional L2 drift-diffusion proposal strategy.
+  const bool use_l2_diffusion_;
   /// Per crowd, driver-specific move contexts
   UPtrVector<DMCContextForSteps> step_contexts_;
   /// obtain reference vector of step contexts

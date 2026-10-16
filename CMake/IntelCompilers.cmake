@@ -36,6 +36,8 @@ if(QMC_OMP)
             CACHE STRING "Offload target architecture")
         set(OPENMP_OFFLOAD_COMPILE_OPTIONS "-fopenmp-targets=${OFFLOAD_TARGET}")
       endif()
+      # Select the intra-team reduction implementation using shared local memory.
+      set(OPENMP_OFFLOAD_COMPILE_OPTIONS "${OPENMP_OFFLOAD_COMPILE_OPTIONS} -mllvm -vpo-paropt-atomic-free-reduction-slm=true" )
     endif(ENABLE_OFFLOAD)
     set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fiopenmp")
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fiopenmp")
@@ -65,9 +67,9 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "IntelLLVM")
   set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} -fno-omit-frame-pointer")
   set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -fno-omit-frame-pointer")
 
-  if(MIXED_PRECISION)
-    # without this test_longrange went off in the mixed precsion build
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -ffp-model=precise")
+  # The internal device-linking step of oneapi clutters link.d with temporary files on /tmp and results in re-linking every time.
+  if(QMC_GPU AND NOT DEFINED CMAKE_LINK_DEPENDS_USE_LINKER)
+    set(CMAKE_LINK_DEPENDS_USE_LINKER FALSE)
   endif()
 else()
   # classic compiler options

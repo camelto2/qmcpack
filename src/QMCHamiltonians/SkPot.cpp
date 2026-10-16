@@ -32,12 +32,10 @@ SkPot::SkPot(ParticleSet& source)
   OneOverDnk.resize(MaxKshell);
   for (int ks = 0; ks < MaxKshell; ks++)
   {
-    Kmag[ks]       = std::sqrt(source.getSimulationCell().getKLists().getKSQWorking()[Kshell[ks]]);
+    Kmag[ks]       = std::sqrt(source.getSimulationCell().getKLists().getKSQ()[Kshell[ks]]);
     OneOverDnk[ks] = 1.0 / static_cast<RealType>(Kshell[ks + 1] - Kshell[ks]);
   }
 }
-
-void SkPot::resetTargetParticleSet(ParticleSet& P) { sourcePtcl = &P; }
 
 SkPot::Return_t SkPot::evaluate(ParticleSet& P)
 {
@@ -61,7 +59,7 @@ bool SkPot::put(xmlNodePtr cur)
 
 bool SkPot::get(std::ostream& os) const { return true; }
 
-std::unique_ptr<OperatorBase> SkPot::makeClone(ParticleSet& qp, TrialWaveFunction& psi)
+std::unique_ptr<OperatorBase> SkPot::makeClone(ParticleSet& P) const
 {
   std::unique_ptr<SkPot> myclone = std::make_unique<SkPot>(*this);
   myclone->FillFk();

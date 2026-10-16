@@ -36,13 +36,11 @@ SkEstimator::SkEstimator(ParticleSet& source)
   OneOverDnk.resize(MaxKshell);
   for (int ks = 0; ks < MaxKshell; ks++)
   {
-    Kmag[ks]       = std::sqrt(source.getSimulationCell().getKLists().getKSQWorking()[Kshell[ks]]);
+    Kmag[ks]       = std::sqrt(source.getSimulationCell().getKLists().getKSQ()[Kshell[ks]]);
     OneOverDnk[ks] = 1.0 / static_cast<RealType>(Kshell[ks + 1] - Kshell[ks]);
   }
   hdf5_out = true;
 }
-
-void SkEstimator::resetTargetParticleSet(ParticleSet& P) { sourcePtcl = &P; }
 
 SkEstimator::Return_t SkEstimator::evaluate(ParticleSet& P)
 {
@@ -131,7 +129,7 @@ void SkEstimator::registerCollectables(std::vector<ObservableHelper>& h5desc, hd
     hid_t k_set =
         H5Dcreate(file.getFileID(), kpath.c_str(), H5T_NATIVE_DOUBLE, k_space, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
     hid_t mem_space   = H5Screate_simple(2, kdims, NULL);
-    auto* ptr         = &(sourcePtcl->getSimulationCell().getKLists().getKptsCartWorking()[0][0]);
+    auto* ptr         = &(sourcePtcl->getSimulationCell().getKLists().getKptsCart()[0][0]);
     herr_t ret        = H5Dwrite(k_set, H5T_NATIVE_DOUBLE, mem_space, k_space, H5P_DEFAULT, ptr);
     H5Dclose(k_set);
     H5Sclose(mem_space);
@@ -155,7 +153,7 @@ bool SkEstimator::put(xmlNodePtr cur)
 
 bool SkEstimator::get(std::ostream& os) const { return true; }
 
-std::unique_ptr<OperatorBase> SkEstimator::makeClone(ParticleSet& qp, TrialWaveFunction& psi)
+std::unique_ptr<OperatorBase> SkEstimator::makeClone(ParticleSet& P) const
 {
   std::unique_ptr<SkEstimator> myclone = std::make_unique<SkEstimator>(*this);
   myclone->hdf5_out                    = hdf5_out;

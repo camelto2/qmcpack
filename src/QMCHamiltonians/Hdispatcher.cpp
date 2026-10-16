@@ -31,7 +31,7 @@ std::vector<QMCHamiltonian::FullPrecRealType> Hdispatcher::flex_evaluate(
   {
     std::vector<FullPrecRealType> local_energies(ham_list.size());
     for (size_t iw = 0; iw < ham_list.size(); iw++)
-      local_energies[iw] = ham_list[iw].evaluate(p_list[iw]);
+      local_energies[iw] = ham_list[iw].evaluate(wf_list[iw], p_list[iw]);
     return local_energies;
   }
 }
@@ -48,9 +48,39 @@ std::vector<QMCHamiltonian::FullPrecRealType> Hdispatcher::flex_evaluateWithTope
   {
     std::vector<FullPrecRealType> local_energies(ham_list.size());
     for (size_t iw = 0; iw < ham_list.size(); iw++)
-      local_energies[iw] = ham_list[iw].evaluateWithToperator(p_list[iw]);
+      local_energies[iw] = ham_list[iw].evaluateWithToperator(wf_list[iw], p_list[iw]);
     return local_energies;
   }
+}
+
+void Hdispatcher::flex_computeL2DK(const RefVectorWithLeader<QMCHamiltonian>& ham_list,
+                                   const RefVectorWithLeader<ParticleSet>& p_list,
+                                   int iel,
+                                   std::vector<TensorType>& diffusion_tensors,
+                                   std::vector<PosType>& drift_corrections) const
+{
+  assert(ham_list.size() == p_list.size());
+  assert(ham_list.size() == diffusion_tensors.size());
+  assert(ham_list.size() == drift_corrections.size());
+  if (use_batch_)
+    QMCHamiltonian::mw_computeL2DK(ham_list, p_list, iel, diffusion_tensors, drift_corrections);
+  else
+    for (size_t iw = 0; iw < ham_list.size(); ++iw)
+      ham_list[iw].computeL2DK(p_list[iw], iel, diffusion_tensors[iw], drift_corrections[iw]);
+}
+
+void Hdispatcher::flex_computeL2D(const RefVectorWithLeader<QMCHamiltonian>& ham_list,
+                                  const RefVectorWithLeader<ParticleSet>& p_list,
+                                  int iel,
+                                  std::vector<TensorType>& diffusion_tensors) const
+{
+  assert(ham_list.size() == p_list.size());
+  assert(ham_list.size() == diffusion_tensors.size());
+  if (use_batch_)
+    QMCHamiltonian::mw_computeL2D(ham_list, p_list, iel, diffusion_tensors);
+  else
+    for (size_t iw = 0; iw < ham_list.size(); ++iw)
+      ham_list[iw].computeL2D(p_list[iw], iel, diffusion_tensors[iw]);
 }
 
 std::vector<int> Hdispatcher::flex_makeNonLocalMoves(const RefVectorWithLeader<QMCHamiltonian>& ham_list,
@@ -65,7 +95,7 @@ std::vector<int> Hdispatcher::flex_makeNonLocalMoves(const RefVectorWithLeader<Q
   {
     std::vector<int> num_accepts(ham_list.size());
     for (size_t iw = 0; iw < ham_list.size(); iw++)
-      num_accepts[iw] = ham_list[iw].makeNonLocalMoves(p_list[iw], move_op);
+      num_accepts[iw] = ham_list[iw].makeNonLocalMoves(wf_list[iw], p_list[iw], move_op);
     return num_accepts;
   }
 }

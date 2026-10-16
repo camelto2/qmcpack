@@ -110,9 +110,17 @@ documentation.
 newer versions are faster; see :ref:`buildperformance` for performance suggestions. Versions of compilers over two years old are
 unsupported and untested by the developers although they may still work.
 
--  C/C++ compilers such as GNU, Clang, Intel, and IBM XL. C++ compilers
+-  C/C++ compilers such as GNU, Clang, and Intel. C++ compilers
    are required to support the C++ 17 standard. Use of recent (“current
    year version”) compilers is strongly encouraged.
+
+-  To build the GPU accelerated version, an installation of NVIDIA CUDA Toolkit, AMD ROCm software, or Intel OneAPI HPC toolkit is required.
+   Ensure that this is compatible with the installed GPU drivers and C++ compiler versions you plan to use.
+   To achieve the best GPU performance, we recommend the following C++ compilers that support OpenMP offload
+
+   - For NVIDIA GPUs, LLVM clang.
+   - For AMD GPUS, ROCm clang(amdclang).
+   - For Intel GPUs, OneAPI icpx.
 
 -  An MPI library such as OpenMPI (http://open-mpi.org) or a
    vendor-optimized MPI.
@@ -134,36 +142,37 @@ unsupported and untested by the developers although they may still work.
 
 -  FFTW, FFT library (http://www.fftw.org/).
 
-To build the GPU accelerated version of QMCPACK, an installation of NVIDIA CUDA, AMD ROCm, or Intel OneAPI is required. Ensure that
-this is compatible with the installed GPU drivers and the C and C++ compiler versions you plan to use. 
-
 Many of the utilities provided with QMCPACK require Python (v3). The numpy and matplotlib libraries are required for full
 functionality.
+
+.. note::
+
+  We additionally recommend installing ``pytest`` for testing Python code, such as that in Nexus, however this is not a requirement for QMCPACK.
 
 Nightly testing currently includes at least the following software versions:
 
 * Compilers
   
-  * Clang/LLVM 20.1.4
-  * GCC 14.2.0, 12.4.0
+  * Clang/LLVM 22.1.1
+  * GCC 15.2.0, 13.4.0
+  * OneAPI 2025.3
 
-* Boost 1.88.0, 1.82.0
+* Boost 1.90.0, 1.84.0
 * HDF5 1.14.5
 * FFTW 3.3.10
-* CMake 3.31.6
-* OpenMPI 5.0.6
-* CUDA 12.6
-* ROCm 6.4.0
-* Python 3.13.2
-* NumPy 2.2.5
+* CMake 4.2.3, 3.27.9
+* OpenMPI 5.0.10
+* CUDA 12.9
+* ROCm 7.0.1
+* Python 3.14.2
+* NumPy 2.3.5
 
 For GPU acceleration on NVIDIA GPUs we test LLVM with CUDA using the above versions. On AMD GPUs we support using the latest ROCm
-version and its matching amdclang compiler, as listed above. On a developmental basis we also check the latest Clang and GCC
-development versions, and Intel OneAPI compilers.
+version and its matching amdclang compiler, as listed above. On Intel GPUs we test the up-to-date OneAPI release.
 
 GitHub Actions-based tests include additional version combinations from within our two-year support window.
 
-Workflow tests are currently performed with Quantum ESPRESSO v7.4.1 and PySCF v2.9.0. These check trial wavefunction generation and
+Workflow tests are currently performed with Quantum ESPRESSO v7.5 and PySCF v2.13.0. These check trial wavefunction generation and
 conversion through to actual QMC runs.
 
 C++ 17 standard library
@@ -209,7 +218,7 @@ Building with CMake
 The build system for QMCPACK is based on CMake. It will autoconfigure
 based on the detected compilers and libraries. The most recent version
 of CMake has the best detection for the greatest variety of systems. The
-minimum required version of CMake is 3.21.0. Most
+minimum required version of CMake is 3.28.0. Most
 computer installations have a sufficiently recent CMake, though it might
 not be the default.
 
@@ -221,8 +230,8 @@ executable can be run directly from that location.
 
 Previously, QMCPACK made extensive use of toolchains, but the build
 system has since been updated to eliminate the use of toolchain files
-for most cases. The build system is verified to work with GNU, Intel,
-and IBM XLC compilers. Specific compile options can be specified either
+for most cases. The build system is verified to work with GNU, Clang,
+and Intel compilers. Specific compile options can be specified either
 through specific environment or CMake variables. When the libraries are
 installed in standard locations (e.g., /usr, /usr/local), there is no
 need to set environment or CMake variables for the packages.
@@ -281,12 +290,12 @@ which in turn set environment variables. The list of supported environment varia
 
 ::
 
-  CXX              C++ compiler
-  CC               C Compiler
-  MKL_ROOT         Path for MKL
-  HDF5_ROOT        Path for HDF5
-  BOOST_ROOT       Path for Boost
-  FFTW_HOME        Path for FFTW
+  CXX                  C++ compiler
+  CC                   C Compiler
+  VendorPerfLibs_ROOT  Path for vendor optimized libraries
+  HDF5_ROOT            Path for HDF5
+  BOOST_ROOT           Path for Boost
+  FFTW_ROOT            Path for FFTW
 
 .. _cmakeoptions:
 
@@ -319,9 +328,9 @@ the path to the source directory.
     QMC_GPU_ARCHS         Specify GPU architectures. For example, "gfx90a" targets AMD MI200 series GPUs.
                           "intel_gpu_pvc" targets Intel Data Center GPU Max 1xxx.
                           "sm_80;sm_70" creates a single executable running on both NVIDIA A100 and V100 GPUs.
-                          Mixing vendor "gfx90a;sm_70" is not supported. If not set, atempt to derive it
+                          Mixing vendor "gfx90a;sm_70" is not supported. If not set, attempt to derive it
                           from CMAKE_CUDA_ARCHITECTURES or CMAKE_HIP_ARCHITECTURES if available and then
-                          atempt to auto-detect existing GPUs.
+                          attempt to auto-detect existing GPUs.
 
 - General build options
 
@@ -329,7 +338,7 @@ the path to the source directory.
 
     CMAKE_BUILD_TYPE     A variable which controls the type of build
                          (defaults to Release). Possible values are:
-                         None (Do not set debug/optmize flags, use
+                         None (Do not set debug/optimize flags, use
                          CMAKE_C_FLAGS or CMAKE_CXX_FLAGS)
                          Debug (create a debug build)
                          Release (create a release/optimized build)
@@ -346,7 +355,6 @@ the path to the source directory.
                          Also supported: CMAKE_CXX_FLAGS_DEBUG,
                          CMAKE_CXX_FLAGS_RELEASE, and CMAKE_CXX_FLAGS_RELWITHDEBINFO
     CMAKE_INSTALL_PREFIX Set the install location (if using the optional install step)
-    INSTALL_NEXUS        Install Nexus alongside QMCPACK (if using the optional install step)
 
 - Additional QMCPACK build options
 
@@ -372,6 +380,8 @@ the path to the source directory.
     ENABLE_PPCONVERT       ON/OFF. Enable the ppconvert tool. If requirements are met, it is ON by default.
     USE_OBJECT_TARGET      ON/OFF(default). Use CMake object library targets to workaround linker not being able to handle hybrid
                            binary archives which contain both host and device codes.
+    QMC_INSTALL_NEXUS      ON(default)/OFF. Install Nexus alongside QMCPACK (if using the optional install step).
+    QMC_DOXYGEN            ON(default)/OFF. Enable use of Doxygen documentation generator tool.
 
 - Expert performance fine tuning options
 
@@ -384,20 +394,18 @@ the path to the source directory.
     QMC_DISABLE_HIP_HOST_REGISTER  ON/OFF(default). If ON, make all the use of hipHostRegister/Unregister
                                    as no-op, namely disabling all the use of pinned memory.
 
-- BLAS/LAPACK related
+    QMC_OFFLOAD_USM                ON/OFF(default). If ON, enable OpenMP offload unified shared memory feature
+                                   that eliminates the device copies of data.
+
+- CPU Vendor Performance Libraries
 
   ::
 
-    BLA_VENDOR          If set, checks only the specified vendor, if not set checks all the possibilities.
-                        See full list at https://cmake.org/cmake/help/latest/module/FindLAPACK.html
-    MKL_ROOT            Path to MKL libraries. Only necessary when auto-detection fails or overriding is desired.
-
-- Scalar and vector math functions
-
-  ::
-
-    QMC_MATH_VENDOR     Select a vendor optimized library for scalar and vector math functions.
-                        Providers are GENERIC INTEL_VML IBM_MASS AMD_LIBM
+    VPL_ID               Select the specified vendor or generic performance libraries. If not specified, search for any possible candidate.
+                         See details at https://github.com/QMCPACK/qmcpack/blob/develop/CMake/FindVendorPerfLibs.cmake
+    VendorPerfLibs_ROOT  Search path for the root directory of vendor performance libraries.
+    BLA_VENDOR           For selecting specified or any BLAS/LAPACK libraries when VPL_ID is "Generic".
+                         See full list at https://cmake.org/cmake/help/latest/module/FindLAPACK.html
 
 - libxml2 related
 
@@ -418,17 +426,23 @@ the path to the source directory.
 
   ::
 
-    FFTW_INCLUDE_DIRS   Specify include directories for FFTW
+    FFTW_INCLUDE_DIR    Specify include directory for FFTW
     FFTW_LIBRARY_DIRS   Specify library directories for FFTW
 
 - CTest related
 
   ::
 
-    MPIEXEC_EXECUTABLE     Specify the mpi wrapper, e.g. srun, aprun, mpirun, etc.
-    MPIEXEC_NUMPROC_FLAG   Specify the number of mpi processes flag,
-                           e.g. "-n", "-np", etc.
-    MPIEXEC_PREFLAGS       Flags to pass to MPIEXEC_EXECUTABLE directly before the executable to run.
+    MPIEXEC_EXECUTABLE           Specify the mpi wrapper, e.g. srun, aprun, mpirun, etc.
+    MPIEXEC_NUMPROC_FLAG         Specify the number of mpi processes flag,
+                                 e.g. "-n", "-np", etc.
+    MPIEXEC_PREFLAGS             Flags to pass to MPIEXEC_EXECUTABLE directly before the executable to run.
+    QMC_CTEST_NUM_GPUS           Number of GPUs available to CTest on the local node (default: 1).
+                                 CTest uses this value to run independent GPU tests simultaneously,
+                                 assigning one GPU to each test. With default value, GPU tests
+                                 are serialized and only used 1 GPU. Must be a positive integer.
+    QMC_GPU_VISIBILITY_VARIABLE  Optionally specify the environment variable to control GPU visibility for CTest.
+                                 By default, "CUDA_VISIBLE_DEVICES", "ROCR_VISIBLE_DEVICES", and "ZE_AFFINITY_MASK" are used. 
 
 - Sanitizers Developer Options
 
@@ -438,6 +452,13 @@ the path to the source directory.
     
 
 See :ref:`Sanitizer-Libraries` for more information.
+
+- Code coverage related
+  
+  ::
+
+    ENABLE_GCOV  OFF(default)/ON, build with C++ source code line coverage measurement using gcov
+    ENABLE_PYCOV OFF(default)/ON, build with Python source code line coverage measurement using coverage.py and/or pytest
 
 
 Installation from CMake
@@ -519,10 +540,9 @@ Example configure and build
 
     export CXX=icpc
     export CC=icc
-    export MKL_ROOT=/usr/local/intel/mkl/10.0.3.020
+    export VendorPerfLibs_ROOT=/usr/local/intel/mkl/10.0.3.020
     export HDF5_ROOT=/usr/local
     export BOOST_ROOT=/usr/local/boost
-    export FFTW_HOME=/usr/local/fftw
 
 - Move to build directory, run CMake, and make
 
@@ -567,7 +587,7 @@ than usually needed for comprehensiveness:
     -D CMAKE_BUILD_TYPE=Debug                         \
     -D LIBXML2_INCLUDE_DIR=/usr/include/libxml2      \
     -D LIBXML2_LIBRARY=/usr/lib/x86_64-linux-gnu/libxml2.so \
-    -D FFTW_INCLUDE_DIRS=/usr/include                 \
+    -D FFTW_INCLUDE_DIR=/usr/include                  \
     -D FFTW_LIBRARY_DIRS=/usr/lib/x86_64-linux-gnu    \
     -D QMC_DATA=/projects/QMCPACK/qmc-data            \
     ..
@@ -593,12 +613,12 @@ To use Intel MKL with, e.g. an MPICH wrapped gcc:
 
   cmake \
     -DCMAKE_C_COMPILER=mpicc -DCMAKE_CXX_COMPILER=mpicxx \
-    -DMKL_ROOT=YOUR_INTEL_MKL_ROOT_DIRECTORY \
+    -DVendorPerfLibs_ROOT=YOUR_INTEL_MKL_ROOT_DIRECTORY \
     ..
 
-MKL\_ROOT is only necessary when MKL is not auto-detected successfully or a particular MKL installation is desired.
+VendorPerfLibs\_ROOT is only necessary when MKL is not auto-detected successfully or a particular MKL installation is desired.
 YOUR\_INTEL\_MKL\_ROOT\_DIRECTORY is the directory containing the MKL bin, examples, and lib
-directories (etc.) and is often /opt/intel/mkl.
+directories (etc.) and is often /opt/intel/oneapi/mkl.
 
 .. _threadedlibrary:
 
@@ -677,55 +697,48 @@ convenience we use a generic BLAS. A vendor-optimized BLAS is usually faster.
   make -j 8 # Adjust to available core count
   ls -l bin/qmcpack
 
-We recommend running the deterministic test set. Since by default OpenMPI will not
-allow processes to use more than the available number of cores, set `export OMPI_MCA_rmaps_base_oversubscribe=true`:
+We recommend running the deterministic test set. Since by default OpenMPI will not allow processes to use more than the available
+number of cores, set ``export OMPI_MCA_rmaps_base_oversubscribe=true``. Note that this environment variable is case sensitive. i.e.
+Use
 
 ::
+
   export OMPI_MCA_rmaps_base_oversubscribe=true
   time ctest -j 16 -L deterministic --output-on-failure
  
 
-Installing on CentOS Linux or other yum-based distributions
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Installing on CentOS Linux or other dnf/yum-based distribution
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-The following is designed to obtain a working QMCPACK build on, for example, a
-student laptop, starting from a basic Linux installation with none of
-the developer tools installed. CentOS 7 (Red Hat compatible) is using
-gcc 4.8.2. The installation is complicated only by the need to install
-another repository to obtain HDF5 packages that are not available by
-default. Note that for convenience we use a generic BLAS. For
-production, a platform-optimized BLAS should be used.
+In this example we use the default GCC14 starting from a minimal installation of CentOS 10. The same recipe is expected to work on
+RHEL. Note that to make MPI available, the appropriate MPI module should be loaded ahead of running cmake. For convenience, we also
+use a generic BLAS. In production, a platform-optimized BLAS is recommended.
 
 ::
 
-  sudo yum install make cmake gcc gcc-c++ openmpi openmpi-devel fftw fftw-devel \
-                    boost boost-devel libxml2 libxml2-devel
-  sudo yum install blas-devel lapack-devel atlas-devel
-  module load mpi
+  sudo dnf install -y epel-release
+  sudo /usr/bin/crb enable
+  sudo dnf update -y
+  sudo dnf install -y make cmake gcc gcc-c++ gcc-gfortran openmpi-devel fftw-devel
+  sudo dnf install -y boost-devel libxml2-devel
+  sudo dnf install -y blas-devel lapack-devel
+  sudo dnf install -y hdf5-devel
+  sudo dnf install -y rsync
+  sudo dnf install -y python3-numpy
+  sudo dnf install -y python3-h5py
 
-To set up repoforge as a source for the HDF5 package, go to
-http://repoforge.org/use. Install the appropriate up-to-date
-release package for your operating system. By default, CentOS Firefox will offer
-to run the installer. The CentOS 6.5 settings were still usable for HDF5 on
-CentOS 7 in 2016, but use CentOS 7 versions when they become
-available.
-
-::
-
-  sudo yum install hdf5 hdf5-devel
 
 To build QMCPACK:
 
 ::
 
   module load mpi/openmpi-x86_64
-  which mpirun
-  # Sanity check; should print something like   /usr/lib64/openmpi/bin/mpirun
-  export CXX=mpiCC
+  which mpirun # Sanity check; should print something like /usr/lib64/openmpi/bin/mpirun
   cd build
-  cmake ..
-  make -j 8
+  cmake -DCMAKE_C_COMPILER=mpicc -DCMAKE_CXX_COMPILER=mpiCC ..
+  make -j 8 # Adjust to available core count
   ls -l bin/qmcpack
+
 
 Installing on Mac OS X using Macports
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -890,7 +903,7 @@ Job script example with one MPI rank per GPU. Frontier is configured in low oper
 cores are not available on each node by default. i.e. We use 7 OpenMP CPU threads per MPI rank. The part of the job script that
 makes specific modules available is copied directly from the build script used above.
 
-::
+.. code-block:: bash
 
   #!/bin/bash
   #SBATCH -A MAT151
@@ -942,7 +955,7 @@ Installing on systems with ARMv8-based processors
 
 The following build recipe was verified using the 'Arm Compiler for HPC' on the ANL JLSE Comanche system with Cavium ThunderX2 processors on November 6, 2018.
 
-::
+.. code-block:: bash
 
   # load armclang compiler
   module load Generic-AArch64/RHEL/7/arm-hpc-compiler/18.4
@@ -954,7 +967,7 @@ The following build recipe was verified using the 'Arm Compiler for HPC' on the 
 
 Then using the following command:
 
-::
+.. code-block:: bash
 
   mkdir build_armclang
   cd build_armclang
@@ -965,7 +978,7 @@ Then using the following command:
       ..
   make -j 56
 
-Note that armclang is recognized as an 'unknown' compiler by CMake v3.13* and below. In this case, we need to force it as clang to apply necessary flags. To do so, pass the following additionals option to CMake:
+Note that armclang is recognized as an 'unknown' compiler by CMake v3.13* and below. In this case, we need to force it as clang to apply necessary flags. To do so, pass the following additional option to CMake:
 
 ::
 
@@ -1739,7 +1752,7 @@ expected to work with any recent version.
 Quantum ESPRESSO converter support for old versions via source code patches
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-For QE 6.3-7.0, the pw2qmcpack converter can be addded via a source code patch specific to the specific version of QE. **Note that
+For QE 6.3-7.0, the pw2qmcpack converter can be added via a source code patch specific to the specific version of QE. **Note that
 this route is no longer recommended. Unless a specific old version of QE is required, users should use the latest version of QE and
 the cmake route described above.**
 

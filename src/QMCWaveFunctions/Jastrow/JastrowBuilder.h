@@ -15,6 +15,7 @@
 
 #ifndef QMCPLUSPLUS_GENERALIZED_JASTROWBUILDER_H
 #define QMCPLUSPLUS_GENERALIZED_JASTROWBUILDER_H
+
 #include "QMCWaveFunctions/WaveFunctionComponentBuilder.h"
 
 namespace qmcplusplus
@@ -43,8 +44,6 @@ private:
   std::string funcOpt;
   /// \xmla{jastrow,spin}
   std::string spinOpt;
-  /// \xmla{jastrow,transform}
-  std::string transformOpt;
   /// \xmla{jastrow,source}
   std::string sourceOpt;
   ///reset the options

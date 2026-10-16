@@ -136,7 +136,7 @@ struct LRHandlerBase
     const Matrix<pRealType>& e2ikrA_i = A.getSK().eikr_i;
     const pRealType* rhokB_r          = B.getSK().rhok_r[specB];
     const pRealType* rhokB_i          = B.getSK().rhok_i[specB];
-    const std::vector<PosType>& kpts  = A.getSimulationCell().getKLists().getKptsCartWorking();
+    const std::vector<PosType>& kpts  = A.getSimulationCell().getKLists().getKptsCart();
     for (int ki = 0; ki < Fk.size(); ki++)
     {
       PosType k = kpts[ki];
@@ -185,7 +185,6 @@ struct LRHandlerBase
 
   virtual void initBreakup(ParticleSet& ref)              = 0;
   virtual void Breakup(ParticleSet& ref, mRealType rs_in) = 0;
-  virtual void resetTargetParticleSet(ParticleSet& ref)   = 0;
 
   virtual mRealType evaluate(mRealType r, mRealType rinv) const = 0;
   virtual mRealType evaluateLR(mRealType r) const               = 0;
@@ -225,7 +224,7 @@ struct DummyLRHandler : public LRHandlerBase
     mRealType kcsq = LR_kc * LR_kc;
     auto& KList(ref.getSimulationCell().getKLists());
     int maxshell = KList.getKShell().size() - 1;
-    const auto& kk(KList.getKSQWorking());
+    const auto& kk(KList.getKSQ());
     int ksh = 0, ik = 0;
     while (ksh < maxshell)
     {
@@ -235,7 +234,7 @@ struct DummyLRHandler : public LRHandlerBase
     }
     MaxKshell = ksh;
     Fk_symm.resize(MaxKshell);
-    Fk.resize(KList.getKptsCartWorking().size());
+    Fk.resize(KList.getKptsCart().size());
     for (ksh = 0, ik = 0; ksh < MaxKshell; ksh++, ik++)
     {
       mRealType v  = norm * myFunc(kk[KList.getKShell()[ksh]]); //rpa=u0/kk[ik];
@@ -250,7 +249,6 @@ struct DummyLRHandler : public LRHandlerBase
   mRealType evaluateLR(mRealType r) const override { return 0.0; }
   mRealType srDf(mRealType r, mRealType rinv) const override { return 0.0; }
   void Breakup(ParticleSet& ref, mRealType rs_in) override {}
-  void resetTargetParticleSet(ParticleSet& ref) override {}
   LRHandlerBase* makeClone(ParticleSet& ref) const override { return new DummyLRHandler<Func>(LR_kc); }
 };
 

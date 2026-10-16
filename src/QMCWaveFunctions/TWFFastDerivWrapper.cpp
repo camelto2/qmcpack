@@ -5,17 +5,44 @@
 // Copyright (c) 2021 QMCPACK developers.
 //
 // File developed by:   Raymond Clay III, rclay@sandia.gov, Sandia National Laboratories
+//                      Anouar Benali, abenali.sci@gmail.com, Qubit Pharmaceuticals
 //
 // File created by:   Raymond Clay III, rclay@sandia.gov, Sandia National Laboratories
 //////////////////////////////////////////////////////////////////////////////////////
 
 #include "QMCWaveFunctions/TWFFastDerivWrapper.h"
+#include <iostream>
 #include "QMCWaveFunctions/Fermion/MultiSlaterDetTableMethod.h"
 #include "Numerics/DeterminantOperators.h"
 #include "type_traits/ConvertToReal.h"
-#include <iostream>
+#include "Numerics/MatrixOperators.h"
+#include <AccelBLAS.hpp>
+#include "OMPTarget/ompBLAS.hpp"
+
 namespace qmcplusplus
 {
+
+struct TWFFastDerivWrapper::TWFFastDerivWrapperMultiWalkerMem : public Resource
+{
+  using ValueType        = QMCTraits::ValueType;
+  using PosType          = QMCTraits::PosType;
+  using OffloadPosVector = Vector<PosType, OffloadAllocator<PosType>>;
+
+  TWFFastDerivWrapperMultiWalkerMem();
+  TWFFastDerivWrapperMultiWalkerMem(const TWFFastDerivWrapperMultiWalkerMem&);
+
+  std::unique_ptr<Resource> makeClone() const override
+  { return std::make_unique<TWFFastDerivWrapperMultiWalkerMem>(*this); }
+  // BLAS/LAPACK handles
+#if (defined(ENABLE_CUDA) || defined(ENABLE_SYCL)) && defined(ENABLE_OFFLOAD)
+  compute::Queue<VendorKind> queue;
+  compute::BLASHandle<VendorKind> blas_handle;
+#else
+  compute::Queue<PlatformKind::OMPTARGET> queue;
+  compute::BLASHandle<PlatformKind::OMPTARGET> blas_handle;
+#endif
+};
+
 TWFFastDerivWrapper::IndexType TWFFastDerivWrapper::getTWFGroupIndex(const IndexType gid) const
 {
   IndexType return_group_index(-1);
@@ -251,7 +278,7 @@ TWFFastDerivWrapper::ValueType TWFFastDerivWrapper::computeGSDerivative(const st
 void TWFFastDerivWrapper::computeMDDerivatives_Obs(const std::vector<ValueMatrix>& Minv_Mv,
                                                    const std::vector<ValueMatrix>& Minv_B,
                                                    const std::vector<IndexType>& mdd_spo_ids,
-                                                   const std::vector<const WaveFunctionComponent*>& mdds,
+                                                   const std::vector<const MultiDiracDeterminant*>& mdds,
                                                    std::vector<ValueVector>& dvals_O) const
 {
   // mdd_id is multidiracdet id as ordered in multislaterdet
@@ -260,7 +287,7 @@ void TWFFastDerivWrapper::computeMDDerivatives_Obs(const std::vector<ValueMatrix
     // sid is sposet id as ordered in TWFFastDerivWrapper (index into first dim of M, X, B, etc.)
     IndexType sid = mdd_spo_ids[mdd_id];
 
-    const auto& multidiracdet_i = static_cast<const MultiDiracDeterminant&>(*mdds[mdd_id]);
+    const auto& multidiracdet_i = *mdds[mdd_id];
 
     IndexType ndet     = multidiracdet_i.getNumDets();     // number of DiracDets in this MultiDiracDet
     size_t nelec       = multidiracdet_i.getNumPtcls();    // total occ orbs in refdet (should be same as n_elec)
@@ -424,7 +451,7 @@ void TWFFastDerivWrapper::computeMDDerivatives_dmu(const std::vector<ValueMatrix
                                                    const std::vector<ValueMatrix>& Minv_dM,
                                                    const std::vector<ValueMatrix>& Minv_dB,
                                                    const std::vector<IndexType>& mdd_spo_ids,
-                                                   const std::vector<const WaveFunctionComponent*>& mdds,
+                                                   const std::vector<const MultiDiracDeterminant*>& mdds,
                                                    std::vector<ValueVector>& dvals_dmu_O,
                                                    std::vector<ValueVector>& dvals_dmu) const
 {
@@ -434,7 +461,7 @@ void TWFFastDerivWrapper::computeMDDerivatives_dmu(const std::vector<ValueMatrix
     // sid is sposet id as ordered in TWFFastDerivWrapper (index into first dim of M, X, B, etc.)
     IndexType sid = mdd_spo_ids[mdd_id];
 
-    const auto& multidiracdet_i = static_cast<const MultiDiracDeterminant&>(*mdds[mdd_id]);
+    const auto& multidiracdet_i = *mdds[mdd_id];
 
     IndexType ndet     = multidiracdet_i.getNumDets();     // number of DiracDets in this MultiDiracDet
     size_t nelec       = multidiracdet_i.getNumPtcls();    // total occ orbs in refdet (should be same as n_elec)
@@ -623,7 +650,7 @@ void TWFFastDerivWrapper::computeMDDerivatives_dmu(const std::vector<ValueMatrix
 }
 
 std::tuple<TWFFastDerivWrapper::ValueType, TWFFastDerivWrapper::ValueType, TWFFastDerivWrapper::ValueType>
-    TWFFastDerivWrapper::computeMDDerivatives_total(const std::vector<const WaveFunctionComponent*>& mdds,
+    TWFFastDerivWrapper::computeMDDerivatives_total(const std::vector<const MultiDiracDeterminant*>& mdds,
                                                     const std::vector<ValueVector>& dvals_dmu_O,
                                                     const std::vector<ValueVector>& dvals_O,
                                                     const std::vector<ValueVector>& dvals_dmu) const
@@ -702,7 +729,7 @@ std::tuple<TWFFastDerivWrapper::ValueType, TWFFastDerivWrapper::ValueType, TWFFa
     ValueType tmp_dmu_O = 0.0;     // d_mu(OD/D)
     ValueType tmp_O     = 0.0;     // OD/D
     ValueType tmp_dmu   = 0.0;     // d_mu(log(D))
-  
+
     for (size_t i_group = 0; i_group < num_groups; i_group++)
     {
       size_t i_dd = C2node[i_group][i_sd];
@@ -921,4 +948,31 @@ TWFFastDerivWrapper::IndexType TWFFastDerivWrapper::getRowM(const ParticleSet& P
   return sid;
 }
 
+void TWFFastDerivWrapper::createResource(ResourceCollection& collection)
+{ collection.addResource(std::make_unique<TWFFastDerivWrapperMultiWalkerMem>()); }
+
+void TWFFastDerivWrapper::acquireResource(ResourceCollection& collection,
+                                          const RefVectorWithLeader<TWFFastDerivWrapper>& wrappers)
+{
+  auto& leader          = wrappers.getLeader();
+  leader.mw_mem_handle_ = collection.lendResource<TWFFastDerivWrapperMultiWalkerMem>();
+}
+
+void TWFFastDerivWrapper::releaseResource(ResourceCollection& collection,
+                                          const RefVectorWithLeader<TWFFastDerivWrapper>& wrappers)
+{
+  auto& leader = wrappers.getLeader();
+
+  // Only leader has a handle: take back the resource.
+  collection.takebackResource(leader.mw_mem_handle_);
+}
+
+TWFFastDerivWrapper::TWFFastDerivWrapperMultiWalkerMem::TWFFastDerivWrapperMultiWalkerMem()
+    : Resource("TWFFastDerivWrapper"), queue(), blas_handle(queue)
+{}
+
+TWFFastDerivWrapper::TWFFastDerivWrapperMultiWalkerMem::TWFFastDerivWrapperMultiWalkerMem(
+    const TWFFastDerivWrapperMultiWalkerMem& rhs)
+    : Resource("TWFFastDerivWrapper"), queue(), blas_handle(queue)
+{}
 } // namespace qmcplusplus

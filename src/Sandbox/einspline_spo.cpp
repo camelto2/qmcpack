@@ -17,7 +17,7 @@
 #include "Particle/ParticleSet.h"
 #include "ParticleBase/RandomSeqGenerator.h"
 #include "random.hpp"
-#include "mpi/collectives.h"
+#include "Message/CommOperators.h"
 #include "Sandbox/input.hpp"
 #include "Sandbox/pseudo.hpp"
 #include "Utilities/Timer.h"
@@ -32,7 +32,7 @@ using namespace qmcplusplus;
 int main(int argc, char** argv)
 {
 #ifdef HAVE_MPI
-  mpi3::environment env(argc, argv);
+  mpi3::environment env(argc, argv, boost::mpi3::thread_level::funneled);
   OHMMS::Controller = new Communicate(env.world());
 #endif
   Communicate* myComm = OHMMS::Controller;
@@ -112,9 +112,9 @@ int main(int argc, char** argv)
   spo_type spo_main;
   int nTiles = 1;
 
-  auto super_lattice(createSuperLattice(create_prim_lattice(), tmat));
+  SimulationCell supercell(createSuperLattice(create_prim_lattice(), tmat));
   {
-    ParticleSet ions(super_lattice);
+    ParticleSet ions(supercell);
     tile_cell(ions, tmat);
     const int nions = ions.getTotalNum();
     const int nels  = count_electrons(ions) / 2;
@@ -124,7 +124,7 @@ int main(int argc, char** argv)
       cout << "\nNumber of orbitals/splines = " << nels << " and Tile size = " << tileSize
            << " and Number of tiles = " << nTiles << " and Iterations = " << nsteps << endl;
     spo_main.set(nx, ny, nz, nels, nTiles);
-    spo_main.Lattice.set(super_lattice.R);
+    spo_main.Lattice.set(supercell.getLattice().R);
   }
 
   double tInit = 0.0;
@@ -156,14 +156,18 @@ int main(int argc, char** argv)
     //create generator within the thread
     RandomGenerator random_th(MakeSeed(teamID, np));
 
-    ParticleSet ions(super_lattice), els(super_lattice);
+    ParticleSet ions(supercell), els(supercell);
     tile_cell(ions, tmat);
 
     const int nions = ions.getTotalNum();
     const int nels  = count_electrons(ions);
     const int nels3 = 3 * nels;
 
+#if _OPENMP >= 202011
+#pragma omp masked
+#else
 #pragma omp master
+#endif
     nptcl = nels;
 
     { //create up/down electrons
@@ -193,7 +197,11 @@ int main(int argc, char** argv)
     ParticlePos delta(nels);
     ParticlePos rOnSphere(nknots);
 
+#if _OPENMP >= 202011
+#pragma omp masked
+#else
 #pragma omp master
+#endif
     nknots_copy = nknots;
 
     RealType sqrttau = 2.0;
@@ -260,7 +268,7 @@ int main(int argc, char** argv)
             v_t_loc += clock.elapsed();
           }
         } // els
-      }   //ions
+      } //ions
 
       for (int p = 0; p < time_array_size; p++)
       {
@@ -312,8 +320,8 @@ int main(int argc, char** argv)
   timer_type global_t(t0, vgh_t, val_t, 0.0);
   timer_type global_t_1(tInit, tBigClock, 0.0, 0.0);
 
-  mpi::reduce(*myComm, global_t);
-  mpi::reduce(*myComm, global_t_1);
+  myComm->reduce(global_t);
+  myComm->reduce(global_t_1);
 
   const int nmpi = myComm->size();
   t0             = global_t[0] / nmpi;
@@ -379,9 +387,6 @@ int main(int argc, char** argv)
       cout << timeIterArray[p] << " " << numerator_th / val_t_iter[p] << " " << numerator_th / vgh_t_iter[p] << endl;
     }
   }
-
-
-  OHMMS::Controller->finalize();
 
   return 0;
 }

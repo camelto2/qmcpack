@@ -44,8 +44,6 @@ DensityEstimator::DensityEstimator(ParticleSet& elns)
 
 std::string DensityEstimator::getClassName() const { return "DensityEstimator"; }
 
-void DensityEstimator::resetTargetParticleSet(ParticleSet& P) {}
-
 DensityEstimator::Return_t DensityEstimator::evaluate(ParticleSet& P)
 {
   if (t_walker_ == nullptr)
@@ -115,17 +113,13 @@ void DensityEstimator::setParticlePropertyList(PropertySetType& plist, int offse
 
 /** check xml elements
  *
- * <estimator name="density" debug="no" delta="0.1 0.1 0.1"/>
+ * <estimator name="density" delta="0.1 0.1 0.1"/>
  */
 bool DensityEstimator::put(xmlNodePtr cur)
 {
   delta_ = 0.1;
   std::vector<double> delta;
-  std::string debug("no");
-  std::string potential("no");
   OhmmsAttributeSet attrib;
-  attrib.add(debug, "debug");
-  attrib.add(potential, "potential");
   attrib.add(density_min_[0], "x_min");
   attrib.add(density_min_[1], "y_min");
   attrib.add(density_min_[2], "z_min");
@@ -149,7 +143,7 @@ bool DensityEstimator::get(std::ostream& os) const
   return true;
 }
 
-std::unique_ptr<OperatorBase> DensityEstimator::makeClone(ParticleSet& qp, TrialWaveFunction& psi)
+std::unique_ptr<OperatorBase> DensityEstimator::makeClone(ParticleSet& qp) const
 {
   //default constructor is sufficient
   return std::make_unique<DensityEstimator>(*this);
